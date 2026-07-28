@@ -136,6 +136,26 @@ GET /api/internal/raw?id=123&path=wem/10/269385047.wem
 GET /api/tablecfg/json?id=123
 ```
 
+## 诊断脚本
+
+`JsonData/Data/Json/**/*.json` 的扩展名不一定代表解密后就是 JSON 文本。可以用诊断脚本批量扫描真实 payload：
+
+```powershell
+python tools\scan_jsondata_formats.py `
+  --db data\endfield-vfs-index.sqlite `
+  --output data\reports\jsondata-format-report.md
+```
+
+脚本会读取 VFS 索引中的 `Effective/JsonData/Data/Json/**/*.json`，按索引中的 `chunk_path`、`offset`、`length` 切片，必要时使用项目内置 VFS ChaCha20 规则解密，然后分类为：
+
+- `JSON 文本`
+- `可读文本但不是 JSON`
+- `已解密二进制`
+- `缺少 chunk`
+- `读取错误`
+
+报告会包含总览、按一级目录统计、二进制签名样例和异常样例。默认输出到 `data/reports/`，属于本机诊断产物，不纳入 git。
+
 ## 数据库说明
 
 SQLite 数据库默认生成在：
