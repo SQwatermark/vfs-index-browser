@@ -29,6 +29,7 @@ from server import decode_text, decrypt_vfs_file, looks_like_text
 DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"
 DEFAULT_OUTPUT = PROJECT_ROOT / "data" / "reports" / "jsondata-format-report.md"
 DEFAULT_PREFIX = "JsonData/Data/Json"
+DEFAULT_PROBE_BYTES = 8192
 
 
 @dataclass
@@ -54,6 +55,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--prefix", default=DEFAULT_PREFIX, help="logical directory prefix to scan")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="Markdown report output path")
     parser.add_argument("--limit", type=int, default=0, help="limit scanned records for quick tests")
+    parser.add_argument("--probe-bytes", type=int, default=DEFAULT_PROBE_BYTES, help="bytes to inspect before reading the full file")
     parser.add_argument("--sample-limit", type=int, default=30, help="max samples per report section")
     parser.add_argument("--progress-every", type=int, default=1000, help="print progress every N files, 0 disables")
     return parser.parse_args(list(argv))
@@ -63,11 +65,14 @@ def normalize_prefix(prefix: str) -> str:
     return prefix.replace("\\", "/").strip("/")
 
 
-def read_record_data(row: sqlite3.Row) -> bytes:
+def read_record_data(row: sqlite3.Row, limit: int | None = None) -> bytes:
+    length = int(row["length"])
+    if limit is not None:
+        length = min(length, limit)
     chunk_path = Path(row["chunk_path"])
     with chunk_path.open("rb") as file:
         file.seek(int(row["offset"]))
-        data = file.read(int(row["length"]))
+        data = file.read(length)
     if row["encrypted"]:
         return decrypt_vfs_file(data, int(row["iv_seed"]))
     return data
@@ -99,6 +104,15 @@ def classify_text_payload(data: bytes) -> tuple[str, str]:
     except json.JSONDecodeError as error:
         return "text-not-json", f"{encoding or 'text'}; JSON parse failed at {error.pos}: {error.msg}"
     return "json-text", encoding or "text"
+
+
+def classify_payload(row: sqlite3.Row, probe: bytes, probe_bytes: int) -> tuple[str, str]:
+    text, _ = decode_text(probe)
+    if text is None or not looks_like_text(text):
+        return "binary", "decoded payload is not readable text"
+
+    data = probe if int(row["length"]) <= probe_bytes else read_record_data(row)
+    return classify_text_payload(data)
 
 
 def category_label(category: str) -> str:
@@ -171,11 +185,11 @@ def scan(args: argparse.Namespace) -> list[ScanResult]:
             results.append(ScanResult(**base, category="missing-chunk", detail="chunk path does not exist"))
             continue
         try:
-            data = read_record_data(row)
-            category, detail = classify_text_payload(data)
-            first16 = data[:16].hex(" ")
-            signature8 = data[:8].hex(" ")
-            strings = extract_ascii_strings(data[:8192]) if category == "binary" else ()
+            probe = read_record_data(row, args.probe_bytes)
+            category, detail = classify_payload(row, probe, args.probe_bytes)
+            first16 = probe[:16].hex(" ")
+            signature8 = probe[:8].hex(" ")
+            strings = extract_ascii_strings(probe) if category == "binary" else ()
             results.append(
                 ScanResult(
                     **base,
