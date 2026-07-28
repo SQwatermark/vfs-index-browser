@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Endfield VFS Index Browser</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">VFS</div>
+          <div>
+            <h1>逻辑文件索引</h1>
+            <p>Endfield VFS Browser</p>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>视图</span>
+          <select id="scopeSelect"></select>
+        </label>
+
+        <label class="field">
+          <span>搜索文件</span>
+          <div class="search-row">
+            <input id="searchInput" placeholder="SkillConditionTable / .pck / TableCfg" />
+            <button id="searchButton">搜索</button>
+          </div>
+        </label>
+
+        <section class="summary" id="summary"></section>
+      </aside>
+
+      <section class="content">
+        <header class="toolbar">
+          <nav id="breadcrumbs" class="breadcrumbs"></nav>
+          <div class="toolbar-actions">
+            <button id="upButton">上一级</button>
+            <button id="rootButton">根目录</button>
+          </div>
+        </header>
+
+        <section id="dirStats" class="cards"></section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <h2>目录</h2>
+            <span id="dirCount"></span>
+          </div>
+          <div id="dirList" class="dir-grid"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-title">
+            <h2>文件</h2>
+            <div class="pager">
+              <button id="prevPage">上一页</button>
+              <span id="pageInfo"></span>
+              <button id="nextPage">下一页</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>文件名</th>
+                  <th>来源</th>
+                  <th>Block</th>
+                  <th>Chunk</th>
+                  <th>范围</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody id="fileRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel preview-panel">
+          <div class="panel-title">
+            <h2>文件预览</h2>
+            <div class="preview-actions">
+              <a id="openRawLink" class="link-button" href="#" target="_blank" rel="noreferrer">打开原始文件</a>
+              <a id="downloadLink" class="link-button" href="#">下载</a>
+            </div>
+          </div>
+          <div id="previewContent" class="preview-content">
+            <div class="empty">点击上方文件列表中的文件进行预览</div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
