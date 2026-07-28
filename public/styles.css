@@ -502,6 +502,22 @@ tbody tr[data-file-id].selected {
   font-size: 12px;
 }
 
+.internal-help {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  color: var(--muted);
+  background: rgba(84, 199, 236, 0.06);
+  border: 1px solid rgba(84, 199, 236, 0.18);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.internal-help p {
+  margin: 0;
+}
+
 .internal-crumbs {
   display: flex;
   align-items: center;

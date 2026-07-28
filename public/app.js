@@ -334,6 +334,7 @@ function renderInternalList(fileId, data) {
       ${packageMeta}
       ${videoMeta}
     </div>
+    ${renderInternalHelp(data)}
     <div id="internalPreview" class="internal-preview">
       <div class="empty">选择内部文件进行预览</div>
     </div>
@@ -369,6 +370,32 @@ function renderInternalList(fileId, data) {
       loadInternalPreview(fileId, button.dataset.internalFile)
     })
   })
+}
+
+function renderInternalHelp(data) {
+  const helpByKind = {
+    assetBundle: [
+      '内部目录是按需导出的 Unity 资源类型目录。',
+      'Texture2D、Sprite、TextAsset 等不是原始磁盘目录，而是从 AssetBundle 中解析出的资源分类。',
+      '资源卡片中的 Container 字段通常最接近游戏内原始 asset 路径。',
+    ],
+    audioPackage: [
+      'wem 是 PCK 中真实存放的 Wwise 音频条目，点击后可下载解密后的原始 WEM。',
+      'wav 是为了浏览器预览虚拟出来的目录，点击后会按需把对应 WEM 转码为 WAV 并缓存。',
+      '目录里显示的 WAV 大小是转码前的 WEM 占位大小，实际生成后可能不同。',
+    ],
+    criVideo: [
+      'mp4 是为了浏览器预览虚拟出来的目录。',
+      '点击 MP4 文件时会按需把 CRI/USM 视频转换为 MP4 并缓存；原始 .usm 不会被修改。',
+    ],
+  }
+  const lines = helpByKind[data.kind]
+  if (!lines) return ''
+  return `
+    <div class="internal-help">
+      ${lines.map((line) => `<p>${escapeHtml(line)}</p>`).join('')}
+    </div>
+  `
 }
 
 async function loadInternalPreview(fileId, path) {
