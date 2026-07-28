@@ -782,6 +782,11 @@ def looks_like_text(value: str) -> bool:
     return controls <= max(2, len(sample) // 100)
 
 
+def looks_like_text_bytes(data: bytes) -> bool:
+    text, _ = decode_text(data)
+    return text is not None and looks_like_text(text)
+
+
 def truncate_text(value: str, limit: int = PREVIEW_TEXT_LIMIT) -> tuple[str, bool]:
     data = value.encode("utf-8")
     if len(data) <= limit:
@@ -1870,6 +1875,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if record.get("encrypted"):
             data = self.read_file_slice(record, chunk_path)
             content_type = guess_content_type(original["file_name"], data[:32])
+            if content_type.startswith(("application/json", "text/plain")) and not looks_like_text_bytes(data[:8192]):
+                content_type = "application/octet-stream"
             self.send_response(200)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
