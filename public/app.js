@@ -334,6 +334,9 @@ function renderInternalList(fileId, data) {
       ${packageMeta}
       ${videoMeta}
     </div>
+    <div id="internalPreview" class="internal-preview">
+      <div class="empty">选择内部文件进行预览</div>
+    </div>
     <div class="internal-grid">
       ${data.dirs
         .map((dir) => `
@@ -354,13 +357,17 @@ function renderInternalList(fileId, data) {
         .join('')}
       ${!data.dirs.length && !data.files.length ? '<div class="empty">内部目录为空</div>' : ''}
     </div>
-    <div id="internalPreview" class="internal-preview"></div>
   `
   target.querySelectorAll('[data-internal-path]').forEach((button) => {
     button.addEventListener('click', () => loadInternalList(fileId, button.dataset.internalPath))
   })
   target.querySelectorAll('[data-internal-file]').forEach((button) => {
-    button.addEventListener('click', () => loadInternalPreview(fileId, button.dataset.internalFile))
+    button.addEventListener('click', () => {
+      target.querySelectorAll('[data-internal-file]').forEach((entry) => {
+        entry.classList.toggle('selected', entry === button)
+      })
+      loadInternalPreview(fileId, button.dataset.internalFile)
+    })
   })
 }
 

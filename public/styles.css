@@ -542,6 +542,11 @@ tbody tr[data-file-id].selected {
   color: var(--text);
 }
 
+.internal-entry.selected {
+  border-color: rgba(244, 204, 29, 0.75);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
 .internal-entry span {
   color: var(--muted);
   font-size: 12px;
@@ -562,8 +567,26 @@ tbody tr[data-file-id].selected {
 }
 
 .internal-preview {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   display: grid;
   gap: 8px;
+  padding-bottom: 8px;
+  background: #15191e;
+  border-bottom: 1px solid #272d35;
+}
+
+.internal-preview .empty {
+  padding: 10px;
+}
+
+.internal-preview .preview-text {
+  max-height: 38vh;
+}
+
+.internal-preview .media-preview {
+  max-height: 38vh;
 }
 
 .internal-preview-title {
