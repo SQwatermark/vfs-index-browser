@@ -230,10 +230,21 @@ function renderPreview(data) {
     </div>
     ${fallback}
   `
+  const message = data.message ? `<div class="notice">${escapeHtml(data.message)}</div>` : ''
+  const convertedActions = data.convertedRawUrl
+    ? `
+      <div class="preview-actions inline-actions">
+        <a class="link-button" href="${escapeHtml(data.convertedRawUrl)}" target="_blank" rel="noreferrer">打开转换结果</a>
+        <a class="link-button" href="${escapeHtml(data.convertedDownloadUrl || data.convertedRawUrl)}">下载转换结果</a>
+      </div>
+    `
+    : ''
 
   if (data.kind === 'text') {
     $('previewContent').innerHTML = `
       ${meta}
+      ${message}
+      ${convertedActions}
       ${data.truncated ? '<div class="notice">文件较大，仅显示前段内容。</div>' : ''}
       <pre class="preview-text">${escapeHtml(data.text)}</pre>
     `
@@ -303,6 +314,9 @@ function renderInternalList(fileId, data) {
   const packageMeta = data.kind === 'audioPackage' && data.meta
     ? `<span>${formatInt(data.meta.entryCount || 0)} WEM · WAV ${data.meta.wavPreviewAvailable ? '可预览' : '缺少转码工具'}</span>`
     : ''
+  const videoMeta = data.kind === 'criVideo' && data.meta
+    ? `<span>MP4 · ${data.meta.usmConvertAvailable ? '外部转换可用' : '内置抽流'}</span>`
+    : ''
   const parts = data.path ? data.path.split('/') : []
   const crumbs = [{ label: '内部根目录', path: '' }]
   let current = ''
@@ -318,6 +332,7 @@ function renderInternalList(fileId, data) {
       </div>
       <span>${formatInt(data.files.length)} files</span>
       ${packageMeta}
+      ${videoMeta}
     </div>
     <div class="internal-grid">
       ${data.dirs

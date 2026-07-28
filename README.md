@@ -76,6 +76,14 @@ vfs-index-browser/tools/vgmstream/vgmstream-cli.exe
 vfs-index-browser/data/internal-cache/
 ```
 
+`.usm` 视频预览会优先尝试调用外部 `usm-convert.exe` 转 MP4，找不到工具时回退到内置的基础抽流逻辑并调用 `ffmpeg` 封装。默认查找：
+
+```text
+vfs-index-browser/tools/usm-convert.exe
+```
+
+如路径不同，可通过环境变量 `USM_CONVERT` 覆盖；`ffmpeg` 可通过环境变量 `FFMPEG` 覆盖。
+
 ## 浏览视图
 
 页面提供四个 scope：
@@ -107,8 +115,8 @@ Bundle/Data/Bundles/Windows/main/a53af5bd74e329b80f12a7f4.ab
 - `.ab` 可以按需切片为临时 AssetBundle，再调用 AnimeStudio 导出 `Texture2D`、`Sprite`、`TextAsset`、`AudioClip`、`VideoClip` 等浏览器可预览文件。
 - `.ab` 导出时会额外生成 `AssetMap`，并把导出文件和 Unity 资源身份关联起来。`Container` 是目前最接近“原始 asset 路径”的字段，通常形如 `assets/beyond/.../texture.tga`；`Source` 更接近 AB/CAB 内部源文件，不应当当作资源路径使用。
 - `.pck` 会按 AKPK/PCK/BNK 结构解析 WEM 条目，并暴露为虚拟目录：`wem/<前两位 hex>/<wem id>.wem` 和 `wav/<前两位 hex>/<wem id>.wav`。点击 `wem` 会下载解密后的 WEM，点击 `wav` 会按需调用 `vgmstream-cli` 转成 WAV 供浏览器预览。
-- `Data/TableCfg/*.bytes` 目前会显示 VFS 解密后的二进制表前段内容；下一步需要接入本地 SparkBuffer 解析器，把它转换为 JSON。
-- `.usm` 目前仍只支持原始文件下载，单条视频流需要继续接入对应二级解析器。
+- `Data/TableCfg/*.bytes` 会按 VFS 规则解密并通过内置 SparkBuffer 解析器转换为 JSON，预览区显示前段内容，同时提供完整 JSON 打开/下载入口。
+- `.usm` 暴露为 `mp4/<原文件名>.mp4` 虚拟目录项，点击预览或下载时按需转换为浏览器可播放的 MP4。
 
 ## API
 
@@ -125,6 +133,7 @@ GET /api/internal/raw?id=123&path=Texture2D/example.png
 GET /api/internal/list?id=123&path=wem
 GET /api/internal/preview?id=123&path=wav/10/269385047.wav
 GET /api/internal/raw?id=123&path=wem/10/269385047.wem
+GET /api/tablecfg/json?id=123
 ```
 
 ## 数据库说明
@@ -139,10 +148,9 @@ vfs-index-browser/data/endfield-vfs-index.sqlite
 
 ## 当前限制
 
-VFS 层已经能够定位和读取逻辑文件，`.ab` 已接入按需导出和 AssetMap 元数据，`.pck` 已能按需列出、解密和转码 WEM。图片、角色语音、视频仍可能继续封装在 Unity AssetBundle、Wwise PCK 或 CRI USM 里。要继续完善“内部文件夹浏览”，下一步需要：
+VFS 层已经能够定位和读取逻辑文件，`.ab` 已接入按需导出和 AssetMap 元数据，`.pck` 已能按需列出、解密和转码 WEM，`Data/TableCfg/*.bytes` 已能转 JSON，`.usm` 已提供按需 MP4 预览入口。仍需继续完善的方向：
 
-1. 移植本地 SparkBuffer 解析，支持 `Data/TableCfg/*.bytes` 转 JSON。
-2. 对齐 AnimeStudio 的 AKPK/WEM 解析实现，补全音频包、音效、角色语音和剧情语音索引。
-3. 接入 USM 抽流或转码流程，让视频能在浏览器中预览。
-4. 解析 `.hgmmap` / bundle manifest，建立资源逻辑路径到 `.ab` 的映射，而不只按包名浏览。
-5. 把前端改造成目录树、文件表、固定预览面板的三栏布局，避免文件多时预览区域被挤到页面底部。
+1. 对齐 AnimeStudio 的更多 AKPK/WEM 边界案例，补全音效、角色语音和剧情语音的用途索引。
+2. 解析 `.hgmmap` / bundle manifest，建立资源逻辑路径到 `.ab` 的映射，而不只按包名浏览。
+3. 把基础文件浏览升级为聚合视图，例如干员、武器、敌人、任务台本、模型和音频用途目录。
+4. 增加对 SparkBuffer 表结构变化的批量校验，避免新增版本中静默漏字段。

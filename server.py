@@ -22,6 +22,9 @@ from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
+from sparkbuffer import SparkBufferError, parse_sparkbuffer
+from usm import UsmError, convert_usm_to_mp4
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_INDEX = (
@@ -48,6 +51,8 @@ VGMSTREAM_CLI = Path(
         PROJECT_ROOT / "tools" / "vgmstream" / "vgmstream-cli.exe",
     )
 )
+USM_CONVERT = Path(os.environ.get("USM_CONVERT", PROJECT_ROOT / "tools" / "usm-convert.exe"))
+FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
 
 CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
@@ -777,6 +782,13 @@ def looks_like_text(value: str) -> bool:
     return controls <= max(2, len(sample) // 100)
 
 
+def truncate_text(value: str, limit: int = PREVIEW_TEXT_LIMIT) -> tuple[str, bool]:
+    data = value.encode("utf-8")
+    if len(data) <= limit:
+        return value, False
+    return data[:limit].decode("utf-8", errors="replace"), True
+
+
 def hex_preview(data: bytes, max_bytes: int = PREVIEW_BINARY_LIMIT) -> str:
     data = data[:max_bytes]
     lines = []
@@ -868,6 +880,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/raw":
             self.handle_raw(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/tablecfg/json":
+            self.handle_tablecfg_json(parse_qs(parsed.query))
             return
         if parsed.path == "/api/internal/list":
             self.handle_internal_list(parse_qs(parsed.query))
@@ -1517,6 +1532,90 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 tmp.unlink()
         return wav_path, entry
 
+    def usm_cache_paths(self, record: dict) -> tuple[Path, Path]:
+        cache_root = INTERNAL_CACHE_DIR / str(record["id"]) / "video"
+        file_name = f"{Path(record['file_name']).stem}.mp4"
+        return cache_root / file_name, cache_root / "video_meta.json"
+
+    def usm_virtual_path(self, record: dict) -> str:
+        return f"mp4/{Path(record['file_name']).stem}.mp4"
+
+    def list_usm_video(self, record: dict, raw_path: str) -> dict:
+        normalized = unquote(raw_path).replace("\\", "/").strip("/")
+        virtual_path = self.usm_virtual_path(record)
+        if not normalized:
+            return {
+                "path": "",
+                "dirs": [{"name": "mp4", "path": "mp4", "fileCount": 1, "totalBytes": int(record["length"])}],
+                "files": [],
+            }
+        if normalized == "mp4":
+            return {
+                "path": "mp4",
+                "dirs": [],
+                "files": [
+                    {
+                        "name": Path(virtual_path).name,
+                        "path": virtual_path,
+                        "size": int(record["length"]),
+                        "kind": "video",
+                        "asset": {
+                            "Name": Path(virtual_path).name,
+                            "Type": "MP4",
+                            "Container": record["file_name"],
+                            "Source": "USM",
+                        },
+                    }
+                ],
+            }
+        raise FileNotFoundError("USM virtual directory not found")
+
+    def ensure_usm_video_file(self, record: dict, chunk_path: Path, internal_path: str) -> Path:
+        normalized = unquote(internal_path).replace("\\", "/").strip("/")
+        if normalized != self.usm_virtual_path(record):
+            raise FileNotFoundError("USM video entry not found")
+
+        target, meta_path = self.usm_cache_paths(record)
+        if target.exists() and meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if meta.get("fileLength") == int(record["length"]) and target.stat().st_size > 0:
+                    return target
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = target.with_name(f"{target.stem}.{os.getpid()}.{time.time_ns()}.mp4")
+        try:
+            convert_usm_to_mp4(
+                self.read_file_slice(record, chunk_path),
+                temp_path,
+                usm_convert=USM_CONVERT,
+                ffmpeg=FFMPEG,
+            )
+            os.replace(temp_path, target)
+        finally:
+            if temp_path.exists():
+                try:
+                    temp_path.unlink()
+                except OSError:
+                    pass
+        meta_path.write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "fileLength": int(record["length"]),
+                    "builtAtEpoch": int(time.time()),
+                    "usmConvert": str(USM_CONVERT),
+                    "ffmpeg": str(FFMPEG),
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+        return target
+
     def resolve_assetbundle_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, dict | None] | None:
         file_id = self.file_id_from_query(query)
         if file_id is None:
@@ -1567,6 +1666,53 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return None
         return record, target, entry
 
+    def resolve_usm_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, dict] | None:
+        file_id = self.file_id_from_query(query)
+        if file_id is None:
+            return None
+        internal_path = query.get("path", [""])[0]
+        with self.connect() as conn:
+            resolved = self.resolve_file_record(conn, file_id)
+            if resolved is None:
+                return None
+            _, record, chunk_path = resolved
+
+        if file_suffix(record["file_name"]) != ".usm":
+            self.send_error_json(400, "USM internal file preview expected a .usm record")
+            return None
+        try:
+            target = self.ensure_usm_video_file(record, chunk_path, internal_path)
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return None
+        except (UsmError, RuntimeError, OSError, subprocess.SubprocessError) as error:
+            self.send_error_json(500, str(error))
+            return None
+        asset_meta = {
+            "Name": target.name,
+            "Type": "MP4",
+            "Container": record["file_name"],
+            "Source": "USM",
+        }
+        return record, target, asset_meta
+
+    def resolve_tablecfg_file(self, file_id: int) -> tuple[dict, dict, Path, str] | None:
+        with self.connect() as conn:
+            resolved = self.resolve_file_record(conn, file_id)
+            if resolved is None:
+                return None
+            original, record, chunk_path = resolved
+        table_name = tablecfg_name_for_file(record["file_name"])
+        if table_name is None:
+            self.send_error_json(400, "TableCfg JSON expected a Data/TableCfg/*.bytes record")
+            return None
+        return original, record, chunk_path, table_name
+
+    def parse_tablecfg_file(self, record: dict, chunk_path: Path) -> tuple[dict, bytes]:
+        parsed = parse_sparkbuffer(self.read_file_slice(record, chunk_path))
+        data = json.dumps(parsed["data"], ensure_ascii=False, indent=2).encode("utf-8")
+        return parsed, data
+
     def handle_preview(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
         if file_id is None:
@@ -1596,7 +1742,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             elif suffix == ".pck":
                 message = "这是音频 PCK 容器。VFS 层可以下载原始 PCK；单条语音需要继续解析 PCK/AKPK/WEM。"
             elif suffix == ".usm":
-                message = "这是 CRI/USM 视频容器。浏览器通常不能直接播放 .usm；可以先下载，后续接入 CRI 转码/抽流。"
+                message = "这是 CRI/USM 视频容器。可以下载原始 .usm，也可以点击“查看内部结构”按需转换为 MP4 预览。"
             else:
                 message = "这是二级容器文件，可以下载；内部解析尚未接入。"
             self.send_json({**base, "kind": kind, "message": message})
@@ -1610,6 +1756,43 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if suffix in AUDIO_EXTENSIONS:
             self.send_json({**base, "kind": "audio", "contentType": guess_content_type(record["file_name"])})
+            return
+
+        tablecfg_name = tablecfg_name_for_file(record["file_name"])
+        if tablecfg_name:
+            try:
+                parsed, json_data = self.parse_tablecfg_file(record, chunk_path)
+            except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
+                data = self.read_file_slice(record, chunk_path, limit=PREVIEW_BINARY_LIMIT)
+                self.send_json(
+                    {
+                        **base,
+                        "kind": "hex",
+                        "hex": hex_preview(data),
+                        "truncated": int(record["length"]) > len(data),
+                        "message": f"`{tablecfg_name}` 已完成 VFS 解密，但 SparkBuffer 解析失败：{error}",
+                    }
+                )
+                return
+
+            text, truncated = truncate_text(json_data.decode("utf-8"))
+            json_url = f"/api/tablecfg/json?id={file_id}"
+            self.send_json(
+                {
+                    **base,
+                    "kind": "text",
+                    "encoding": "sparkbuffer-json",
+                    "text": text,
+                    "truncated": truncated,
+                    "convertedRawUrl": json_url,
+                    "convertedDownloadUrl": f"{json_url}&download=1",
+                    "message": f"`{tablecfg_name}` 已从本地 VFS 解密 bytes 解析为 SparkBuffer JSON。",
+                    "tableCfg": {
+                        "fileName": tablecfg_name,
+                        "rootName": parsed.get("name"),
+                    },
+                }
+            )
             return
 
         limit = PREVIEW_TEXT_LIMIT if suffix in TEXT_EXTENSIONS else PREVIEW_BINARY_LIMIT
@@ -1633,21 +1816,40 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
             return
 
-        tablecfg_name = tablecfg_name_for_file(record["file_name"])
-        message = (
-            f"`{tablecfg_name}` 是本地 VFS 解密后的 TableCfg 二进制表，后续需要接入 SparkBuffer 解析后才能显示为 JSON。"
-            if tablecfg_name
-            else "该文件不是可直接显示的文本，当前展示解密后的前段十六进制内容。"
-        )
         self.send_json(
             {
                 **base,
                 "kind": "hex",
                 "hex": hex_preview(data),
                 "truncated": truncated,
-                "message": message,
+                "message": "该文件不是可直接显示的文本，当前展示解密后的前段十六进制内容。",
             }
         )
+
+    def handle_tablecfg_json(self, query: dict[str, list[str]]) -> None:
+        file_id = self.file_id_from_query(query)
+        if file_id is None:
+            return
+        resolved = self.resolve_tablecfg_file(file_id)
+        if resolved is None:
+            return
+        _, record, chunk_path, table_name = resolved
+        try:
+            parsed, data = self.parse_tablecfg_file(record, chunk_path)
+        except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
+            self.send_error_json(422, f"SparkBuffer parse failed: {error}")
+            return
+
+        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
+        disposition = "attachment" if download else "inline"
+        root_name = str(parsed.get("name") or table_name)
+        encoded_name = quote(f"{root_name}.json")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f"{disposition}; filename*=UTF-8''{encoded_name}")
+        self.end_headers()
+        self.wfile.write(data)
 
     def handle_raw(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
@@ -1763,11 +1965,25 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
             return
         if suffix == ".usm":
+            try:
+                listing = self.list_usm_video(record, path)
+            except FileNotFoundError as error:
+                self.send_error_json(404, str(error))
+                return
             self.send_json(
                 {
                     "kind": "criVideo",
-                    "status": "notConnected",
-                    "message": "USM 内部流尚未接入。下一步需要解析 CRI UTF 表或转码为浏览器可播放格式。",
+                    "status": "ready",
+                    "file": original,
+                    "resolvedFile": record,
+                    "path": listing["path"],
+                    "dirs": listing["dirs"],
+                    "files": listing["files"],
+                    "meta": {
+                        "usmConvertAvailable": USM_CONVERT.exists(),
+                        "usmConvert": str(USM_CONVERT),
+                        "ffmpeg": str(FFMPEG),
+                    },
                 }
             )
             return
@@ -1796,6 +2012,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if resolved is None:
                 return
             record, target, audio_entry = resolved
+        elif suffix == ".usm":
+            resolved = self.resolve_usm_internal_file(query)
+            if resolved is None:
+                return
+            record, target, asset_meta = resolved
         else:
             self.send_error_json(400, "unsupported internal preview container")
             return
@@ -1848,6 +2069,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             _, target, _ = resolved
         elif suffix == ".pck":
             resolved = self.resolve_audio_internal_file(query)
+            if resolved is None:
+                return
+            _, target, _ = resolved
+        elif suffix == ".usm":
+            resolved = self.resolve_usm_internal_file(query)
             if resolved is None:
                 return
             _, target, _ = resolved

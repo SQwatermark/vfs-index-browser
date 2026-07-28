@@ -47,7 +47,7 @@ button:disabled {
 
 #app {
   display: grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr) minmax(360px, 520px);
   min-height: 100vh;
 }
 
@@ -140,7 +140,9 @@ input {
 
 .content {
   min-width: 0;
+  height: 100vh;
   padding: 18px 22px 28px;
+  overflow: auto;
 }
 
 .toolbar {
@@ -361,12 +363,26 @@ tbody tr[data-file-id].selected {
 }
 
 .preview-panel {
-  margin-bottom: 28px;
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  margin: 0;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+  border-radius: 0;
 }
 
 .preview-actions {
   display: flex;
   gap: 8px;
+}
+
+.inline-actions {
+  margin-top: 8px;
 }
 
 .link-button {
@@ -389,8 +405,10 @@ tbody tr[data-file-id].selected {
 }
 
 .preview-content {
-  min-height: 180px;
+  flex: 1;
+  min-height: 0;
   padding: 14px;
+  overflow: auto;
 }
 
 .preview-meta {
@@ -420,7 +438,6 @@ tbody tr[data-file-id].selected {
 }
 
 .preview-text {
-  max-height: 560px;
   margin: 10px 0 0;
   padding: 12px;
   overflow: auto;
@@ -586,6 +603,24 @@ tbody tr[data-file-id].selected {
     height: auto;
     border-right: 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .content {
+    height: auto;
+    overflow: visible;
+  }
+
+  .preview-panel {
+    position: static;
+    height: auto;
+    min-height: 260px;
+    margin: 14px 20px 28px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .preview-content {
+    max-height: 70vh;
   }
 
   .cards {
