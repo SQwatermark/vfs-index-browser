@@ -215,3 +215,11 @@ class ManifestIndex:
                 JOIN bundles b ON b.bundle_index = a.bundle_index WHERE a.asset_index = ?
             """, (asset_index,)).fetchone()
         return dict(row) if row else None
+
+    def summary(self) -> dict:
+        with self._connect() as conn:
+            meta = dict(conn.execute("SELECT key, value FROM meta"))
+        return {
+            "bundleCount": int(meta["bundleCount"]),
+            "assetCount": int(meta["assetCount"]),
+        }

@@ -1085,11 +1085,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 (scope, path),
             ).fetchone()
             if manifest_entry is not None:
+                manifest_count = 0
+                if manifest_entry["chunk_exists"]:
+                    manifest_record = self.original_file_record(conn, int(manifest_entry["file_id"]))
+                    resolved_manifest = (
+                        self.resolve_file_record_quiet(conn, manifest_record)
+                        if manifest_record is not None
+                        else None
+                    )
+                    if resolved_manifest is not None:
+                        manifest_record, manifest_chunk = resolved_manifest
+                        try:
+                            manifest_count = self.manifest_index(
+                                manifest_record,
+                                manifest_chunk,
+                            ).summary()["assetCount"]
+                        except (ValueError, OSError, sqlite3.Error):
+                            manifest_count = 0
                 dirs.append(
                     {
                         "path": join_manifest_virtual_path(path),
                         "name": MANIFEST_VIRTUAL_NAME,
-                        "file_count": 0,
+                        "file_count": manifest_count,
                         "total_bytes": int(manifest_entry["length"]),
                         "encrypted_count": 0,
                         "missing_chunk_count": 0 if manifest_entry["chunk_exists"] else 1,

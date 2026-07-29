@@ -149,7 +149,7 @@ function renderDirs(dirs) {
         .map((dir) => `
           <button class="dir-card ${dir.virtualKind ? 'virtual' : ''}" data-path="${escapeHtml(dir.path)}">
             <strong>${escapeHtml(dir.name)}</strong>
-            <span>${dir.virtualKind ? '虚拟目录 · 按需读取索引' : `${formatInt(dir.file_count)} files · ${formatBytes(dir.total_bytes)}`}</span>
+            <span>${formatInt(dir.file_count)} files · ${dir.virtualKind ? '虚拟目录' : formatBytes(dir.total_bytes)}</span>
             ${dir.virtualKind ? '<span class="tag">manifest</span>' : ''}
             ${dir.missing_chunk_count ? `<em>${formatInt(dir.missing_chunk_count)} missing chunks</em>` : ''}
           </button>
