@@ -292,15 +292,15 @@ th {
   font-weight: 600;
 }
 
-tbody tr[data-file-id] {
+tbody tr[data-file-key] {
   cursor: pointer;
 }
 
-tbody tr[data-file-id]:hover {
+tbody tr[data-file-key]:hover {
   background: rgba(84, 199, 236, 0.08);
 }
 
-tbody tr[data-file-id].selected {
+tbody tr[data-file-key].selected {
   background: rgba(244, 204, 29, 0.1);
   outline: 1px solid rgba(244, 204, 29, 0.45);
   outline-offset: -1px;
@@ -447,6 +447,65 @@ tbody tr[data-file-id].selected {
   border-radius: 4px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.binary-json-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.binary-json-summary div,
+.binary-json-section {
+  padding: 10px;
+  background: #15191e;
+  border: 1px solid #272d35;
+  border-radius: 4px;
+}
+
+.binary-json-summary span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.binary-json-summary strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.binary-json-section {
+  margin-top: 10px;
+}
+
+.string-probe-table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.string-probe-table th,
+.string-probe-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #272d35;
+  vertical-align: top;
+}
+
+.string-probe-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.string-probe-table td:last-child {
+  word-break: break-all;
+}
+
+.empty.small {
+  padding: 10px 0 0;
 }
 
 .media-preview {

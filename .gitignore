@@ -3,3 +3,4 @@ server.log
 server.err
 __pycache__/
 *.py[cod]
+.idea/

@@ -15,6 +15,7 @@ import struct
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -24,6 +25,15 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
+from manifest_index import ManifestIndex
+
+try:
+    from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
+except ImportError:
+    DecodeError = Decoder = MemoryPackReader = SchemaIndex = None
+
+    def infer_class(logical_id: str | None) -> str | None:
+        return None
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -63,6 +73,12 @@ AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
+MEMORYPACK_SCHEMA = Path(
+    os.environ.get("VFS_BROWSER_MEMORYPACK_SCHEMA", PROJECT_ROOT / "schemas" / "memorypack-known-schema.json")
+)
+MEMORYPACK_UNION_MAP = Path(
+    os.environ.get("VFS_BROWSER_MEMORYPACK_UNION_MAP", PROJECT_ROOT / "schemas" / "memorypack-known-unions.json")
+)
 
 SOURCE_PRIORITY = {
     "Persistent": 0,
@@ -76,6 +92,7 @@ AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm", ".hgmmap"}
 ASSETBUNDLE_EXPORT_TYPES = ("Texture2D", "Sprite", "TextAsset", "AudioClip", "VideoClip")
 AUDIO_ENTRY_RE = re.compile(r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$", re.IGNORECASE)
+PAGE_SIZE_MAX = 500
 
 
 @dataclass(frozen=True)
@@ -727,6 +744,10 @@ def row_to_dict(row: sqlite3.Row) -> dict:
     return {key: row[key] for key in row.keys()}
 
 
+def escape_sql_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def file_suffix(file_name: str) -> str:
     return Path(file_name).suffix.lower()
 
@@ -805,6 +826,45 @@ def hex_preview(data: bytes, max_bytes: int = PREVIEW_BINARY_LIMIT) -> str:
     return "\n".join(lines)
 
 
+def length_prefixed_utf8_strings(data: bytes, max_offset: int = 8192, max_count: int = 40) -> list[dict]:
+    strings = []
+    scan_end = min(max(len(data) - 4, 0), max_offset)
+    for offset in range(scan_end):
+        length = int.from_bytes(data[offset : offset + 4], "little")
+        if length < 4 or length > 160 or offset + 4 + length > len(data):
+            continue
+        raw = data[offset + 4 : offset + 4 + length]
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        if not text or any(ord(char) < 32 and char not in "\t\r\n" for char in text):
+            continue
+        strings.append({"offset": offset, "length": length, "text": text})
+        if len(strings) >= max_count:
+            break
+    return strings
+
+
+def binary_json_probe(data: bytes, full_length: int) -> dict:
+    first_byte = data[0] if data else None
+    return {
+        "formatHint": "schema-based binary JSON",
+        "confidence": "medium",
+        "firstByte": first_byte,
+        "possibleMemberCount": first_byte,
+        "fullLength": full_length,
+        "sampleLength": len(data),
+        "lengthPrefixedStrings": length_prefixed_utf8_strings(data),
+        "note": "VFS 解密已完成；该 .json 内容疑似按类型 schema 顺序写入的二进制配置，需要字段 schema 才能完整还原。",
+    }
+
+
+def load_memorypack_union_map(path: Path) -> dict[str, dict[int, str]]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    return {base_type: {int(tag): derived_type for tag, derived_type in entries.items()} for base_type, entries in raw.items()}
+
+
 def internal_preview_kind(path: Path) -> str:
     suffix = file_suffix(path.name)
     if suffix in IMAGE_EXTENSIONS:
@@ -846,6 +906,11 @@ def folder_stats(path: Path) -> tuple[int, int]:
 
 class BrowserHandler(BaseHTTPRequestHandler):
     db_path: Path
+    manifest_indexes: dict[tuple[int, int, str], ManifestIndex] = {}
+    manifest_index_lock = threading.Lock()
+    memorypack_schema: SchemaIndex | None = None
+    memorypack_union_map: dict[str, dict[int, str]] | None = None
+    memorypack_load_error: str | None = None
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
@@ -865,6 +930,48 @@ class BrowserHandler(BaseHTTPRequestHandler):
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    @classmethod
+    def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:
+        if cls.memorypack_load_error:
+            raise RuntimeError(cls.memorypack_load_error)
+        if Decoder is None or MemoryPackReader is None or SchemaIndex is None:
+            cls.memorypack_load_error = "MemoryPack decoder module is unavailable"
+            raise RuntimeError(cls.memorypack_load_error)
+        try:
+            if cls.memorypack_schema is None:
+                cls.memorypack_schema = SchemaIndex.load(MEMORYPACK_SCHEMA)
+            if cls.memorypack_union_map is None:
+                cls.memorypack_union_map = load_memorypack_union_map(MEMORYPACK_UNION_MAP)
+        except (OSError, json.JSONDecodeError, ValueError) as error:
+            cls.memorypack_load_error = str(error)
+            raise RuntimeError(cls.memorypack_load_error) from error
+        return cls.memorypack_schema, cls.memorypack_union_map
+
+    def decode_memorypack_json_preview(self, record: dict, chunk_path: Path) -> tuple[str, bool, dict] | None:
+        class_name = infer_class(record.get("logical_id"))
+        if not class_name:
+            return None
+        schema, union_map = self.load_memorypack_decoder_inputs()
+        data = self.read_file_slice(record, chunk_path)
+        reader = MemoryPackReader(data)
+        decoder = Decoder(schema, union_map=union_map)
+        try:
+            value = decoder.decode(reader, class_name)
+        except DecodeError as error:
+            raise RuntimeError(f"{error.message} at 0x{error.offset:x} ({error.path})") from error
+        meta = {
+            "class": class_name,
+            "bytes": len(data),
+            "consumed": reader.tell(),
+            "complete": reader.tell() == len(data),
+            "discoveredUnions": {
+                base_type: {str(tag): derived_type for tag, derived_type in sorted(entries.items())}
+                for base_type, entries in sorted(decoder.discovered_unions.items())
+            },
+        }
+        text, truncated = truncate_text(json.dumps({"__meta": meta, "value": value}, ensure_ascii=False, indent=2))
+        return text, truncated, meta
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -917,9 +1024,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         scope = query.get("scope", ["effective"])[0]
         path = unquote(query.get("path", [""])[0]).strip("/")
         page = max(int(query.get("page", ["1"])[0]), 1)
-        page_size = min(max(int(query.get("pageSize", ["100"])[0]), 10), 500)
+        page_size = min(max(int(query.get("pageSize", ["100"])[0]), 10), PAGE_SIZE_MAX)
         offset = (page - 1) * page_size
-
         with self.connect() as conn:
             current = conn.execute(
                 "SELECT * FROM directories WHERE scope = ? AND path = ?",
@@ -945,23 +1051,41 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "SELECT COUNT(*) AS count FROM entries WHERE scope = ? AND parent = ? AND type = 'file'",
                 (scope, path),
             ).fetchone()["count"]
-            files = [
+            entry_rows = [
                 row_to_dict(row)
                 for row in conn.execute(
                     """
-                    SELECT e.path, e.name, f.id, f.source, f.block_name, f.block_hash,
-                           f.file_name, f.logical_id, f.source_logical_id, f.chunk_file,
-                           f.chunk_exists, f.offset, f.length, f.encrypted, f.iv_seed,
-                           f.file_data_md5
-                    FROM entries e
-                    JOIN files f ON f.id = e.file_id
-                    WHERE e.scope = ? AND e.parent = ? AND e.type = 'file'
-                    ORDER BY e.name COLLATE NOCASE
+                    SELECT path, name, file_id
+                    FROM entries
+                    WHERE scope = ? AND parent = ? AND type = 'file'
+                    ORDER BY name COLLATE NOCASE
                     LIMIT ? OFFSET ?
                     """,
                     (scope, path, page_size, offset),
                 )
             ]
+            files_by_id = {}
+            if entry_rows:
+                placeholders = ",".join("?" for _ in entry_rows)
+                files_by_id = {
+                    row["id"]: row_to_dict(row)
+                    for row in conn.execute(
+                        f"""
+                        SELECT id, source, block_name, block_hash, file_name, logical_id,
+                               source_logical_id, chunk_file, chunk_exists, offset, length,
+                               encrypted, iv_seed, file_data_md5
+                        FROM files
+                        WHERE id IN ({placeholders})
+                        """,
+                        [row["file_id"] for row in entry_rows],
+                    )
+                }
+            files = []
+            for entry in entry_rows:
+                file = files_by_id.get(entry["file_id"])
+                if not file:
+                    continue
+                files.append({**file, "path": entry["path"], "name": entry["name"]})
             self.send_json(
                 {
                     "scope": scope,
@@ -985,7 +1109,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not term:
             self.send_json({"items": []})
             return
-        pattern = f"%{term.replace('%', r'\\%').replace('_', r'\\_')}%"
+        pattern = f"%{escape_sql_like(term)}%"
         with self.connect() as conn:
             rows = [
                 row_to_dict(row)
@@ -1036,10 +1160,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
         original_dict = self.original_file_record(conn, file_id)
         if original_dict is None:
             return None
+        resolved = self.resolve_file_record_quiet(conn, original_dict)
+        if resolved is not None:
+            record, chunk_path = resolved
+            return original_dict, record, chunk_path
+
+        self.send_error_json(
+            404,
+            "chunk not found; this record likely requires a source fallback that is unavailable on this host",
+        )
+        return None
+
+    def resolve_file_record_quiet(self, conn: sqlite3.Connection, original_dict: dict) -> tuple[dict, Path] | None:
         original_path = Path(original_dict["chunk_path"])
         if original_path.exists():
-            return original_dict, original_dict, original_path
-
+            return original_dict, original_path
         candidates = [
             row_to_dict(row)
             for row in conn.execute(
@@ -1054,12 +1189,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         for candidate in candidates:
             candidate_path = Path(candidate["chunk_path"])
             if candidate_path.exists():
-                return original_dict, candidate, candidate_path
-
-        self.send_error_json(
-            404,
-            "chunk not found; this record likely requires a source fallback that is unavailable on this host",
-        )
+                return candidate, candidate_path
         return None
 
     def read_file_slice(self, record: dict, chunk_path: Path, limit: int | None = None) -> bytes:
@@ -1072,6 +1202,23 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if record.get("encrypted"):
             data = decrypt_vfs_file(data, int(record["iv_seed"]))
         return data
+
+    def manifest_index(self, record: dict, chunk_path: Path) -> ManifestIndex:
+        key = (
+            int(record["id"]),
+            int(record["length"]),
+            str(record.get("file_data_md5") or ""),
+        )
+        with self.manifest_index_lock:
+            cached = self.manifest_indexes.get(key)
+            if cached is not None:
+                return cached
+            index = ManifestIndex.ensure(
+                self.read_file_slice(record, chunk_path),
+                INTERNAL_CACHE_DIR / "manifests",
+            )
+            self.manifest_indexes[key] = index
+            return index
 
     def read_file_range(self, record: dict, chunk_path: Path, relative_offset: int, length: int) -> bytes:
         file_length = int(record["length"])
@@ -1112,30 +1259,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         map_path = cache_root / "maps" / "asset_map.json"
         return source_path, export_root, meta_path, map_path
 
-    def ensure_assetbundle_export(self, record: dict, chunk_path: Path) -> tuple[Path, dict] | None:
-        source_path, export_root, meta_path, map_path = self.assetbundle_cache_paths(record)
-        if export_root.exists() and meta_path.exists():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if meta.get("version") == ASSETBUNDLE_META_VERSION and meta.get("returncode") == 0:
-                    return export_root, meta
-            except (OSError, json.JSONDecodeError):
-                pass
-
-        if not ANIMESTUDIO_CLI.exists():
-            self.send_json(
-                {
-                    "kind": "assetBundle",
-                    "status": "toolMissing",
-                    "message": f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}",
-                }
-            )
-            return None
-
-        self.write_file_slice(record, chunk_path, source_path)
-        export_root.mkdir(parents=True, exist_ok=True)
-        map_path.parent.mkdir(parents=True, exist_ok=True)
-        map_command = [
+    def assetbundle_map_command(self, source_path: Path, map_path: Path) -> list[str]:
+        return [
             str(ANIMESTUDIO_CLI),
             str(source_path),
             str(map_path.parent),
@@ -1154,6 +1279,131 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "Warning",
             "Info",
         ]
+
+    def cached_assetbundle_map_meta(self, record: dict) -> dict | None:
+        _, _, meta_path, _ = self.assetbundle_cache_paths(record)
+        if not meta_path.exists():
+            return None
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if meta.get("version") == ASSETBUNDLE_META_VERSION and meta.get("mapReturncode") == 0:
+            return meta
+        return None
+
+    def build_assetbundle_map_meta(
+        self,
+        map_command: list[str],
+        map_returncode: int,
+        asset_entries: list[dict],
+        map_stdout: str = "",
+        map_stderr: str = "",
+    ) -> dict:
+        return {
+            "version": ASSETBUNDLE_META_VERSION,
+            "command": None,
+            "mapCommand": map_command,
+            "returncode": None,
+            "mapReturncode": map_returncode,
+            "stdout": "",
+            "stderr": "",
+            "mapStdout": map_stdout,
+            "mapStderr": map_stderr,
+            "builtAtEpoch": int(time.time()),
+            "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
+            "assetEntries": asset_entries,
+        }
+
+    def write_assetbundle_map_meta(self, record: dict, meta: dict) -> None:
+        _, _, meta_path, _ = self.assetbundle_cache_paths(record)
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def ensure_assetbundle_map(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> dict | None:
+        source_path, _, _, map_path = self.assetbundle_cache_paths(record)
+        cached_meta = self.cached_assetbundle_map_meta(record)
+        if cached_meta is not None:
+            return cached_meta
+
+        if not ANIMESTUDIO_CLI.exists():
+            if emit_errors:
+                self.send_json(
+                    {
+                        "kind": "assetBundle",
+                        "status": "toolMissing",
+                        "message": f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}",
+                    }
+                )
+            return None
+
+        self.write_file_slice(record, chunk_path, source_path)
+        map_path.parent.mkdir(parents=True, exist_ok=True)
+        map_command = self.assetbundle_map_command(source_path, map_path)
+        map_completed = subprocess.run(
+            map_command,
+            cwd=str(ANIMESTUDIO_CLI.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            check=False,
+        )
+        asset_entries = []
+        if map_path.exists():
+            try:
+                asset_map = json.loads(map_path.read_text(encoding="utf-8"))
+                asset_entries = asset_map.get("AssetEntries") or []
+            except (OSError, json.JSONDecodeError):
+                asset_entries = []
+        meta = self.build_assetbundle_map_meta(
+            map_command,
+            map_completed.returncode,
+            asset_entries,
+            map_completed.stdout,
+            map_completed.stderr,
+        )
+        self.write_assetbundle_map_meta(record, meta)
+        if map_completed.returncode != 0:
+            if emit_errors:
+                self.send_json(
+                    {
+                        "kind": "assetBundle",
+                        "status": "mapFailed",
+                        "message": "AnimeStudio failed to map this AssetBundle.",
+                        "meta": meta,
+                    },
+                    status=500,
+                )
+            return None
+        return meta
+
+    def ensure_assetbundle_export(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> tuple[Path, dict] | None:
+        source_path, export_root, meta_path, map_path = self.assetbundle_cache_paths(record)
+        if export_root.exists() and meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if meta.get("version") == ASSETBUNDLE_META_VERSION and meta.get("returncode") == 0:
+                    return export_root, meta
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        if not ANIMESTUDIO_CLI.exists():
+            if emit_errors:
+                self.send_json(
+                    {
+                        "kind": "assetBundle",
+                        "status": "toolMissing",
+                        "message": f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}",
+                    }
+                )
+            return None
+
+        self.write_file_slice(record, chunk_path, source_path)
+        export_root.mkdir(parents=True, exist_ok=True)
+        map_path.parent.mkdir(parents=True, exist_ok=True)
+        map_command = self.assetbundle_map_command(source_path, map_path)
         map_completed = subprocess.run(
             map_command,
             cwd=str(ANIMESTUDIO_CLI.parent),
@@ -1213,15 +1463,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
         }
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         if export_completed.returncode != 0:
-            self.send_json(
-                {
-                    "kind": "assetBundle",
-                    "status": "exportFailed",
-                    "message": "AnimeStudio failed to export this AssetBundle.",
-                    "meta": meta,
-                },
-                status=500,
-            )
+            if emit_errors:
+                self.send_json(
+                    {
+                        "kind": "assetBundle",
+                        "status": "exportFailed",
+                        "message": "AnimeStudio failed to export this AssetBundle.",
+                        "meta": meta,
+                    },
+                    status=500,
+                )
             return None
         return export_root, meta
 
@@ -1241,6 +1492,34 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return None
         name = child.stem.lower()
         return metadata_by_name.get((asset_type, name))
+
+    def asset_metadata_matches(self, entry: dict | None, asset_type: str, asset_name: str, path_id: str) -> bool:
+        if not entry:
+            return False
+        if str(entry.get("Type") or "").lower() != asset_type.lower():
+            return False
+        if str(entry.get("Name") or "").lower() != asset_name.lower():
+            return False
+        if path_id and str(entry.get("PathID") or "") != path_id:
+            return False
+        return True
+
+    def find_exported_asset_file(
+        self,
+        export_root: Path,
+        meta: dict,
+        asset_type: str,
+        asset_name: str,
+        path_id: str = "",
+    ) -> tuple[Path, dict] | None:
+        metadata_by_name = self.asset_metadata_by_export_name(meta)
+        for child in sorted(export_root.rglob("*"), key=lambda item: item.as_posix().lower()):
+            if not child.is_file():
+                continue
+            asset_meta = self.metadata_for_internal_file(child, export_root, metadata_by_name)
+            if self.asset_metadata_matches(asset_meta, asset_type, asset_name, path_id):
+                return child, asset_meta
+        return None
 
     def list_internal_export(self, export_root: Path, raw_path: str, meta: dict) -> dict:
         current = safe_relative_path(export_root, raw_path)
@@ -1640,11 +1919,25 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if ensured is None:
             return None
         export_root, meta = ensured
-        target = safe_relative_path(export_root, internal_path)
-        if target is None or not target.is_file():
-            self.send_error_json(404, "internal file not found")
+        if internal_path:
+            target = safe_relative_path(export_root, internal_path)
+            if target is None or not target.is_file():
+                self.send_error_json(404, "internal file not found")
+                return None
+            asset_meta = self.metadata_for_internal_file(target, export_root, self.asset_metadata_by_export_name(meta))
+            return record, target, asset_meta
+
+        asset_type = query.get("type", [""])[0]
+        asset_name = query.get("name", [""])[0]
+        path_id = query.get("pathId", [""])[0]
+        if not asset_type or not asset_name:
+            self.send_error_json(400, "AssetBundle asset preview expected path or type/name")
             return None
-        asset_meta = self.metadata_for_internal_file(target, export_root, self.asset_metadata_by_export_name(meta))
+        found = self.find_exported_asset_file(export_root, meta, asset_type, asset_name, path_id)
+        if found is None:
+            self.send_error_json(404, "exported asset not found")
+            return None
+        target, asset_meta = found
         return record, target, asset_meta
 
     def resolve_audio_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, AudioEntry] | None:
@@ -1804,11 +2097,60 @@ class BrowserHandler(BaseHTTPRequestHandler):
         data = self.read_file_slice(record, chunk_path, limit=limit)
         text, encoding = decode_text(data)
         truncated = int(record["length"]) > len(data)
-        if suffix == ".json" and text is not None:
+        if suffix == ".json":
+            if text is not None and text.lstrip().startswith(("{", "[")):
+                try:
+                    text = json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+                except json.JSONDecodeError:
+                    pass
+                self.send_json(
+                    {
+                        **base,
+                        "kind": "text",
+                        "encoding": encoding,
+                        "text": text,
+                        "truncated": truncated,
+                    }
+                )
+                return
+
+            memorypack_error = None
             try:
-                text = json.dumps(json.loads(text), ensure_ascii=False, indent=2)
-            except json.JSONDecodeError:
-                pass
+                decoded_preview = self.decode_memorypack_json_preview(record, chunk_path)
+            except RuntimeError as error:
+                decoded_preview = None
+                memorypack_error = str(error)
+            if decoded_preview is not None:
+                decoded_text, decoded_truncated, decoded_meta = decoded_preview
+                self.send_json(
+                    {
+                        **base,
+                        "kind": "text",
+                        "encoding": "memorypack-json",
+                        "text": decoded_text,
+                        "truncated": decoded_truncated,
+                        "message": (
+                            "该 .json 文件已从本地 VFS 解密内容解析为 schema-based MemoryPack JSON。"
+                            f" 已消费 {decoded_meta['consumed']} / {decoded_meta['bytes']} bytes。"
+                        ),
+                        "memoryPack": decoded_meta,
+                    }
+                )
+                return
+
+            probe = binary_json_probe(data, int(record["length"]))
+            self.send_json(
+                {
+                    **base,
+                    "kind": "binaryJson",
+                    "encoding": encoding,
+                    "probe": probe,
+                    "hex": hex_preview(data),
+                    "truncated": truncated,
+                    "message": f"{probe['note']}\nMemoryPack 解码未完成：{memorypack_error}" if memorypack_error else probe["note"],
+                }
+            )
+            return
         if text is not None and (suffix in TEXT_EXTENSIONS or looks_like_text(text)):
             self.send_json(
                 {
@@ -1919,6 +2261,29 @@ class BrowserHandler(BaseHTTPRequestHandler):
             original, record, chunk_path = resolved
 
         suffix = file_suffix(record["file_name"])
+        if suffix == ".hgmmap":
+            try:
+                index = self.manifest_index(record, chunk_path)
+                page = max(int(query.get("page", ["1"])[0]), 1)
+                page_size = min(max(int(query.get("pageSize", ["100"])[0]), 10), 500)
+                listing = index.list(path, page, page_size)
+            except (ValueError, OSError, sqlite3.Error, FileNotFoundError) as error:
+                self.send_error_json(400, str(error))
+                return
+            for asset in listing["files"]:
+                asset["kind"] = "asset"
+                asset["lookup"] = f"@{asset['assetIndex']}"
+                asset["asset"] = {
+                    "Container": asset["path"],
+                    "Source": asset["bundleName"],
+                    "PathID": asset["assetIndex"],
+                    "Type": "ManifestAsset",
+                }
+            self.send_json({
+                "kind": "bundleManifest", "status": "ready", "file": original,
+                "resolvedFile": record, **listing,
+            })
+            return
         if suffix == ".ab":
             ensured = self.ensure_assetbundle_export(record, chunk_path)
             if ensured is None:
@@ -2004,11 +2369,34 @@ class BrowserHandler(BaseHTTPRequestHandler):
             resolved_record = self.resolve_file_record(conn, file_id)
             if resolved_record is None:
                 return
-            _, record, _ = resolved_record
+            _, record, chunk_path = resolved_record
 
         suffix = file_suffix(record["file_name"])
         asset_meta = None
         audio_entry = None
+        if suffix == ".hgmmap":
+            lookup = query.get("path", [""])[0]
+            if not lookup.startswith("@"):
+                self.send_error_json(400, "manifest asset id is required")
+                return
+            try:
+                index = self.manifest_index(record, chunk_path)
+                asset = index.asset(int(lookup[1:]))
+            except (ValueError, OSError, sqlite3.Error) as error:
+                self.send_error_json(400, str(error))
+                return
+            if asset is None:
+                self.send_error_json(404, "manifest asset not found")
+                return
+            self.send_json({
+                "kind": "manifestAsset", "path": asset["path"], "name": asset["name"],
+                "size": asset["size"], "asset": {
+                    "Container": asset["path"], "Source": asset["bundle_name"],
+                    "PathID": asset["asset_index"], "Type": "ManifestAsset",
+                },
+                "message": "该条目来自 manifest 索引；实际内容将在打开对应 AssetBundle 时按需解析。",
+            })
+            return
         if suffix == ".ab":
             resolved = self.resolve_assetbundle_internal_file(query)
             if resolved is None:

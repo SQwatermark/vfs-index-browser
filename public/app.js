@@ -6,6 +6,7 @@ const state = {
   page: 1,
   pageInfo: { page: 1, pages: 1, total: 0 },
   selectedFileId: null,
+  selectedFileKey: null,
 }
 
 const scopeNames = {
@@ -135,7 +136,7 @@ function renderStats(directory) {
 }
 
 function renderDirs(dirs) {
-  $('dirCount').textContent = `${dirs.length} 个子目录`
+  $('dirCount').textContent = '?? ' + dirs.length
   $('dirList').innerHTML = dirs.length
     ? dirs
         .map((dir) => `
@@ -163,16 +164,23 @@ function renderFiles(files, filePage) {
   $('nextPage').disabled = filePage.page >= filePage.pages
   $('fileRows').innerHTML = files.length
     ? files
-        .map((file) => `
-          <tr class="${state.selectedFileId === file.id ? 'selected' : ''}" data-file-id="${file.id}" title="${escapeHtml(file.path)}">
+        .map((file) => {
+          const rowKey = `id:${file.id}`
+          return `
+          <tr
+            class="${state.selectedFileKey === rowKey ? 'selected' : ''}"
+            data-file-key="${escapeHtml(rowKey)}"
+            data-file-id="${file.id}"
+            title="${escapeHtml(file.path)}"
+          >
             <td>
               <div class="file-name">${escapeHtml(file.name)}</div>
               <div class="file-path">${escapeHtml(file.file_name)}</div>
             </td>
             <td>${escapeHtml(file.source)}</td>
-            <td>${escapeHtml(file.block_name)}</td>
+            <td>${escapeHtml(file.block_name || '')}</td>
             <td>
-              <div class="mono">${escapeHtml(file.chunk_file)}</div>
+              <div class="mono">${escapeHtml(file.chunk_file || '')}</div>
             </td>
             <td>
               <div class="mono">offset ${formatInt(file.offset)}</div>
@@ -184,11 +192,14 @@ function renderFiles(files, filePage) {
               ${file.encrypted ? `<div class="mono muted">iv ${file.iv_seed}</div>` : ''}
             </td>
           </tr>
-        `)
+        `
+        })
         .join('')
     : '<tr><td colspan="6" class="empty">这个目录没有文件</td></tr>'
-  document.querySelectorAll('#fileRows tr[data-file-id]').forEach((row) => {
-    row.addEventListener('click', () => selectFile(Number(row.dataset.fileId)))
+  document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
+    row.addEventListener('click', () => {
+      selectFile(Number(row.dataset.fileId))
+    })
   })
 }
 
@@ -202,7 +213,7 @@ async function loadDirectory() {
   })
   const data = await getJson(`/api/list?${params}`)
   renderStats(data.directory)
-  renderDirs(data.dirs)
+  renderDirs(data.dirs, data.virtual)
   renderFiles(data.files, data.filePage)
 }
 
@@ -210,6 +221,58 @@ function renderPreviewLoading() {
   $('previewContent').innerHTML = '<div class="empty">正在读取文件...</div>'
   $('openRawLink').removeAttribute('href')
   $('downloadLink').removeAttribute('href')
+}
+
+function renderBinaryJsonProbe(probe) {
+  const strings = probe?.lengthPrefixedStrings || []
+  const firstByte = probe?.firstByte == null ? 'N/A' : `0x${Number(probe.firstByte).toString(16).padStart(2, '0')}`
+  return `
+    <div class="binary-json-summary">
+      <div>
+        <span>格式猜测</span>
+        <strong>${escapeHtml(probe?.formatHint || 'unknown')}</strong>
+      </div>
+      <div>
+        <span>置信度</span>
+        <strong>${escapeHtml(probe?.confidence || 'unknown')}</strong>
+      </div>
+      <div>
+        <span>首字节</span>
+        <strong class="mono">${escapeHtml(firstByte)}</strong>
+      </div>
+      <div>
+        <span>首字节解释</span>
+        <strong>${probe?.possibleMemberCount == null ? 'N/A' : `可能是 ${formatInt(probe.possibleMemberCount)} 个成员`}</strong>
+      </div>
+      <div>
+        <span>样本大小</span>
+        <strong>${formatBytes(probe?.sampleLength || 0)} / ${formatBytes(probe?.fullLength || 0)}</strong>
+      </div>
+      <div>
+        <span>UTF-8 片段</span>
+        <strong>${formatInt(strings.length)}</strong>
+      </div>
+    </div>
+    <div class="binary-json-section">
+      <strong>可读 UTF-8 片段</strong>
+      ${
+        strings.length
+          ? `<table class="string-probe-table">
+              <thead><tr><th>offset</th><th>len</th><th>text</th></tr></thead>
+              <tbody>
+                ${strings.map((item) => `
+                  <tr>
+                    <td class="mono">0x${Number(item.offset).toString(16)}</td>
+                    <td>${formatInt(item.length)}</td>
+                    <td>${escapeHtml(item.text)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`
+          : '<div class="empty small">前段样本里没有找到疑似长度前缀 UTF-8 片段。</div>'
+      }
+    </div>
+  `
 }
 
 function renderPreview(data) {
@@ -221,6 +284,7 @@ function renderPreview(data) {
   const fallback = data.usedFallback
     ? `<div class="notice">当前记录的 chunk 不可用，已回落到 ${escapeHtml(resolved.source)}。</div>`
     : ''
+  const assetDetails = renderAssetSummary(data.asset)
   const meta = `
     <div class="preview-meta">
       <strong>${escapeHtml(file.source_logical_id)}</strong>
@@ -229,6 +293,7 @@ function renderPreview(data) {
       <span>${resolved.encrypted ? 'encrypted' : 'plain'} · ${resolved.chunk_exists ? 'chunk ok' : 'missing chunk'}</span>
     </div>
     ${fallback}
+    ${assetDetails}
   `
   const message = data.message ? `<div class="notice">${escapeHtml(data.message)}</div>` : ''
   const convertedActions = data.convertedRawUrl
@@ -250,6 +315,16 @@ function renderPreview(data) {
     `
     return
   }
+  if (data.kind === 'binaryJson') {
+    $('previewContent').innerHTML = `
+      ${meta}
+      <div class="notice">${escapeHtml(data.message || '该 .json 文件不是文本 JSON，当前显示二进制结构探针。')}</div>
+      ${renderBinaryJsonProbe(data.probe)}
+      ${data.truncated ? '<div class="notice">文件较大，仅分析并显示前段内容。</div>' : ''}
+      <pre class="preview-text mono">${escapeHtml(data.hex)}</pre>
+    `
+    return
+  }
   if (data.kind === 'hex') {
     $('previewContent').innerHTML = `
       ${meta}
@@ -260,15 +335,15 @@ function renderPreview(data) {
     return
   }
   if (data.kind === 'image') {
-    $('previewContent').innerHTML = `${meta}<img class="media-preview" src="${data.rawUrl}" alt="${escapeHtml(file.name || file.file_name)}" />`
+    $('previewContent').innerHTML = `${meta}${message}<img class="media-preview" src="${data.rawUrl}" alt="${escapeHtml(file.name || file.file_name)}" />`
     return
   }
   if (data.kind === 'video') {
-    $('previewContent').innerHTML = `${meta}<video class="media-preview" src="${data.rawUrl}" controls></video>`
+    $('previewContent').innerHTML = `${meta}${message}<video class="media-preview" src="${data.rawUrl}" controls></video>`
     return
   }
   if (data.kind === 'audio') {
-    $('previewContent').innerHTML = `${meta}<audio class="audio-preview" src="${data.rawUrl}" controls></audio>`
+    $('previewContent').innerHTML = `${meta}${message}<audio class="audio-preview" src="${data.rawUrl}" controls></audio>`
     return
   }
   if (data.kind === 'container') {
@@ -289,11 +364,11 @@ function renderPreview(data) {
   $('previewContent').innerHTML = `${meta}<div class="empty">暂不支持预览该文件类型，请下载查看。</div>`
 }
 
-async function loadInternalList(fileId, path = '') {
+async function loadInternalList(fileId, path = '', page = 1) {
   const target = $('internalList')
   target.innerHTML = '<div class="empty">正在解析内部结构...</div>'
   try {
-    const params = new URLSearchParams({ id: fileId, path })
+    const params = new URLSearchParams({ id: fileId, path, page, pageSize: PAGE_SIZE })
     const data = await getJson(`/api/internal/list?${params}`)
     renderInternalList(fileId, data)
   } catch (error) {
@@ -317,6 +392,10 @@ function renderInternalList(fileId, data) {
   const videoMeta = data.kind === 'criVideo' && data.meta
     ? `<span>MP4 · ${data.meta.usmConvertAvailable ? '外部转换可用' : '内置抽流'}</span>`
     : ''
+  const manifestMeta = data.kind === 'bundleManifest' && data.meta
+    ? `<span>${formatInt(data.meta.assetCount)} assets · ${formatInt(data.meta.bundleCount)} bundles</span>`
+    : ''
+  const filePage = data.filePage || { page: 1, pages: 1, total: data.files.length }
   const parts = data.path ? data.path.split('/') : []
   const crumbs = [{ label: '内部根目录', path: '' }]
   let current = ''
@@ -333,6 +412,12 @@ function renderInternalList(fileId, data) {
       <span>${formatInt(data.files.length)} files</span>
       ${packageMeta}
       ${videoMeta}
+      ${manifestMeta}
+      ${filePage.pages > 1 ? `
+        <button data-internal-page="${filePage.page - 1}" ${filePage.page <= 1 ? 'disabled' : ''}>上一页</button>
+        <span>${filePage.page} / ${filePage.pages}</span>
+        <button data-internal-page="${filePage.page + 1}" ${filePage.page >= filePage.pages ? 'disabled' : ''}>下一页</button>
+      ` : ''}
     </div>
     ${renderInternalHelp(data)}
     <div id="internalPreview" class="internal-preview">
@@ -349,7 +434,7 @@ function renderInternalList(fileId, data) {
         .join('')}
       ${data.files
         .map((file) => `
-          <button class="internal-entry file" data-internal-file="${escapeHtml(file.path)}">
+          <button class="internal-entry file" data-internal-file="${escapeHtml(file.lookup || file.path)}">
             <strong>${escapeHtml(file.name)}</strong>
             <span>${escapeHtml(file.kind)} · ${formatBytes(file.size)}</span>
             ${renderAssetSummary(file.asset)}
@@ -361,6 +446,9 @@ function renderInternalList(fileId, data) {
   `
   target.querySelectorAll('[data-internal-path]').forEach((button) => {
     button.addEventListener('click', () => loadInternalList(fileId, button.dataset.internalPath))
+  })
+  target.querySelectorAll('[data-internal-page]').forEach((button) => {
+    button.addEventListener('click', () => loadInternalList(fileId, data.path, Number(button.dataset.internalPage)))
   })
   target.querySelectorAll('[data-internal-file]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -388,6 +476,11 @@ function renderInternalHelp(data) {
       'mp4 是为了浏览器预览虚拟出来的目录。',
       '点击 MP4 文件时会按需把 CRI/USM 视频转换为 MP4 并缓存；原始 .usm 不会被修改。',
     ],
+    bundleManifest: [
+      '该目录来自 manifest.hgmmap 的 AssetInfo 路径，不是磁盘上的真实目录。',
+      '每个条目会指向实际承载它的 AssetBundle；需要内容时才解析对应的 .ab 文件。',
+      '同一路径下的资源由 manifest 直接合并，无需预先扫描全部 AssetBundle。',
+    ],
   }
   const lines = helpByKind[data.kind]
   if (!lines) return ''
@@ -412,6 +505,17 @@ async function loadInternalPreview(fileId, path) {
 
 function renderInternalPreview(data) {
   const target = $('internalPreview')
+  if (data.kind === 'manifestAsset') {
+    target.innerHTML = `
+      <div class="internal-preview-title">
+        <strong>${escapeHtml(data.path)}</strong>
+        <span>${formatBytes(data.size)}</span>
+      </div>
+      ${renderAssetSummary(data.asset)}
+      <div class="notice">${escapeHtml(data.message)}</div>
+    `
+    return
+  }
   const rawUrl = escapeHtml(data.rawUrl)
   const downloadUrl = escapeHtml(data.downloadUrl)
   const actions = `
@@ -460,8 +564,9 @@ function renderInternalPreview(data) {
 
 async function selectFile(fileId) {
   state.selectedFileId = fileId
-  document.querySelectorAll('#fileRows tr[data-file-id]').forEach((row) => {
-    row.classList.toggle('selected', Number(row.dataset.fileId) === fileId)
+  state.selectedFileKey = `id:${fileId}`
+  document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
+    row.classList.toggle('selected', row.dataset.fileKey === state.selectedFileKey)
   })
   renderPreviewLoading()
   const data = await getJson(`/api/preview?id=${fileId}`)
