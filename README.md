@@ -6,7 +6,7 @@
 
 - 按 `Effective`、`Persistent`、`StreamingAssets` 和 `All Sources` 浏览 VFS 逻辑路径。
 - 根据索引中的 chunk、offset、length 和 IV 读取并解密单个文件。
-- 将 `manifest.hgmmap` 作为虚拟目录，浏览 manifest 中的完整 AssetInfo 逻辑树。
+- 在 `manifest.hgmmap` 同级提供虚拟目录，浏览完整 AssetInfo 逻辑树。
 - 按需解析单个 AssetBundle，不预扫描全部 `.ab` 文件。
 - 预览文本、图片、音频和视频，并下载原始或转换后的文件。
 - 解析 TableCfg/SparkBuffer，并实验性解析 JsonData/MemoryPack 二进制配置。
@@ -15,8 +15,8 @@
 
 资源定位和资源内容解析分为两层：
 
-1. `manifest.hgmmap` 提供逻辑资源路径、所属 Bundle 和大小，是全局目录索引。
-2. 用户打开具体资源时，服务才读取对应 `.ab`，调用 AnimeStudio 导出可预览内容。
+1. `manifest.hgmmap` 提供逻辑资源路径、所属 Bundle 和大小，是虚拟目录的数据源。
+2. 用户点击虚拟目录中的资源时，服务定位 Effective `.ab`，再按 AssetMap 的 `Container` 精确查找导出内容。
 
 因此，包含 `.ab` 的普通文件夹不会生成额外虚拟目录，也不需要运行耗时的全量 AnimeStudio 扫描。详细设计见 [docs/design/architecture.md](docs/design/architecture.md)。
 
@@ -87,9 +87,11 @@ GET /api/internal/list?id=123&path=assets&page=1&pageSize=100
 GET /api/internal/preview?id=123&path=Texture2D/example.png
 GET /api/internal/raw?id=123&path=Texture2D/example.png
 GET /api/tablecfg/json?id=123
+GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
+GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 ```
 
-对 `.hgmmap` 调用 `internal/list` 时，`path` 是 manifest 内部逻辑目录；响应中的资源通过稳定的 `assetIndex` 标识。对 `.ab`、`.pck` 和 `.usm` 调用同一组 internal API 时，则浏览其按需生成的内部视图。
+manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestId + assetIndex` 稳定定位。`.ab`、`.pck` 和 `.usm` 仍通过 internal API 浏览各自的按需内部视图。
 
 ## 研究工具
 
@@ -105,6 +107,6 @@ GET /api/tablecfg/json?id=123
 ## 当前限制
 
 - manifest 已能建立完整路径到 Bundle 的映射，但尚未对所有 Unity 类型提供预览。
-- 打开 manifest 资源条目时目前先显示定位信息；将其自动衔接到对应 AB 的导出结果是下一阶段工作。
+- manifest 资源会自动衔接对应 AB；AnimeStudio 未支持的 Unity 类型会明确提示无法导出。
 - MemoryPack 解码仍依赖从当前客户端 IL2CPP 数据提取的 schema，游戏升级后需要重新验证。
 - 音频用途、角色模型、任务台本等聚合视图尚未建立。

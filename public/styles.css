@@ -251,6 +251,11 @@ input {
   color: var(--accent-2);
 }
 
+.dir-card.virtual {
+  border-color: rgba(84, 199, 236, 0.5);
+  background: #162027;
+}
+
 .dir-card span,
 .dir-card em {
   color: var(--muted);

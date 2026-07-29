@@ -19,11 +19,11 @@ SQLite 主索引保存逻辑文件、来源、物理 chunk、偏移、长度、�
 - AssetInfo 到 Bundle 的映射；
 - 资源声明大小。
 
-解析结果按 manifest 内容 SHA-256 缓存为派生 SQLite。前端进入 `.hgmmap` 时只查询当前目录直属子目录和当前页文件，不加载整棵树。
+解析结果按 manifest 内容 SHA-256 缓存为派生 SQLite。前端在 `manifest.hgmmap` 同级显示虚拟目录，进入后只查询当前目录直属子目录和当前页文件，不加载整棵树。
 
 ### 3. 内容解析层
 
-manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务才定位对应 `.ab` 并调用 AnimeStudio。PCK、USM、TableCfg 和 MemoryPack 也采用相同的按需解析原则。
+manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务根据 Bundle 名称定位 Effective `.ab`，调用 AnimeStudio，并用 AssetMap 的 `Container` 精确匹配导出文件。PCK、USM、TableCfg 和 MemoryPack 也采用相同的按需解析原则。
 
 ## 关键约束
 
@@ -35,8 +35,7 @@ manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用�
 
 ## 后续演进
 
-1. 将 manifest 资源条目自动解析到对应 Effective Bundle 文件。
-2. 建立 manifest 搜索 API 和 Bundle 依赖查看器。
-3. 为模型、材质、动画等组合资源建立可复用的聚合解析接口。
-4. 将 `server.py` 中 PCK、AB、USM 适配器逐步拆成独立模块。
-5. 增加小型合成样本测试，避免测试依赖本机游戏文件。
+1. 建立 manifest 搜索 API 和 Bundle 依赖查看器。
+2. 为模型、材质、动画等组合资源建立可复用的聚合解析接口。
+3. 将 `server.py` 中 PCK、AB、USM 适配器逐步拆成独立模块。
+4. 增加小型合成样本测试，避免测试依赖本机游戏文件。

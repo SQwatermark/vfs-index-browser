@@ -1,4 +1,5 @@
 const PAGE_SIZE = 100
+const MANIFEST_VIRTUAL_DIR = '__manifest_assets__'
 
 const state = {
   scope: 'effective',
@@ -61,7 +62,13 @@ function renderAssetSummary(asset) {
 async function getJson(url) {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`)
+    let detail = ''
+    try {
+      detail = (await response.json()).error || ''
+    } catch {
+      // 非 JSON 错误响应仍使用 HTTP 状态作为兜底。
+    }
+    throw new Error(detail || `${response.status} ${response.statusText}`)
   }
   return response.json()
 }
@@ -101,7 +108,7 @@ function renderBreadcrumbs() {
   let current = ''
   for (const part of parts) {
     current = current ? `${current}/${part}` : part
-    crumbs.push({ label: part, path: current })
+    crumbs.push({ label: part === MANIFEST_VIRTUAL_DIR ? 'Manifest 资源' : part, path: current })
   }
   $('breadcrumbs').innerHTML = crumbs
     .map((crumb, index) => `
@@ -140,9 +147,10 @@ function renderDirs(dirs) {
   $('dirList').innerHTML = dirs.length
     ? dirs
         .map((dir) => `
-          <button class="dir-card" data-path="${escapeHtml(dir.path)}">
+          <button class="dir-card ${dir.virtualKind ? 'virtual' : ''}" data-path="${escapeHtml(dir.path)}">
             <strong>${escapeHtml(dir.name)}</strong>
-            <span>${formatInt(dir.file_count)} files · ${formatBytes(dir.total_bytes)}</span>
+            <span>${dir.virtualKind ? '虚拟目录 · 按需读取索引' : `${formatInt(dir.file_count)} files · ${formatBytes(dir.total_bytes)}`}</span>
+            ${dir.virtualKind ? '<span class="tag">manifest</span>' : ''}
             ${dir.missing_chunk_count ? `<em>${formatInt(dir.missing_chunk_count)} missing chunks</em>` : ''}
           </button>
         `)
@@ -165,12 +173,12 @@ function renderFiles(files, filePage) {
   $('fileRows').innerHTML = files.length
     ? files
         .map((file) => {
-          const rowKey = `id:${file.id}`
+          const rowKey = file.previewUrl ? `virtual:${file.previewUrl}` : `id:${file.id}`
           return `
           <tr
             class="${state.selectedFileKey === rowKey ? 'selected' : ''}"
             data-file-key="${escapeHtml(rowKey)}"
-            data-file-id="${file.id}"
+            ${file.previewUrl ? `data-preview-url="${escapeHtml(file.previewUrl)}"` : `data-file-id="${file.id}"`}
             title="${escapeHtml(file.path)}"
           >
             <td>
@@ -187,7 +195,7 @@ function renderFiles(files, filePage) {
               <div class="mono">len ${formatInt(file.length)}</div>
             </td>
             <td>
-              <span class="tag ${file.encrypted ? 'warn' : ''}">${file.encrypted ? 'encrypted' : 'plain'}</span>
+              <span class="tag ${file.encrypted ? 'warn' : ''}">${file.virtualKind ? 'manifest' : file.encrypted ? 'encrypted' : 'plain'}</span>
               <span class="tag ${file.chunk_exists ? '' : 'danger'}">${file.chunk_exists ? 'chunk ok' : 'missing chunk'}</span>
               ${file.encrypted ? `<div class="mono muted">iv ${file.iv_seed}</div>` : ''}
             </td>
@@ -198,7 +206,11 @@ function renderFiles(files, filePage) {
     : '<tr><td colspan="6" class="empty">这个目录没有文件</td></tr>'
   document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
     row.addEventListener('click', () => {
-      selectFile(Number(row.dataset.fileId))
+      if (row.dataset.previewUrl) {
+        selectVirtualFile(row.dataset.previewUrl, row.dataset.fileKey)
+      } else {
+        selectFile(Number(row.dataset.fileId))
+      }
     })
   })
 }
@@ -392,9 +404,6 @@ function renderInternalList(fileId, data) {
   const videoMeta = data.kind === 'criVideo' && data.meta
     ? `<span>MP4 · ${data.meta.usmConvertAvailable ? '外部转换可用' : '内置抽流'}</span>`
     : ''
-  const manifestMeta = data.kind === 'bundleManifest' && data.meta
-    ? `<span>${formatInt(data.meta.assetCount)} assets · ${formatInt(data.meta.bundleCount)} bundles</span>`
-    : ''
   const filePage = data.filePage || { page: 1, pages: 1, total: data.files.length }
   const parts = data.path ? data.path.split('/') : []
   const crumbs = [{ label: '内部根目录', path: '' }]
@@ -412,7 +421,6 @@ function renderInternalList(fileId, data) {
       <span>${formatInt(data.files.length)} files</span>
       ${packageMeta}
       ${videoMeta}
-      ${manifestMeta}
       ${filePage.pages > 1 ? `
         <button data-internal-page="${filePage.page - 1}" ${filePage.page <= 1 ? 'disabled' : ''}>上一页</button>
         <span>${filePage.page} / ${filePage.pages}</span>
@@ -476,11 +484,6 @@ function renderInternalHelp(data) {
       'mp4 是为了浏览器预览虚拟出来的目录。',
       '点击 MP4 文件时会按需把 CRI/USM 视频转换为 MP4 并缓存；原始 .usm 不会被修改。',
     ],
-    bundleManifest: [
-      '该目录来自 manifest.hgmmap 的 AssetInfo 路径，不是磁盘上的真实目录。',
-      '每个条目会指向实际承载它的 AssetBundle；需要内容时才解析对应的 .ab 文件。',
-      '同一路径下的资源由 manifest 直接合并，无需预先扫描全部 AssetBundle。',
-    ],
   }
   const lines = helpByKind[data.kind]
   if (!lines) return ''
@@ -505,17 +508,6 @@ async function loadInternalPreview(fileId, path) {
 
 function renderInternalPreview(data) {
   const target = $('internalPreview')
-  if (data.kind === 'manifestAsset') {
-    target.innerHTML = `
-      <div class="internal-preview-title">
-        <strong>${escapeHtml(data.path)}</strong>
-        <span>${formatBytes(data.size)}</span>
-      </div>
-      ${renderAssetSummary(data.asset)}
-      <div class="notice">${escapeHtml(data.message)}</div>
-    `
-    return
-  }
   const rawUrl = escapeHtml(data.rawUrl)
   const downloadUrl = escapeHtml(data.downloadUrl)
   const actions = `
@@ -571,6 +563,21 @@ async function selectFile(fileId) {
   renderPreviewLoading()
   const data = await getJson(`/api/preview?id=${fileId}`)
   renderPreview(data)
+}
+
+async function selectVirtualFile(previewUrl, fileKey) {
+  state.selectedFileId = null
+  state.selectedFileKey = fileKey
+  document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
+    row.classList.toggle('selected', row.dataset.fileKey === fileKey)
+  })
+  renderPreviewLoading()
+  try {
+    const data = await getJson(previewUrl)
+    renderPreview(data)
+  } catch (error) {
+    $('previewContent').innerHTML = `<div class="notice">资源读取失败：${escapeHtml(error.message)}</div>`
+  }
 }
 
 async function search() {

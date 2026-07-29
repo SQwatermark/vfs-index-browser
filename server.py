@@ -89,10 +89,12 @@ TEXT_EXTENSIONS = {".json", ".lua", ".md", ".txt", ".csv", ".xml", ".yaml", ".ym
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
-CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm", ".hgmmap"}
+CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
 ASSETBUNDLE_EXPORT_TYPES = ("Texture2D", "Sprite", "TextAsset", "AudioClip", "VideoClip")
 AUDIO_ENTRY_RE = re.compile(r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$", re.IGNORECASE)
 PAGE_SIZE_MAX = 500
+MANIFEST_VIRTUAL_DIR = "__manifest_assets__"
+MANIFEST_VIRTUAL_NAME = "Manifest 资源"
 
 
 @dataclass(frozen=True)
@@ -904,6 +906,20 @@ def folder_stats(path: Path) -> tuple[int, int]:
     return file_count, total_bytes
 
 
+def split_manifest_virtual_path(path: str) -> tuple[str, str] | None:
+    parts = [part for part in path.replace("\\", "/").strip("/").split("/") if part]
+    if MANIFEST_VIRTUAL_DIR not in parts:
+        return None
+    marker = parts.index(MANIFEST_VIRTUAL_DIR)
+    return "/".join(parts[:marker]), "/".join(parts[marker + 1 :])
+
+
+def join_manifest_virtual_path(base_path: str, inner_path: str = "") -> str:
+    return "/".join(
+        part for part in (base_path.strip("/"), MANIFEST_VIRTUAL_DIR, inner_path.strip("/")) if part
+    )
+
+
 class BrowserHandler(BaseHTTPRequestHandler):
     db_path: Path
     manifest_indexes: dict[tuple[int, int, str], ManifestIndex] = {}
@@ -993,6 +1009,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/raw":
             self.handle_raw(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/manifest-asset/preview":
+            self.handle_manifest_asset_preview(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/raw":
+            self.handle_manifest_asset_raw(parse_qs(parsed.query))
+            return
         if parsed.path == "/api/tablecfg/json":
             self.handle_tablecfg_json(parse_qs(parsed.query))
             return
@@ -1026,6 +1048,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         page = max(int(query.get("page", ["1"])[0]), 1)
         page_size = min(max(int(query.get("pageSize", ["100"])[0]), 10), PAGE_SIZE_MAX)
         offset = (page - 1) * page_size
+        virtual_path = split_manifest_virtual_path(path)
+        if virtual_path is not None:
+            self.handle_manifest_virtual_list(scope, *virtual_path, page, page_size)
+            return
+
         with self.connect() as conn:
             current = conn.execute(
                 "SELECT * FROM directories WHERE scope = ? AND path = ?",
@@ -1047,6 +1074,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     (scope, path),
                 )
             ]
+            manifest_entry = conn.execute(
+                """
+                SELECT e.file_id, f.length, f.chunk_exists
+                FROM entries e JOIN files f ON f.id = e.file_id
+                WHERE e.scope = ? AND e.parent = ? AND e.type = 'file'
+                  AND e.name = 'manifest.hgmmap'
+                LIMIT 1
+                """,
+                (scope, path),
+            ).fetchone()
+            if manifest_entry is not None:
+                dirs.append(
+                    {
+                        "path": join_manifest_virtual_path(path),
+                        "name": MANIFEST_VIRTUAL_NAME,
+                        "file_count": 0,
+                        "total_bytes": int(manifest_entry["length"]),
+                        "encrypted_count": 0,
+                        "missing_chunk_count": 0 if manifest_entry["chunk_exists"] else 1,
+                        "virtualKind": "bundleManifest",
+                    }
+                )
             total_files = conn.execute(
                 "SELECT COUNT(*) AS count FROM entries WHERE scope = ? AND parent = ? AND type = 'file'",
                 (scope, path),
@@ -1101,6 +1150,96 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     },
                 }
             )
+
+    def handle_manifest_virtual_list(
+        self,
+        scope: str,
+        base_path: str,
+        inner_path: str,
+        page: int,
+        page_size: int,
+    ) -> None:
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT e.file_id FROM entries e
+                WHERE e.scope = ? AND e.parent = ? AND e.type = 'file'
+                  AND e.name = 'manifest.hgmmap'
+                LIMIT 1
+                """,
+                (scope, base_path),
+            ).fetchone()
+            if row is None:
+                self.send_error_json(404, "manifest.hgmmap not found")
+                return
+            resolved = self.resolve_file_record(conn, int(row["file_id"]))
+            if resolved is None:
+                return
+            original, record, chunk_path = resolved
+
+        try:
+            listing = self.manifest_index(record, chunk_path).list(inner_path, page, page_size)
+        except (ValueError, OSError, sqlite3.Error, FileNotFoundError) as error:
+            self.send_error_json(400, str(error))
+            return
+
+        virtual_path = join_manifest_virtual_path(base_path, inner_path)
+        dirs = [
+            {
+                "path": join_manifest_virtual_path(base_path, item["path"]),
+                "name": item["name"],
+                "file_count": item["fileCount"],
+                "total_bytes": item["totalBytes"],
+                "encrypted_count": 0,
+                "missing_chunk_count": 0,
+                "virtualKind": "bundleManifest",
+            }
+            for item in listing["dirs"]
+        ]
+        files = []
+        for asset in listing["files"]:
+            params = f"manifestId={original['id']}&assetIndex={asset['assetIndex']}"
+            files.append(
+                {
+                    "name": asset["name"],
+                    "path": asset["path"],
+                    "file_name": asset["path"],
+                    "length": asset["size"],
+                    "source": "BundleManifest",
+                    "block_name": asset["bundleName"],
+                    "chunk_file": "按需解析 AssetBundle",
+                    "chunk_exists": True,
+                    "offset": 0,
+                    "encrypted": False,
+                    "virtualKind": "manifestAsset",
+                    "previewUrl": f"/api/manifest-asset/preview?{params}",
+                }
+            )
+        directory = listing["directory"]
+        self.send_json(
+            {
+                "scope": scope,
+                "path": virtual_path,
+                "directory": {
+                    "scope": scope,
+                    "path": virtual_path,
+                    "name": MANIFEST_VIRTUAL_NAME if not inner_path else directory["name"],
+                    "file_count": directory["file_count"],
+                    "total_bytes": directory["total_bytes"],
+                    "encrypted_count": 0,
+                    "missing_chunk_count": 0,
+                },
+                "dirs": dirs,
+                "files": files,
+                "filePage": listing["filePage"],
+                "virtual": {
+                    "kind": "bundleManifest",
+                    "manifestId": original["id"],
+                    "bundleCount": int(listing["meta"]["bundleCount"]),
+                    "assetCount": int(listing["meta"]["assetCount"]),
+                },
+            }
+        )
 
     def handle_search(self, query: dict[str, list[str]]) -> None:
         scope = query.get("scope", ["effective"])[0]
@@ -1900,6 +2039,82 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         return target
 
+    def resolve_manifest_asset_file(
+        self,
+        query: dict[str, list[str]],
+    ) -> tuple[dict, Path, dict, dict] | None:
+        try:
+            manifest_id = int(query.get("manifestId", [""])[0])
+            asset_index = int(query.get("assetIndex", [""])[0])
+        except ValueError:
+            self.send_error_json(400, "Manifest 资源引用无效")
+            return None
+
+        with self.connect() as conn:
+            resolved_manifest = self.resolve_file_record(conn, manifest_id)
+            if resolved_manifest is None:
+                return None
+            _, manifest_record, manifest_chunk = resolved_manifest
+            try:
+                asset = self.manifest_index(manifest_record, manifest_chunk).asset(asset_index)
+            except (ValueError, OSError, sqlite3.Error) as error:
+                self.send_error_json(400, str(error))
+                return None
+            if asset is None:
+                self.send_error_json(404, "Manifest 中不存在该资源")
+                return None
+
+            bundle_file_name = f"Data/Bundles/Windows/{asset['bundle_name']}"
+            candidates = [
+                row_to_dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM files WHERE file_name = ?",
+                    (bundle_file_name,),
+                )
+            ]
+            candidates.sort(key=lambda row: source_rank(row["source"], bool(row["chunk_exists"])))
+            resolved_bundle = None
+            for candidate in candidates:
+                candidate_path = Path(candidate["chunk_path"])
+                if candidate_path.exists():
+                    resolved_bundle = (candidate, candidate_path)
+                    break
+            if resolved_bundle is None:
+                self.send_error_json(404, f"找不到资源对应的 AssetBundle：{asset['bundle_name']}")
+                return None
+
+        bundle_record, bundle_chunk = resolved_bundle
+        ensured = self.ensure_assetbundle_export(bundle_record, bundle_chunk)
+        if ensured is None:
+            return None
+        export_root, meta = ensured
+        container_key = asset["path"].replace("\\", "/").strip("/").casefold()
+        matches = [
+            entry
+            for entry in meta.get("assetEntries") or []
+            if str(entry.get("Container") or "").replace("\\", "/").strip("/").casefold()
+            == container_key
+        ]
+        if not matches:
+            self.send_error_json(
+                404,
+                "已解析对应 AssetBundle，但 AnimeStudio 暂不支持导出该资源类型。",
+            )
+            return None
+        for entry in matches:
+            found = self.find_exported_asset_file(
+                export_root,
+                meta,
+                str(entry.get("Type") or ""),
+                str(entry.get("Name") or ""),
+                str(entry.get("PathID") or ""),
+            )
+            if found is not None:
+                target, asset_meta = found
+                return bundle_record, target, asset_meta, asset
+        self.send_error_json(404, "已找到资源元数据，但对应的导出文件缺失。")
+        return None
+
     def resolve_assetbundle_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, dict | None] | None:
         file_id = self.file_id_from_query(query)
         if file_id is None:
@@ -2249,6 +2464,71 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
                 remaining -= len(data)
 
+    def handle_manifest_asset_preview(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_manifest_asset_file(query)
+        if resolved is None:
+            return
+        bundle_record, target, asset_meta, manifest_asset = resolved
+        manifest_id = query.get("manifestId", [""])[0]
+        asset_index = query.get("assetIndex", [""])[0]
+        raw_url = f"/api/manifest-asset/raw?manifestId={manifest_id}&assetIndex={asset_index}"
+        base = {
+            "file": {
+                **bundle_record,
+                "file_name": manifest_asset["path"],
+                "length": target.stat().st_size,
+            },
+            "resolvedFile": bundle_record,
+            "usedFallback": False,
+            "name": target.name,
+            "size": target.stat().st_size,
+            "rawUrl": raw_url,
+            "downloadUrl": f"{raw_url}&download=1",
+            "asset": asset_meta,
+            "message": f"来自 {manifest_asset['bundle_name']}",
+        }
+        suffix = file_suffix(target.name)
+        if suffix in IMAGE_EXTENSIONS:
+            self.send_json({**base, "kind": "image", "contentType": guess_content_type(target.name)})
+            return
+        if suffix in VIDEO_EXTENSIONS:
+            self.send_json({**base, "kind": "video", "contentType": guess_content_type(target.name)})
+            return
+        if suffix in AUDIO_EXTENSIONS:
+            self.send_json({**base, "kind": "audio", "contentType": guess_content_type(target.name)})
+            return
+        limit = PREVIEW_TEXT_LIMIT if suffix in TEXT_EXTENSIONS else PREVIEW_BINARY_LIMIT
+        data = target.read_bytes()[:limit]
+        text, encoding = decode_text(data)
+        truncated = target.stat().st_size > len(data)
+        if text is not None and (suffix in TEXT_EXTENSIONS or looks_like_text(text)):
+            self.send_json(
+                {**base, "kind": "text", "encoding": encoding, "text": text, "truncated": truncated}
+            )
+            return
+        self.send_json({**base, "kind": "hex", "hex": hex_preview(data), "truncated": truncated})
+
+    def handle_manifest_asset_raw(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_manifest_asset_file(query)
+        if resolved is None:
+            return
+        _, target, _, _ = resolved
+        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
+        disposition = "attachment" if download else "inline"
+        with target.open("rb") as file:
+            sniff = file.read(32)
+        self.send_response(200)
+        self.send_header("Content-Type", guess_content_type(target.name, sniff))
+        self.send_header("Content-Length", str(target.stat().st_size))
+        self.send_header(
+            "Content-Disposition",
+            f"{disposition}; filename*=UTF-8''{quote(target.name)}",
+        )
+        self.end_headers()
+        with target.open("rb") as file:
+            while data := file.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
+
     def handle_internal_list(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
         if file_id is None:
@@ -2261,29 +2541,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             original, record, chunk_path = resolved
 
         suffix = file_suffix(record["file_name"])
-        if suffix == ".hgmmap":
-            try:
-                index = self.manifest_index(record, chunk_path)
-                page = max(int(query.get("page", ["1"])[0]), 1)
-                page_size = min(max(int(query.get("pageSize", ["100"])[0]), 10), 500)
-                listing = index.list(path, page, page_size)
-            except (ValueError, OSError, sqlite3.Error, FileNotFoundError) as error:
-                self.send_error_json(400, str(error))
-                return
-            for asset in listing["files"]:
-                asset["kind"] = "asset"
-                asset["lookup"] = f"@{asset['assetIndex']}"
-                asset["asset"] = {
-                    "Container": asset["path"],
-                    "Source": asset["bundleName"],
-                    "PathID": asset["assetIndex"],
-                    "Type": "ManifestAsset",
-                }
-            self.send_json({
-                "kind": "bundleManifest", "status": "ready", "file": original,
-                "resolvedFile": record, **listing,
-            })
-            return
         if suffix == ".ab":
             ensured = self.ensure_assetbundle_export(record, chunk_path)
             if ensured is None:
@@ -2374,29 +2631,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         suffix = file_suffix(record["file_name"])
         asset_meta = None
         audio_entry = None
-        if suffix == ".hgmmap":
-            lookup = query.get("path", [""])[0]
-            if not lookup.startswith("@"):
-                self.send_error_json(400, "manifest asset id is required")
-                return
-            try:
-                index = self.manifest_index(record, chunk_path)
-                asset = index.asset(int(lookup[1:]))
-            except (ValueError, OSError, sqlite3.Error) as error:
-                self.send_error_json(400, str(error))
-                return
-            if asset is None:
-                self.send_error_json(404, "manifest asset not found")
-                return
-            self.send_json({
-                "kind": "manifestAsset", "path": asset["path"], "name": asset["name"],
-                "size": asset["size"], "asset": {
-                    "Container": asset["path"], "Source": asset["bundle_name"],
-                    "PathID": asset["asset_index"], "Type": "ManifestAsset",
-                },
-                "message": "该条目来自 manifest 索引；实际内容将在打开对应 AssetBundle 时按需解析。",
-            })
-            return
         if suffix == ".ab":
             resolved = self.resolve_assetbundle_internal_file(query)
             if resolved is None:
