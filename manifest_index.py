@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 import struct
+from contextlib import contextmanager
+from collections.abc import Iterator
 from pathlib import Path, PurePosixPath
 
 import brotli
@@ -14,7 +16,7 @@ HEAD1 = 0xFF11FF11
 HEAD2 = 0xF1F2F3F4
 BUNDLE_RECORD_SIZE = 48
 ASSET_RECORD_SIZE = 24
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _dotnet_string(data: bytes, offset: int) -> tuple[str, int]:
@@ -66,6 +68,18 @@ def _compressed_string(data: bytes, base: int, ref: int) -> str:
     return brotli.decompress(data[offset + 4 : offset + 4 + byte_count]).decode("utf-16-le")
 
 
+def _ref_int_array(data: bytes, base: int, ref: int, limit: int) -> list[int]:
+    offset = base + ref
+    count = struct.unpack_from("<i", data, offset)[0]
+    end = offset + 4 + count * 4
+    if count < 0 or end > len(data):
+        raise ValueError(f"invalid manifest integer array at 0x{offset:x}")
+    values = list(struct.unpack_from(f"<{count}i", data, offset + 4)) if count else []
+    if any(value < 0 or value >= limit for value in values):
+        raise ValueError(f"manifest bundle dependency is out of range at 0x{offset:x}")
+    return values
+
+
 def _normal_path(raw: str) -> str:
     path = raw.replace("\\", "/").strip("/")
     parts = [part for part in path.split("/") if part and part != "."]
@@ -91,10 +105,14 @@ class ManifestIndex:
         index._build(data, fingerprint)
         return index
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
         conn = sqlite3.connect(self.cache_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _valid(self, fingerprint: str) -> bool:
         if not self.cache_path.exists():
@@ -119,6 +137,11 @@ class ManifestIndex:
                 PRAGMA synchronous=OFF;
                 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 CREATE TABLE bundles (bundle_index INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                CREATE TABLE bundle_dependencies (
+                    bundle_index INTEGER NOT NULL, dependency_index INTEGER NOT NULL,
+                    kind TEXT NOT NULL,
+                    PRIMARY KEY (bundle_index, dependency_index, kind)
+                );
                 CREATE TABLE assets (
                     asset_index INTEGER PRIMARY KEY, path TEXT NOT NULL, parent TEXT NOT NULL,
                     name TEXT NOT NULL, bundle_index INTEGER NOT NULL, size INTEGER NOT NULL,
@@ -131,14 +154,30 @@ class ManifestIndex:
                 CREATE INDEX assets_parent_name ON assets(parent, name COLLATE NOCASE);
                 CREATE INDEX assets_path ON assets(path);
                 CREATE INDEX dirs_parent_name ON directories(parent, name COLLATE NOCASE);
+                CREATE INDEX dependencies_bundle_kind ON bundle_dependencies(bundle_index, kind);
             """)
             bundle_rows = []
+            dependency_rows = []
             for index in range(bundle_count):
                 record = struct.unpack_from("<6I4I2I", data, bundles_offset + index * BUNDLE_RECORD_SIZE)
                 if record[0] != index:
                     raise ValueError(f"bundle index mismatch at {index}")
                 bundle_rows.append((index, _ref_string(data, data_offset, record[1])))
+                for kind, reference in (
+                    ("all", record[2]),
+                    ("reverseDirect", record[3]),
+                    ("direct", record[4]),
+                ):
+                    dependency_rows.extend(
+                        (index, dependency, kind)
+                        for dependency in _ref_int_array(data, data_offset, reference, bundle_count)
+                    )
+                if len(dependency_rows) >= 100_000:
+                    conn.executemany("INSERT INTO bundle_dependencies VALUES (?, ?, ?)", dependency_rows)
+                    dependency_rows.clear()
             conn.executemany("INSERT INTO bundles VALUES (?, ?)", bundle_rows)
+            if dependency_rows:
+                conn.executemany("INSERT INTO bundle_dependencies VALUES (?, ?, ?)", dependency_rows)
 
             directories: dict[str, list[int | str]] = {"": ["", "", 0, 0]}
             batch = []
@@ -215,6 +254,42 @@ class ManifestIndex:
                 JOIN bundles b ON b.bundle_index = a.bundle_index WHERE a.asset_index = ?
             """, (asset_index,)).fetchone()
         return dict(row) if row else None
+
+    def bundle_dependencies(self, bundle_index: int, *, transitive: bool = True) -> list[dict]:
+        """Return direct dependencies or their deterministic transitive closure."""
+
+        with self._connect() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM bundles WHERE bundle_index = ?", (bundle_index,)
+            ).fetchone()
+            if exists is None:
+                raise KeyError(f"unknown bundle index: {bundle_index}")
+            if not transitive:
+                rows = conn.execute("""
+                    SELECT b.bundle_index AS bundleIndex, b.name
+                    FROM bundle_dependencies d
+                    JOIN bundles b ON b.bundle_index = d.dependency_index
+                    WHERE d.bundle_index = ? AND d.kind = 'direct'
+                    ORDER BY b.bundle_index
+                """, (bundle_index,)).fetchall()
+                return [dict(row) for row in rows]
+
+            rows = conn.execute("""
+                WITH RECURSIVE closure(bundle_index) AS (
+                    SELECT dependency_index FROM bundle_dependencies
+                    WHERE bundle_index = ? AND kind = 'direct'
+                    UNION
+                    SELECT d.dependency_index
+                    FROM bundle_dependencies d
+                    JOIN closure c ON c.bundle_index = d.bundle_index
+                    WHERE d.kind = 'direct'
+                )
+                SELECT b.bundle_index AS bundleIndex, b.name
+                FROM closure c JOIN bundles b ON b.bundle_index = c.bundle_index
+                WHERE b.bundle_index != ?
+                ORDER BY b.bundle_index
+            """, (bundle_index, bundle_index)).fetchall()
+        return [dict(row) for row in rows]
 
     def summary(self) -> dict:
         with self._connect() as conn:
