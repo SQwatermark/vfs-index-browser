@@ -39,3 +39,9 @@ FractalMiner 归档的 1.3.3 Shader 与佩丽卡真实材质共同确认：
 ## 证据边界
 
 公开访谈能够证明美术方向，Shader 与材质数据能够证明字段和分支存在；二者都不能单独证明每个版本的完整运算公式。最终还原仍需要反编译 Shader、真实材质值、贴图通道统计和游戏截图四类证据互相校验。
+
+## 面部材质实测
+
+佩丽卡面部材质同时启用了 `_UseDiffRampMap`、`_UseSDFLightmap`、`_UseShadowLutTex` 和 `_FaceHighlightMap`。对应的 `_DiffRampMap`、`_SDFLightmap`、`_SDFMask`、`_ShadowLutTex` 与 `_HighlightMap` 已能随 ModelDocument 和 GLB 完整导出。
+
+`_SDFLightmap` 的 R/G 通道呈左右镜像的面部距离场，但单独选择一个通道并映射到 Diff Ramp 会使整张脸落入错误的阴影色阶。该实验说明 SDF 贴图不是可直接显示的颜色输入；正确实现至少还需要恢复光照在面部局部坐标中的方向、左右通道选择、距离阈值、`_SDFMask` 分区及 `_ShadowLutTex` 调色关系。在公式确认前，Blender 默认预览继续使用稳定的法线受光近似，不启用实验性 SDF 节点。
