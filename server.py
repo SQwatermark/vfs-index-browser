@@ -38,7 +38,7 @@ from animestudio_model import (
 )
 from model_document import validate_model_document
 from gltf_export import build_glb
-from animestudio_animation import attach_animation_clip
+from animestudio_animation import attach_animation_clip, load_unique_animation_clip
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -1578,7 +1578,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     and target.is_file()
                 ):
                     return json.loads(target.read_text(encoding="utf-8")), target, meta
-            except (OSError, ValueError, json.JSONDecodeError):
+            except (OSError, ValueError):
                 pass
 
         source_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1618,18 +1618,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"AnimeStudio animation export failed: "
                 f"{completed.stderr.strip() or completed.stdout.strip()}"
             )
-        candidates = sorted(export_root.rglob("*.animation.json"))
-        matching = []
-        for candidate in candidates:
-            candidate_clip = json.loads(candidate.read_text(encoding="utf-8"))
-            if str(candidate_clip.get("name") or "").casefold() == animation_name.casefold():
-                matching.append((candidate, candidate_clip))
-        if len(matching) != 1:
-            raise RuntimeError(
-                f"AnimeStudio exported {len(candidates)} animation JSON files, "
-                f"but {len(matching)} match {animation_name!r}; expected exactly one"
-            )
-        target, clip = matching[0]
+        clip, target = load_unique_animation_clip(export_root, animation_name)
         meta = {
             "version": ANIMATION_CLIP_EXPORT_VERSION,
             "source": source_identity,

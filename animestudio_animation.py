@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import struct
 import zlib
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from model_document import add_diagnostic
@@ -19,6 +21,23 @@ TRANSFORM_PROPERTIES = {
     "rotation": ("vec4", 4),
     "scale": ("vec3", 3),
 }
+
+
+def load_unique_animation_clip(export_root: Path, expected_name: str) -> tuple[dict, Path]:
+    """Load the single compact export whose clip name matches *expected_name*."""
+
+    candidates = sorted(export_root.rglob("*.animation.json"))
+    matching = []
+    for candidate in candidates:
+        clip = json.loads(candidate.read_text(encoding="utf-8"))
+        if str(clip.get("name") or "").casefold() == expected_name.casefold():
+            matching.append((clip, candidate))
+    if len(matching) != 1:
+        raise RuntimeError(
+            f"AnimeStudio exported {len(candidates)} animation JSON files, "
+            f"but {len(matching)} match {expected_name!r}; expected exactly one"
+        )
+    return matching[0]
 
 
 def attach_animation_clip(

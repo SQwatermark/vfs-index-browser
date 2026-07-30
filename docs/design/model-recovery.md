@@ -150,9 +150,10 @@ python tools/select_shader_variants.py `
 - Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 读取真实 `_DiffRampMap`；当前用世界法线与 Profile 方向的点积近似 Ramp 横坐标，并用环境光参数近似明暗范围。方位角暂按 Blender `+Y` 为 `0°`、绕 `Z` 轴旋转解释，这是根据角色正面受光样本校准的预览约定，尚不是已证明的 HGRP shader 公式。
 - 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye、OverlayShadow 和 SilkStockings 仍无完整专用节点组。
 - manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并按唯一子资源名和 PathID
-  解析 AnimeStudio 导出文件；ACL 2.1 压缩曲线现已能转换为标准 Unity YAML 关键帧，
-  但尚未进入 ModelDocument 和模型预览的姿态应用链路。
-- BlendShape、AnimationClip 姿态应用、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
+  解析 AnimeStudio 导出文件；ACL 2.1 压缩曲线可导出为紧凑 JSON，并已进入
+  ModelDocument、GLB 和浏览器播放链路。
+- 当前浏览器只会自动循环第一个动画。播放控制、采样检查、Root Motion、浮点曲线、
+  BlendShape、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
 - 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。
 - GLB 当前保留完整节点层级，因此低 LOD Renderer 节点仍存在，但不会引用被裁剪的 Mesh 和 Skin。
 
@@ -199,10 +200,10 @@ Root Motion 映射，避免静默丢失。
 
 下一阶段按以下顺序推进：
 
-1. 将动画资产按需挂载到模型服务接口，并在浏览器预览中播放或指定采样时间。
-2. 用身体骨骼位移明显的待机帧验证
-   坐标系、局部变换和采样顺序。
-3. 收集 Animator Controller、面部控制和附加运行时参数，区分普通骨骼动画与
+1. 增加播放、暂停、时间拖动和片段信息，使动画结果可以逐帧检查。
+2. 用身体骨骼位移明显的多个片段验证坐标系、局部变换、采样顺序和循环边界；
+   遇到声明 Root Motion 的样本时单独验证其语义。
+3. 播放正确性稳定后，收集 Animator Controller、面部控制和附加运行时参数，区分普通骨骼动画与
    眼球注视、表情等运行时驱动。
 4. 姿态链路稳定后继续还原身体 PBR、面部/头发 NPR、Eye Shader 和丝袜材质，
    不用角色专用骨骼偏移掩盖渲染问题。

@@ -1,12 +1,41 @@
+import json
 import struct
+import tempfile
 import unittest
 import zlib
+from pathlib import Path
 
-from animestudio_animation import attach_animation_clip
+from animestudio_animation import attach_animation_clip, load_unique_animation_clip
 from model_document import create_model_document, validate_model_document
 
 
 SOURCE = {"logicalPath": "animations/idle", "bundle": "animation.ab"}
+
+
+class AnimationExportSelectionTests(unittest.TestCase):
+    def test_selects_clip_by_case_insensitive_exported_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "AnimationClip" / "first.animation.json"
+            second = root / "AnimationClip" / "second.animation.json"
+            first.parent.mkdir(parents=True)
+            first.write_text(json.dumps({"name": "Idle_Loop"}), encoding="utf-8")
+            second.write_text(json.dumps({"name": "Run_Loop"}), encoding="utf-8")
+
+            clip, path = load_unique_animation_clip(root, "idle_loop")
+
+        self.assertEqual("Idle_Loop", clip["name"])
+        self.assertEqual(first, path)
+
+    def test_rejects_missing_or_ambiguous_clip_name(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(2):
+                path = root / f"idle-{index}.animation.json"
+                path.write_text(json.dumps({"name": "idle"}), encoding="utf-8")
+
+            with self.assertRaisesRegex(RuntimeError, "2 match 'idle'"):
+                load_unique_animation_clip(root, "idle")
 
 
 class AnimeStudioAnimationTests(unittest.TestCase):

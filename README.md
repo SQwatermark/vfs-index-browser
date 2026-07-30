@@ -172,5 +172,5 @@ blender --background --factory-startup `
 - manifest 已能建立完整路径到 Bundle 的映射，但尚未对所有 Unity 类型提供预览。
 - manifest 资源会自动衔接对应 AB；AnimeStudio 未支持的 Unity 类型会明确提示无法导出。
 - MemoryPack 解码仍依赖从当前客户端 IL2CPP 数据提取的 schema，游戏升级后需要重新验证。
-- 组合模型已完成首个角色样本的网页与 Blender 验证；当前预览区分衣物 PBR 与面部/头发 CharacterNPR，保留衣物 Spec 通道并近似处理乘算覆盖阴影，但游戏完整 Shader、运行时面部姿态、动画和 BlendShape 尚未恢复。
+- 组合模型已完成首个角色样本的网页与 Blender 验证；Transform 动画已能按需解码、挂载到 GLB 并在浏览器中播放。当前预览区分衣物 PBR 与面部/头发 CharacterNPR，保留衣物 Spec 通道并近似处理乘算覆盖阴影；完整 Shader、播放与采样检查、Animator、浮点曲线、运行时面部姿态和 BlendShape 尚未恢复。
 - 音频用途、任务台本等聚合视图尚未建立。
