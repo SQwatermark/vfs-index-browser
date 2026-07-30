@@ -142,3 +142,34 @@ MonoBehaviour TypeTree 后，可确认 Profile 包含一个 `HGCharacterVolume` 
 | `charAmbientLightDirParam` | `0.15` |
 
 其余主光、阴影染色、自动边缘光、面部边缘光、天气预览和质量档字段虽然存在序列化默认值，但 `overrideState = 0`，不能把这些默认值直接当作该 Profile 的生效配置。这个结果补齐了角色信息界面的基础环境光输入，却仍不足以推导 `_CharacterParams0..16` 的完整运行时打包结果；场景 Volume 混合、全局默认值和运行时代码仍需分别验证。
+
+配套 Prefab
+`assets/beyond/dynamicassets/gameplay/prefabs/charinfo/charoverridevolume.prefab`
+把该 Profile 配置为全局 Volume：
+
+| 字段 | 值 |
+| --- | --- |
+| `m_IsGlobal` | `true` |
+| `priority` | `10000` |
+| `blendDistance` | `0` |
+| `weight` | `1` |
+
+因此，这不是一般场景中低优先级叠加的参考值，而是角色信息界面中完整覆盖基础角色环境光的高优先级配置。
+
+`charMaxCubemap` 的跨 Bundle 引用已还原为
+`assets/beyond/arts/entity/common/hdris/t_hdri_reflection_char_01.exr`。其 Unity
+类型是 `Cubemap`（ClassID 89），格式为 BC6H，尺寸为 `128×128×6`，包含 8
+级 mip。像素流共 131232 字节，正好等于六份 21872 字节的单面完整 mip 链，
+可确认数据按“每面一整条 mip 链”连续存储。AnimeStudio 的 BC6H 解码器能够在
+把 Cubemap 临时按 Texture2D 解析时正确输出第一面，但正式支持仍需按六面切分，
+不能把当前单面实验结果当作完整环境贴图。
+
+### 官方公开技术背景
+
+Apple Developer 对终末地高级技术总监的采访确认，项目不是直接使用 Unity
+标准渲染管线，而是在 Unity 之上自研了渲染管线、图形抽象层和 ECS 系统，并把
+内容制作规范、运行性能和多平台一致性纳入同一条管线。这与资源中出现的
+`HG.RenderPipelines`、`CharacterNPR`、全局 `_CharacterParams` 以及独立角色
+Volume 系统一致。公开资料只说明总体架构，不提供角色 Shader 公式，因此可作为
+架构背景，不能替代静态资源和运行时验证：
+[“明日方舟：终末地”的崛起](https://developer.apple.com/cn/news/?id=cpt08xv8)。
