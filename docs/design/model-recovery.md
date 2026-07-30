@@ -119,10 +119,22 @@ Blender 4.3 的 glTF 导入器会把材质 `extras.endfieldPreview` 保留为 `M
 
 该后端首先验证统一材质语义能否跨宿主复用。Color Ramp 和 Freestyle 参数目前是预览默认值，不是从游戏 Shader 反编译得到的常量。Freestyle 会把眼睛、发丝等独立网格边界识别为轮廓，精度低于后续计划中的材质分类反面外扩方案。
 
+## Shader 变体筛选
+
+FractalMiner 导出的 Shader 会把每个编译变体写成单独的 HLSL include。`tools/select_shader_variants.py` 根据 Shader 的 `[Toggle(KEYWORD)]` 声明和 ModelDocument 中的材质浮点属性，筛选与材质局部关键字完全一致的片元变体：
+
+```powershell
+python tools/select_shader_variants.py `
+  path/to/characterNpr_skin.shader `
+  path/to/model-document.json `
+  "MaterialName"
+```
+
+输出保留候选 include 以及每个候选要求启用或禁用的运行时关键字。材质可以确定 `_SDFLIGHTMAP`、`_DIFF_RAMP_ON` 等局部分支，但不能确定屏幕空间阴影、运行时溶解等全局状态；工具会报告这些差异，不会擅自选择。
+
 ## 当前限制
 
 - 当前预览已区分衣物 PBR 与面部/头发风格化渲染，但 Toon Ramp、眼睛高光/散射、头发高光、乘算覆盖阴影和丝袜各向异性仍与游戏存在差异。游戏画面没有显眼描边，因此轮廓只保留为可选诊断效果，不作为默认还原目标。
-- Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 生成 Eevee 分段受光节点，但尚未读取真实 `_DiffRampMap`，也没有为 Eye、OverlayShadow 和 SilkStockings 建立完整专用节点组。
 - Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 读取真实 `_DiffRampMap`；当前用世界法线与预览主光方向的点积近似 Ramp 横坐标，并用显式环境光偏置避免在 SDF/Shadow LUT 缺席时压黑背光面。该偏置应在完整阴影公式接入后删除；Eye、OverlayShadow 和 SilkStockings 也尚无完整专用节点组。
 - BlendShape、AnimationClip、AnimatorController 和物理骨骼尚未进入最终预览链路。
 - 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。

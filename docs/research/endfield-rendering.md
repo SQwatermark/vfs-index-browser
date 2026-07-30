@@ -45,3 +45,61 @@ FractalMiner 归档的 1.3.3 Shader 与佩丽卡真实材质共同确认：
 佩丽卡面部材质同时启用了 `_UseDiffRampMap`、`_UseSDFLightmap`、`_UseShadowLutTex` 和 `_FaceHighlightMap`。对应的 `_DiffRampMap`、`_SDFLightmap`、`_SDFMask`、`_ShadowLutTex` 与 `_HighlightMap` 已能随 ModelDocument 和 GLB 完整导出。
 
 `_SDFLightmap` 的 R/G 通道呈左右镜像的面部距离场，但单独选择一个通道并映射到 Diff Ramp 会使整张脸落入错误的阴影色阶。该实验说明 SDF 贴图不是可直接显示的颜色输入；正确实现至少还需要恢复光照在面部局部坐标中的方向、左右通道选择、距离阈值、`_SDFMask` 分区及 `_ShadowLutTex` 调色关系。在公式确认前，Blender 默认预览继续使用稳定的法线受光近似，不启用实验性 SDF 节点。
+
+### 编译变体定位
+
+根据佩丽卡面部材质实际启用的 Toggle，Pass 0 的静态主变体是 `Sub0_Pass0_Fragment_b225.hlsl`；启用屏幕空间阴影遮罩时对应 `b301`。二者的材质局部关键字相同：
+
+- `_DIFF_RAMP_ON`
+- `_EMOTION_MAP`
+- `_HIGHLIGHT_MAP`
+- `_NORMALMAP`
+- `_OUTLINE_MASK`
+- `_SDFLIGHTMAP`
+- `_SHADOW_LUT_TEX`
+
+`b377`、`b453` 还要求运行时溶解，不是普通静态预览的默认选择。此前关注的 `b171` 缺少 Diff Ramp、Shadow LUT 与 Highlight，并启用了角色自定义分支，不符合该材质。
+
+通过相邻变体差分和采样上下文，`b225` 中与面部材质相关的匿名纹理寄存器可确定为：
+
+| 寄存器 | Shader 属性 |
+| --- | --- |
+| T13 | `_DiffRampMap` |
+| T14 | `_HighlightMap` |
+| T15 | `_EmotionMap` |
+| T16 | `_ShadowLutTex` |
+| T21 | `_BaseMap` |
+| T22 | `_BumpMap` |
+| T23 | `_SDFLightmap` |
+| T24 | `_SDFMask` |
+
+`_ShadowLutTex` 不是普通阴影颜色贴图。Shader 会把基础 RGB 编码为 LUT 坐标，执行两次采样并插值。`_DiffRampMap` 则用光照计算结果作为横坐标、固定 `0.5` 作为纵坐标采样。
+
+### SDF 核心流程
+
+`b225` 中已经能够还原的面部 SDF 主干可表达为以下伪代码：
+
+```text
+lightX = dot(mainLightDirection, objectRight)
+lightZ = dot(mainLightDirection, objectForward)
+horizontalLight = normalize(float2(lightX, lightZ))
+
+sampleU = horizontalLight.x > 0 ? uv.x : 1 - uv.x
+sdf = SDFLightmap(sampleU, uv.y)
+mask = SDFMask(uv)
+
+pseudoNormalX = horizontalLight.x > 0 ? 2 * sdf.b - 1 : 1 - 2 * sdf.b
+pseudoNormalZ = 1 - abs(pseudoNormalX)
+pseudoNormal = normalize(float3(pseudoNormalX, epsilon, pseudoNormalZ))
+
+sdfSignal = directionalThreshold(
+  sdf.r + sdf.g,
+  horizontalLight.z,
+  characterGlobals
+)
+normalSignal = dot(transformToWorld(pseudoNormal), mainLightDirection)
+diffuseSignal = lerp(sdfSignal, normalSignal, mask.g)
+diffuseColor = DiffRamp(float2(diffuseSignal * 0.5 + 0.5, 0.5))
+```
+
+其中 `_SDFMask.g` 控制距离场信号与伪法线受光之间的混合，B/A 通道还参与其他区域、边缘光或平光遮罩。`directionalThreshold` 仍依赖运行时全局参数 `_CharacterParams11`、`_CharacterParams12`、`_CharacterParams15`；它们不在材质和当前资源快照中，因此暂不把猜测值接入正式预览器。
