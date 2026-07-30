@@ -15,10 +15,28 @@ class GltfExportTests(unittest.TestCase):
             "bufferViews": [
                 {"id": "view:positions", "bufferId": "buffer", "byteOffset": 0, "byteLength": 12},
                 {"id": "view:unused", "bufferId": "buffer", "byteOffset": 12, "byteLength": 12},
+                {"id": "view:times", "bufferId": "buffer", "byteOffset": 24, "byteLength": 8},
+                {"id": "view:translations", "bufferId": "buffer", "byteOffset": 32, "byteLength": 24},
             ],
             "accessors": [
                 {"id": "positions", "bufferViewId": "view:positions", "componentType": "f32", "type": "vec3", "count": 1},
                 {"id": "unused", "bufferViewId": "view:unused", "componentType": "f32", "type": "vec3", "count": 1},
+                {
+                    "id": "animation-times",
+                    "bufferViewId": "view:times",
+                    "componentType": "f32",
+                    "type": "scalar",
+                    "count": 2,
+                    "min": [0.0],
+                    "max": [1.0],
+                },
+                {
+                    "id": "animation-translations",
+                    "bufferViewId": "view:translations",
+                    "componentType": "f32",
+                    "type": "vec3",
+                    "count": 2,
+                },
             ],
             "images": [
                 {"id": "image", "mimeType": "image/png", "uri": "/image.png"},
@@ -64,6 +82,30 @@ class GltfExportTests(unittest.TestCase):
                 {"id": "node:shadow", "name": "Body_shadowProxyDesktop", "children": [], "transform": {}, "meshId": "unused-mesh"},
             ],
             "skins": [],
+            "animations": [
+                {
+                    "id": "animation:idle",
+                    "name": "Idle",
+                    "duration": 1.0,
+                    "channels": [
+                        {
+                            "targetId": "node:root",
+                            "property": "translation",
+                            "inputAccessorId": "animation-times",
+                            "outputAccessorId": "animation-translations",
+                            "interpolation": "linear",
+                        },
+                        {
+                            "targetId": "material",
+                            "property": "materialProperty",
+                            "propertyName": "_Example",
+                            "inputAccessorId": "animation-times",
+                            "outputAccessorId": "animation-translations",
+                            "interpolation": "linear",
+                        },
+                    ],
+                }
+            ],
         }
 
         source_images = {}
@@ -75,7 +117,12 @@ class GltfExportTests(unittest.TestCase):
             payload = BytesIO()
             Image.new("RGBA", (1, 1), color).save(payload, format="PNG")
             source_images[image_id] = payload.getvalue()
-        glb = build_glb(document, b"\0" * 24, lambda image: source_images[image["id"]])
+        geometry = (
+            b"\0" * 24
+            + struct.pack("<2f", 0.0, 1.0)
+            + struct.pack("<6f", 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
+        )
+        glb = build_glb(document, geometry, lambda image: source_images[image["id"]])
 
         magic, version, length = struct.unpack_from("<III", glb)
         self.assertEqual(0x46546C67, magic)
@@ -112,8 +159,27 @@ class GltfExportTests(unittest.TestCase):
         self.assertEqual(1.0, pbr["metallicFactor"])
         self.assertEqual(1.0, pbr["roughnessFactor"])
         self.assertIn("metallicRoughnessTexture", pbr)
-        self.assertEqual(1, len(payload["accessors"]))
+        self.assertEqual(3, len(payload["accessors"]))
         self.assertEqual(12, payload["bufferViews"][0]["byteLength"])
+        self.assertEqual(
+            {
+                "name": "Idle",
+                "samplers": [
+                    {
+                        "input": 1,
+                        "output": 2,
+                        "interpolation": "LINEAR",
+                    }
+                ],
+                "channels": [
+                    {
+                        "sampler": 0,
+                        "target": {"node": 0, "path": "translation"},
+                    }
+                ],
+            },
+            payload["animations"][0],
+        )
         binary_header = 20 + json_length
         binary_length, binary_type = struct.unpack_from("<II", glb, binary_header)
         self.assertEqual(0x004E4942, binary_type)

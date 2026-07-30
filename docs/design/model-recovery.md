@@ -145,9 +145,8 @@ python tools/select_shader_variants.py `
 - Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 读取真实 `_DiffRampMap`；当前用世界法线与 Profile 方向的点积近似 Ramp 横坐标，并用环境光参数近似明暗范围。方位角暂按 Blender `+Y` 为 `0°`、绕 `Z` 轴旋转解释，这是根据角色正面受光样本校准的预览约定，尚不是已证明的 HGRP shader 公式。
 - 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye、OverlayShadow 和 SilkStockings 仍无完整专用节点组。
 - manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并按唯一子资源名和 PathID
-  解析 AnimeStudio 导出文件；这只解决了资源读取，不等于动画已经进入模型预览。当前动画
-  YAML 能提供采样率、时长和绑定表，但终末地使用的压缩曲线尚未转换为 ModelDocument
-  可消费的关键帧。
+  解析 AnimeStudio 导出文件；ACL 2.1 压缩曲线现已能转换为标准 Unity YAML 关键帧，
+  但尚未进入 ModelDocument 和模型预览的姿态应用链路。
 - BlendShape、AnimationClip 姿态应用、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
 - 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。
 - GLB 当前保留完整节点层级，因此低 LOD Renderer 节点仍存在，但不会引用被裁剪的 Mesh 和 Skin。
@@ -159,3 +158,46 @@ python tools/select_shader_variants.py `
 - GLB、glTF、FBX 等输出都应从 ModelDocument 生成，不能各自重复解析 Unity 对象。
 - Schema 发生不兼容修改时提升主版本，读取器明确拒绝未知主版本。
 - 真实样本用于端到端验证；坐标、矩阵、LOD 和资源裁剪规则还必须有小型合成回归测试。
+
+## 动画恢复阶段结论（2026-07-31）
+
+终末地正式版 `AnimationClip` 使用独立的 `m_AclCompressedBuffer`。当前已确认：
+
+- `TransformBufferData` 是 ACL 2.1 `qvvf` 轨道；
+- `FloatBufferData` 是 ACL 2.1 `float1f` 轨道；
+- 佩丽卡待机动画包含 272 条 Transform 轨道、152 条浮点轨道、121 帧，
+  采样率 60 Hz；
+- 272 条 Transform 轨道与绑定表中按顺序排列的骨骼路径一一对应，
+  所有路径哈希均可由模型骨架相对路径的 Unity CRC32 还原；
+- 272 组位置、272 组旋转和 152 组浮点绑定共生成 696 条曲线、
+  84,216 个关键帧，没有遗漏普通绑定；
+- 该待机动画第 0 帧和循环内采样的眼球、虹膜局部变换基本等于 Prefab
+  静态姿态。因此，当前眼部视觉差异不能仅归因于待机动画，仍需继续检查
+  运行时面部控制和 Eye Shader。
+
+AnimeStudio 研究分支新增了独立的 `acl_endfield` 原生桥。它使用固定版本的
+ACL/RTM 头文件解压帧数组，C# 层负责 Unity path/attribute 绑定和曲线生成。
+该实现不替换已有的 `acl.dll`，避免影响其他游戏的旧 ACL 路径。
+
+`RootMotionBufferData` 也是 ACL 数据，但不属于普通绑定曲线。佩丽卡待机样本
+的 `RootPosIndex`、`RootRotIndex`、`RootScaleIndex` 均为 `65535`，没有声明
+实际根变换。转换器会在遇到声明了根变换的样本时明确报错，待后续单独实现
+Root Motion 映射，避免静默丢失。
+
+当前已完成第一层消费链路：
+
+1. AnimeStudio 可导出带共享时间轴和原始 `pathHash` 的紧凑动画 JSON。
+2. 动画适配器将 Transform 曲线追加到 `ModelDocument`，GLB 导出器生成标准
+   glTF 动画通道。
+3. 佩丽卡样本的 272 条位移和 272 条旋转通道全部映射成功，零缺失、零歧义；
+   152 条材质或组件浮点曲线暂不进入 GLB，并形成明确诊断。
+
+下一阶段按以下顺序推进：
+
+1. 将动画资产按需挂载到模型服务接口，并在浏览器预览中播放或指定采样时间。
+2. 用身体骨骼位移明显的待机帧验证
+   坐标系、局部变换和采样顺序。
+3. 收集 Animator Controller、面部控制和附加运行时参数，区分普通骨骼动画与
+   眼球注视、表情等运行时驱动。
+4. 姿态链路稳定后继续还原身体 PBR、面部/头发 NPR、Eye Shader 和丝袜材质，
+   不用角色专用骨骼偏移掩盖渲染问题。

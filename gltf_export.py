@@ -130,6 +130,29 @@ def build_glb(
         for skin in selected_skins
         if skin.get("inverseBindMatricesAccessorId")
     )
+    node_ids = {node.get("id") for node in nodes}
+    selected_animations = []
+    for animation in document.get("animations", []):
+        channels = [
+            channel
+            for channel in animation.get("channels", [])
+            if (
+                channel.get("targetId") in node_ids
+                and channel.get("property") in {"translation", "rotation", "scale"}
+            )
+        ]
+        if not channels:
+            continue
+        selected_animations.append((animation, channels))
+        selected_accessor_ids.update(
+            accessor_id
+            for channel in channels
+            for accessor_id in (
+                channel.get("inputAccessorId"),
+                channel.get("outputAccessorId"),
+            )
+            if accessor_id
+        )
     selected_accessors = [
         accessor
         for accessor in document.get("accessors", [])
@@ -149,6 +172,7 @@ def build_glb(
         "meshes": [],
         "nodes": [],
         "skins": [],
+        "animations": [],
         "scenes": [{"nodes": []}],
         "scene": 0,
     }
@@ -342,6 +366,45 @@ def build_glb(
     for document_node, gltf_node in zip(nodes, gltf["nodes"]):
         if "mesh" in gltf_node and document_node.get("skinId") in skin_indexes:
             gltf_node["skin"] = skin_indexes[document_node["skinId"]]
+
+    for animation, channels in selected_animations:
+        gltf_samplers = []
+        gltf_channels = []
+        for channel in channels:
+            input_index = accessor_indexes.get(channel.get("inputAccessorId"))
+            output_index = accessor_indexes.get(channel.get("outputAccessorId"))
+            target_index = node_indexes.get(channel.get("targetId"))
+            if input_index is None or output_index is None or target_index is None:
+                continue
+            sampler_index = len(gltf_samplers)
+            gltf_samplers.append(
+                {
+                    "input": input_index,
+                    "output": output_index,
+                    "interpolation": {
+                        "step": "STEP",
+                        "linear": "LINEAR",
+                        "cubic": "CUBICSPLINE",
+                    }[channel.get("interpolation", "linear")],
+                }
+            )
+            gltf_channels.append(
+                {
+                    "sampler": sampler_index,
+                    "target": {
+                        "node": target_index,
+                        "path": channel["property"],
+                    },
+                }
+            )
+        if gltf_channels:
+            gltf["animations"].append(
+                {
+                    "name": animation.get("name", ""),
+                    "samplers": gltf_samplers,
+                    "channels": gltf_channels,
+                }
+            )
 
     roots = [node_indexes[root] for root in document.get("asset", {}).get("rootNodeIds", []) if root in node_indexes]
     wrapper_index = len(gltf["nodes"])
