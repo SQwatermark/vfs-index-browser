@@ -175,6 +175,30 @@ MonoBehaviour TypeTree 后，可确认 Profile 包含一个 `HGCharacterVolume` 
 初始光照构图，但不能还原 BC6H HDR 动态范围、粗糙度对应的 mip 选择或游戏内
 曝光。后续需要增加 float BC6H 到 EXR/DDS 的路径，再进行物理高光校准。
 
+### 材质通道与面部姿态验证
+
+HGRP 衣物 `_MetallicGlossMap` 的四个通道语义为 Metal、Spec、Shadow 和
+Smoothness。标准 glTF ORM 只消费 Roughness 与 Metallic，因此导出器将原始
+Spec 保存在转换后 PNG 的 Alpha 中；普通 glTF 查看器仍按 ORM 工作，游戏专用
+Blender 后端则把 Alpha 接到 Principled 的 `Specular IOR Level`。佩丽卡真实
+纹理的 Alpha 不再是全 255，远程渲染验证未产生材质回退。
+
+`CharacterNPR_OverlayShadow` 的 Shader Pass 使用
+`Blend Zero SrcColor, One One`，语义是用覆盖层颜色乘算已有帧缓冲。Eevee
+材质无法读取目标帧缓冲，当前用纹理 Alpha 和颜色亮度生成透明黑色衰减层，只
+保证近似明暗关系。逐通道颜色乘算仍需合成器、离屏 Pass 或自定义 Shader。
+
+Eye Shader 的 BaseMap Alpha 参与眼睛散射与高光计算，材质本身保持不透明；
+不能把该 Alpha 当作透明度。佩丽卡面部和虹膜 Mesh 的 `m_Shapes` 均为空，
+对应 Renderer 的 `m_BlendShapeWeights` 也为空。逐关节检查确认
+`jointWorld * inverseBindMatrix` 在面部和虹膜上回到同一模型空间，未发现骨骼
+错序或对象变换重复应用。
+
+角色 Prefab 的 Animator 只引用 Avatar，Controller 为空。由此可知静态资源只
+提供基础骨架姿态，游戏中的中性眼位和表情还依赖外部运行时控制。后续应把
+“中性面部姿态”建模为模型解析之后、宿主渲染之前的独立输入，并从动画或控制器
+数据恢复；不能在通用解析层硬编码佩丽卡的虹膜骨骼偏移。
+
 ### 官方公开技术背景
 
 Apple Developer 对终末地高级技术总监的采访确认，项目不是直接使用 Unity

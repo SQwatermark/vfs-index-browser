@@ -257,6 +257,9 @@ def build_glb(
                 "materialFamily",
                 "materialRole",
                 "silkStockings",
+                "overlayShadow",
+                "baseColorTextureId",
+                "metallicGlossTextureId",
                 "diffuseRampTextureId",
                 "specularRampTextureId",
                 "sdfLightmapTextureId",
@@ -374,13 +377,15 @@ def _red_channel_to_alpha_png(payload: bytes) -> bytes:
 
 
 def _metallic_gloss_to_gltf_png(payload: bytes) -> bytes:
-    """Convert HGRP RGBA metal/spec/shadow/smooth to glTF ORM channels."""
+    """Convert HGRP metal/spec/shadow/smooth to glTF ORM plus Spec alpha."""
 
     with Image.open(BytesIO(payload)) as source:
-        red, _specular, _shadow, smoothness = source.convert("RGBA").split()
+        red, specular, _shadow, smoothness = source.convert("RGBA").split()
         roughness = smoothness.point(lambda value: 255 - value)
         opaque = Image.new("L", source.size, 255)
-        converted = Image.merge("RGBA", (opaque, roughness, red, opaque))
+        # Core glTF reads only G/B from this texture. Alpha remains available
+        # to game-specific preview backends without changing standard viewers.
+        converted = Image.merge("RGBA", (opaque, roughness, red, specular))
         output = BytesIO()
         converted.save(output, format="PNG")
         return output.getvalue()

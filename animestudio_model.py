@@ -376,6 +376,13 @@ def attach_mesh_geometry(
             preview["alphaMode"] = "BLEND"
             preview["baseColorTextureUsesGrayAsAlpha"] = True
             preview["unlit"] = True
+            if isinstance(colors.get("_BaseColor"), Mapping):
+                preview["overlayShadow"] = {
+                    "color": [
+                        float(colors["_BaseColor"].get(channel, 1.0))
+                        for channel in ("r", "g", "b")
+                    ]
+                }
         elif isinstance(floats.get("_characterRenderQueue"), (int, float)):
             if "_EyeHighLight" in property_names:
                 material_role = "eye"

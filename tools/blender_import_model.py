@@ -34,6 +34,12 @@ def parse_args() -> argparse.Namespace:
         help="Optional character-lighting JSON built from CharInfo and its cubemap",
     )
     parser.add_argument(
+        "--framing",
+        choices=("full", "portrait"),
+        default="full",
+        help="Camera framing used by the generated preview scene",
+    )
+    parser.add_argument(
         "--outline",
         action="store_true",
         help="Enable approximate Freestyle outlines",
@@ -91,6 +97,8 @@ def load_embedded_preview_images(input_path: Path) -> int:
     preview_keys = {
         "diffuseRampTextureId",
         "specularRampTextureId",
+        "metallicGlossTextureId",
+        "baseColorTextureId",
         "sdfLightmapTextureId",
         "sdfMaskTextureId",
         "shadowLutTextureId",
@@ -242,6 +250,101 @@ def build_character_npr_nodes(
     return True
 
 
+def configure_character_cloth_nodes(material: bpy.types.Material) -> bool:
+    metadata = material_preview_metadata(material)
+    if (
+        metadata.get("materialFamily") != "characterNpr"
+        or metadata.get("materialRole") != "cloth"
+        or not material.node_tree
+    ):
+        return False
+
+    image = find_imported_image(metadata.get("metallicGlossTextureId"))
+    principled = next(
+        (
+            node
+            for node in material.node_tree.nodes
+            if node.bl_idname == "ShaderNodeBsdfPrincipled"
+        ),
+        None,
+    )
+    specular = principled.inputs.get("Specular IOR Level") if principled else None
+    if image is None or specular is None:
+        material["endfieldPreviewDiagnostic"] = "missing cloth specular image or socket"
+        return False
+
+    texture = next(
+        (
+            node
+            for node in material.node_tree.nodes
+            if node.bl_idname == "ShaderNodeTexImage" and node.image == image
+        ),
+        None,
+    )
+    if texture is None:
+        texture = material.node_tree.nodes.new("ShaderNodeTexImage")
+        texture.image = image
+        texture.location = (-420, -420)
+    texture.name = "Endfield HGRP Metallic Gloss"
+    texture.label = "HGRP Metal / Spec / Shadow / Smooth"
+    material.node_tree.links.new(texture.outputs["Alpha"], specular)
+    material["endfieldShaderBackend"] = "blender-eevee-character-cloth-v1"
+    return True
+
+
+def configure_overlay_shadow_nodes(material: bpy.types.Material) -> bool:
+    metadata = material_preview_metadata(material)
+    shadow = metadata.get("overlayShadow")
+    if (
+        metadata.get("materialRole") != "overlayShadow"
+        or not isinstance(shadow, dict)
+        or not material.node_tree
+    ):
+        return False
+
+    color = shadow.get("color")
+    image = find_imported_image(metadata.get("baseColorTextureId"))
+    if not isinstance(color, list) or len(color) != 3 or image is None:
+        material["endfieldPreviewDiagnostic"] = "missing overlay shadow color or mask"
+        return False
+
+    # The game multiplies the framebuffer by the overlay color. Eevee materials
+    # cannot read that framebuffer, so a black layer with luminance-derived
+    # opacity provides the equivalent grayscale attenuation.
+    luminance = sum(
+        float(value) * weight
+        for value, weight in zip(color, (0.2126, 0.7152, 0.0722))
+    )
+    nodes = material.node_tree.nodes
+    links = material.node_tree.links
+    nodes.clear()
+    texture = nodes.new("ShaderNodeTexImage")
+    texture.name = "Endfield Overlay Shadow Mask"
+    texture.image = image
+    texture.location = (-520, 0)
+    attenuation = nodes.new("ShaderNodeMath")
+    attenuation.name = "Endfield Overlay Shadow Attenuation"
+    attenuation.operation = "MULTIPLY"
+    attenuation.inputs[1].default_value = 1.0 - max(0.0, min(1.0, luminance))
+    attenuation.location = (-300, -40)
+    transparent = nodes.new("ShaderNodeBsdfTransparent")
+    transparent.location = (-80, 100)
+    black = nodes.new("ShaderNodeEmission")
+    black.inputs["Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+    black.location = (-80, -100)
+    mix = nodes.new("ShaderNodeMixShader")
+    mix.location = (140, 0)
+    output = nodes.new("ShaderNodeOutputMaterial")
+    output.location = (360, 0)
+    links.new(texture.outputs["Alpha"], attenuation.inputs[0])
+    links.new(attenuation.outputs["Value"], mix.inputs[0])
+    links.new(transparent.outputs["BSDF"], mix.inputs[1])
+    links.new(black.outputs["Emission"], mix.inputs[2])
+    links.new(mix.outputs["Shader"], output.inputs["Surface"])
+    material["endfieldShaderBackend"] = "blender-eevee-overlay-shadow-v1"
+    return True
+
+
 def scene_bounds() -> tuple[Vector, Vector]:
     points = [
         obj.matrix_world @ Vector(corner)
@@ -307,6 +410,7 @@ def configure_world(lighting: CharacterLighting | None) -> None:
 def configure_preview_scene(
     enable_outline: bool,
     lighting: CharacterLighting | None,
+    framing: str,
 ) -> None:
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE_NEXT"
@@ -330,9 +434,19 @@ def configure_preview_scene(
     scene.collection.objects.link(camera)
     scene.camera = camera
     vertical_fov = camera_data.angle_y
-    distance = max(size.z / (2 * math.tan(vertical_fov / 2)) * 1.16, size.length * 0.8)
-    camera.location = center + Vector((size.x * 0.12, -distance, size.z * 0.02))
-    point_camera(camera, center + Vector((0.0, 0.0, size.z * 0.02)))
+    if framing == "portrait":
+        framing_height = size.z * 0.38
+        camera_target = Vector((center.x, center.y, minimum.z + size.z * 0.79))
+        distance = framing_height / (2 * math.tan(vertical_fov / 2)) * 1.16
+        camera.location = camera_target + Vector((size.x * 0.04, -distance, 0.0))
+    else:
+        camera_target = center + Vector((0.0, 0.0, size.z * 0.02))
+        distance = max(
+            size.z / (2 * math.tan(vertical_fov / 2)) * 1.16,
+            size.length * 0.8,
+        )
+        camera.location = center + Vector((size.x * 0.12, -distance, size.z * 0.02))
+    point_camera(camera, camera_target)
 
     light_scale = max(size.length, 1.0)
     main_direction = Vector(
@@ -395,7 +509,13 @@ def main() -> None:
     converted = sum(
         build_character_npr_nodes(material, lighting) for material in bpy.data.materials
     )
-    configure_preview_scene(args.outline, lighting)
+    configured_cloth = sum(
+        configure_character_cloth_nodes(material) for material in bpy.data.materials
+    )
+    configured_overlays = sum(
+        configure_overlay_shadow_nodes(material) for material in bpy.data.materials
+    )
+    configure_preview_scene(args.outline, lighting, args.framing)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(output_path))
@@ -407,6 +527,8 @@ def main() -> None:
     print(
         f"Imported {input_path.name}; loaded {loaded_preview_images} preview images; "
         f"converted {converted} CharacterNPR materials; "
+        f"configured {configured_cloth} Character cloth materials; "
+        f"configured {configured_overlays} overlay shadows; "
         f"lighting={'configured' if lighting is not None else 'fallback'}"
     )
 

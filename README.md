@@ -146,12 +146,13 @@ blender --background --factory-startup `
   --python tools/blender_import_model.py -- `
   model.glb model.blend `
   --lighting path/to/character-lighting.json `
+  --framing portrait `
   --render preview.png
 ```
 
 `character-lighting.json` 保存原始 Profile 参数、六面相对路径和生成的等距柱状环境贴图路径。当前 AnimeStudio 通过 PNG 输出 BC6H Cubemap，因此这条链路属于 LDR 预览，不能保留原资源的 HDR 动态范围。
 
-使用 `--outline` 可启用近似的 Freestyle 轮廓。脚本会保留 GLB 导入的骨架、蒙皮、纹理和材质自定义属性；当前节点组是 Eevee 静态预览后端，不等同于原始 HGRP Shader。
+`--framing` 支持 `full` 和 `portrait` 两种验证构图；使用 `--outline` 可启用近似的 Freestyle 轮廓。脚本会保留 GLB 导入的骨架、蒙皮、纹理和材质自定义属性；当前节点组是 Eevee 静态预览后端，不等同于原始 HGRP Shader。
 
 格式结论和未完成事项以 `docs/research/` 中的文档为准，不应从临时终端输出推断。
 
@@ -160,5 +161,5 @@ blender --background --factory-startup `
 - manifest 已能建立完整路径到 Bundle 的映射，但尚未对所有 Unity 类型提供预览。
 - manifest 资源会自动衔接对应 AB；AnimeStudio 未支持的 Unity 类型会明确提示无法导出。
 - MemoryPack 解码仍依赖从当前客户端 IL2CPP 数据提取的 schema，游戏升级后需要重新验证。
-- 组合模型已完成首个角色样本的网页与 Blender 验证；当前预览区分衣物 PBR 与面部/头发 CharacterNPR，并携带 Ramp、SDF 等专用纹理，但游戏完整 Shader、动画和 BlendShape 尚未恢复。
+- 组合模型已完成首个角色样本的网页与 Blender 验证；当前预览区分衣物 PBR 与面部/头发 CharacterNPR，保留衣物 Spec 通道并近似处理乘算覆盖阴影，但游戏完整 Shader、运行时面部姿态、动画和 BlendShape 尚未恢复。
 - 音频用途、任务台本等聚合视图尚未建立。

@@ -48,6 +48,7 @@ class GltfExportTests(unittest.TestCase):
                         "materialFamily": "characterNpr",
                         "materialRole": "skin",
                         "silkStockings": {"color": [0.0, 0.0, 0.0], "maxAffect": 0.9},
+                        "overlayShadow": {"color": [0.3, 0.4, 0.5]},
                         "unlit": True,
                     },
                 },
@@ -93,10 +94,13 @@ class GltfExportTests(unittest.TestCase):
             {
                 "materialFamily": "characterNpr",
                 "materialRole": "skin",
+                "baseColorTextureId": "texture",
+                "metallicGlossTextureId": "packed-texture",
                 "diffuseRampTextureId": "packed-texture",
                 "sdfMaskTextureId": "packed-texture",
                 "shadowLutTextureId": "packed-texture",
                 "silkStockings": {"color": [0.0, 0.0, 0.0], "maxAffect": 0.9},
+                "overlayShadow": {"color": [0.3, 0.4, 0.5]},
             },
             payload["materials"][0]["extras"]["endfieldPreview"],
         )
@@ -122,7 +126,7 @@ class GltfExportTests(unittest.TestCase):
             ]
             pixels.append(Image.open(BytesIO(image_payload)).getpixel((0, 0)))
         self.assertEqual(
-            [(255, 255, 255, 64), (255, 63, 64, 255), (128, 191, 238, 255)],
+            [(255, 255, 255, 64), (255, 63, 64, 128), (128, 191, 238, 255)],
             pixels,
         )
 
