@@ -13,6 +13,8 @@ class ManifestMonoBehaviourDumpTests(unittest.TestCase):
             root = Path(directory)
             cli = root / "AnimeStudio.CLI.exe"
             cli.write_bytes(b"")
+            cli.with_suffix(".dll").write_bytes(b"cli")
+            (root / "AnimeStudio.dll").write_bytes(b"core")
             chunk = root / "source.chk"
             chunk.write_bytes(b"bundle")
             record = {
@@ -57,6 +59,11 @@ class ManifestMonoBehaviourDumpTests(unittest.TestCase):
             dump = first[0].read_text(encoding="utf-8")
             self.assertIn("===== MonoBehaviour/Lighting.txt =====\nlighting", dump)
             self.assertIn("===== MonoBehaviour/Profile.txt =====\nprofile", dump)
+            meta = first[1]
+            self.assertEqual(
+                [Path(item["path"]).name for item in meta["source"]["toolArtifacts"]],
+                ["AnimeStudio.CLI.exe", "AnimeStudio.CLI.dll", "AnimeStudio.dll"],
+            )
 
 
 if __name__ == "__main__":

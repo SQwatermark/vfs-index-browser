@@ -786,6 +786,27 @@ def file_suffix(file_name: str) -> str:
     return Path(file_name).suffix.lower()
 
 
+def dotnet_tool_identity(executable: Path) -> list[dict]:
+    candidates = (
+        executable,
+        executable.with_suffix(".dll"),
+        executable.parent / "AnimeStudio.dll",
+    )
+    artifacts = []
+    for path in candidates:
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        artifacts.append(
+            {
+                "path": str(path.resolve()),
+                "size": stat.st_size,
+                "mtimeNs": stat.st_mtime_ns,
+            }
+        )
+    return artifacts
+
+
 def tablecfg_name_for_file(file_name: str) -> str | None:
     normalized = file_name.replace("\\", "/").strip("/")
     prefix = "Data/TableCfg/"
@@ -1763,8 +1784,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
             "assetIndex": int(asset["asset_index"]),
             "assetPath": str(asset["path"]),
-            "toolPath": str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.resolve()),
-            "toolMtimeNs": ANIMESTUDIO_MONOBEHAVIOUR_CLI.stat().st_mtime_ns,
+            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
         }
         if dump_path.is_file() and meta_path.is_file():
             try:
