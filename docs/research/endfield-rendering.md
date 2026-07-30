@@ -73,7 +73,7 @@ FractalMiner 归档的 1.3.3 Shader 与佩丽卡真实材质共同确认：
 | T23 | `_SDFLightmap` |
 | T24 | `_SDFMask` |
 
-`_ShadowLutTex` 不是普通阴影颜色贴图。Shader 会把基础 RGB 编码为 LUT 坐标，执行两次采样并插值。`_DiffRampMap` 则用光照计算结果作为横坐标、固定 `0.5` 作为纵坐标采样。
+`_ShadowLutTex` 不是普通阴影颜色贴图。佩丽卡样本尺寸为 `1024×32`，对应横向铺开的 `32×32×32` 三维颜色 LUT。Shader 将线性基础色转为 sRGB 后，以 R/G 定位切片内坐标，以 B 选择相邻的两个蓝色切片，执行两次采样并插值。`_DiffRampMap` 则用光照计算结果作为横坐标、固定 `0.5` 作为纵坐标采样。
 
 ### SDF 核心流程
 
@@ -102,4 +102,24 @@ diffuseSignal = lerp(sdfSignal, normalSignal, mask.g)
 diffuseColor = DiffRamp(float2(diffuseSignal * 0.5 + 0.5, 0.5))
 ```
 
-其中 `_SDFMask.g` 控制距离场信号与伪法线受光之间的混合，B/A 通道还参与其他区域、边缘光或平光遮罩。`directionalThreshold` 仍依赖运行时全局参数 `_CharacterParams11`、`_CharacterParams12`、`_CharacterParams15`；它们不在材质和当前资源快照中，因此暂不把猜测值接入正式预览器。
+Shader 属性声明将 `_SDFMask` 的 RGB 通道直接命名为 `RimMask / SDFMask / FlatSHMask`：
+
+- R 控制面部边缘光影响范围；
+- G 控制距离场信号与伪法线受光之间的混合；
+- B 控制平坦球谐光照区域；
+- A 进入视角相关的面部边缘计算，但属性声明没有给出正式名称。
+
+SDF 主分支仍依赖运行时全局参数 `_CharacterParams11.w` 与 `_CharacterParams12.x`；`_CharacterParams12.y` 决定使用场景主光还是角色自定义主光。`_CharacterParams15.z` 出现在后续另一组方向性面部高光/边缘项中，不属于 SDF 主阈值。
+
+Research Kit 的现有逆向记录和当前版 IL2CPP 类型信息共同表明，`_CharacterParams0..16` 由 `HGCharacterVolume` 打包。该 Volume 明确包含角色主光模式与方向、主光范围偏置、阴影染色、自动边缘光、面部边缘光、环境光以及附加光开关。现有记录已确认 12.y/z/w 的部分主光、附加光与环境曝光语义，但还没有把 11.w、12.x、15.z 精确映射回 Volume 字段和值域。它们不在材质和当前资源快照中，因此暂不把猜测值接入正式预览器。
+
+当前版 runtime dump 将 `HGCharacterVolume.GetCharLightVolumeData` 定位在 `GameAssembly.dll + 0x09B693A0`。磁盘上的 `GameAssembly.dll` 代码段仍经过保护，必须在游戏运行并完成解密后读取进程内存。项目提供按 RVA 抓取和反汇编的小工具：
+
+```powershell
+python tools/inspect_process_rva.py `
+  Arknights.exe GameAssembly.dll 0x09B693A0 `
+  --bytes 4096 `
+  --output GetCharLightVolumeData.bin
+```
+
+该工具只读取指定范围，不需要再次导出整个运行时模块。RVA 会随游戏版本变化，每次更新后必须以同版本 runtime dump 重新确认。
