@@ -123,3 +123,22 @@ python tools/inspect_process_rva.py `
 ```
 
 该工具只读取指定范围，不需要再次导出整个运行时模块。RVA 会随游戏版本变化，每次更新后必须以同版本 runtime dump 重新确认。
+
+### CharInfo 默认角色光照 Profile
+
+manifest 资源
+`assets/beyond/dynamicassets/gameplay/prefabs/charinfo/charoverridevolumeprofile.asset`
+位于 Bundle `main/818a3daf64683e6797e4ac34.ab`。按 container 导出
+MonoBehaviour TypeTree 后，可确认 Profile 包含一个 `HGCharacterVolume` 组件。
+
+该 Profile 中明确启用 override 的字段为：
+
+| 字段 | 值 |
+| --- | --- |
+| `charMaxCubemap` | 外部 Cubemap 引用 |
+| `charAmbientLightBaseIntensity` | `1.0` |
+| `charAmbientLightCustomDir` | `(180, 0)` |
+| `charAmbientLightDirIntensity` | `0.6` |
+| `charAmbientLightDirParam` | `0.15` |
+
+其余主光、阴影染色、自动边缘光、面部边缘光、天气预览和质量档字段虽然存在序列化默认值，但 `overrideState = 0`，不能把这些默认值直接当作该 Profile 的生效配置。这个结果补齐了角色信息界面的基础环境光输入，却仍不足以推导 `_CharacterParams0..16` 的完整运行时打包结果；场景 Volume 混合、全局默认值和运行时代码仍需分别验证。

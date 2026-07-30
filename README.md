@@ -62,6 +62,17 @@ D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.
 
 路径可通过 `ANIMESTUDIO_CLI` 覆盖。内部索引和导出缓存位于 `data/internal-cache/`。
 
+manifest 中的 `.asset`、`.prefab` 如果无法按常规资源类型导出，服务会按
+container 精确尝试 `MonoBehaviour + Dump`，用于查看 VolumeProfile 等自定义
+Unity 组件。模型快照使用的定制 CLI 若不支持完整 TypeTree Dump，可单独设置：
+
+```powershell
+$env:ANIMESTUDIO_MONOBEHAVIOUR_CLI =
+  "D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe"
+```
+
+两个变量默认指向同一个程序；只有部署中确实使用两种 AnimeStudio 构建时才需拆分。
+
 ## 主要模块
 
 | 路径 | 职责 |

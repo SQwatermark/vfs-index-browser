@@ -69,6 +69,10 @@ ANIMESTUDIO_CLI = Path(
         else r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
     )
 )
+# 模型快照使用的定制构建可能不保留完整 TypeTree Dump，因此允许单独指定标准 CLI。
+ANIMESTUDIO_MONOBEHAVIOUR_CLI = Path(
+    os.environ.get("ANIMESTUDIO_MONOBEHAVIOUR_CLI", ANIMESTUDIO_CLI)
+)
 VGMSTREAM_CLI = Path(
     os.environ.get(
         "VGMSTREAM_CLI",
@@ -83,6 +87,7 @@ CHACHA_KEY = bytes.fromhex(
 )
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
+MONOBEHAVIOUR_DUMP_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 24
 AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
@@ -1718,6 +1723,121 @@ class BrowserHandler(BaseHTTPRequestHandler):
         map_path = cache_root / "maps" / "asset_map.json"
         return source_path, export_root, meta_path, map_path
 
+    def manifest_monobehaviour_dump_paths(
+        self,
+        record: dict,
+        asset_index: int,
+    ) -> tuple[Path, Path, Path]:
+        root = (
+            INTERNAL_CACHE_DIR
+            / str(record["id"])
+            / "manifest-assets"
+            / str(asset_index)
+            / "monobehaviour"
+        )
+        return root / "exported", root / "dump.txt", root / "meta.json"
+
+    def ensure_manifest_monobehaviour_dump(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+    ) -> tuple[Path, dict] | None:
+        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
+            return None
+        if not ANIMESTUDIO_MONOBEHAVIOUR_CLI.exists():
+            raise FileNotFoundError(
+                f"AnimeStudio MonoBehaviour CLI not found: {ANIMESTUDIO_MONOBEHAVIOUR_CLI}"
+            )
+
+        export_root, dump_path, meta_path = self.manifest_monobehaviour_dump_paths(
+            record,
+            int(asset["asset_index"]),
+        )
+        source_path, _, _, _ = self.assetbundle_cache_paths(record)
+        source_identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "assetIndex": int(asset["asset_index"]),
+            "assetPath": str(asset["path"]),
+            "toolPath": str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.resolve()),
+            "toolMtimeNs": ANIMESTUDIO_MONOBEHAVIOUR_CLI.stat().st_mtime_ns,
+        }
+        if dump_path.is_file() and meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                if (
+                    meta.get("version") == MONOBEHAVIOUR_DUMP_VERSION
+                    and meta.get("source") == source_identity
+                    and meta.get("returncode") == 0
+                ):
+                    return dump_path, meta
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        self.write_file_slice(record, chunk_path, source_path)
+        shutil.rmtree(export_root, ignore_errors=True)
+        export_root.mkdir(parents=True, exist_ok=True)
+        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
+        command = [
+            str(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
+            str(source_path),
+            str(export_root),
+            "--game",
+            "ArknightsEndfield",
+            "--types",
+            "MonoBehaviour",
+            "--containers",
+            f"^{re.escape(normalized_container)}$",
+            "--export_type",
+            "Dump",
+            "--group_assets",
+            "ByType",
+            "--logger_flags",
+            "Error",
+            "Warning",
+            "Info",
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            check=False,
+        )
+        exported_files = sorted(export_root.rglob("*.txt"))
+        meta = {
+            "version": MONOBEHAVIOUR_DUMP_VERSION,
+            "source": source_identity,
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "builtAtEpoch": int(time.time()),
+            "exportedFiles": [
+                str(path.relative_to(export_root)).replace("\\", "/")
+                for path in exported_files
+            ],
+        }
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        if completed.returncode != 0 or not exported_files:
+            return None
+
+        sections = []
+        for path in exported_files:
+            relative = str(path.relative_to(export_root)).replace("\\", "/")
+            text = path.read_text(encoding="utf-8", errors="replace").rstrip()
+            sections.append(f"===== {relative} =====\n{text}")
+        dump_path.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
+        return dump_path, meta
+
     def assetbundle_map_command(self, source_path: Path, map_path: Path) -> list[str]:
         return [
             str(ANIMESTUDIO_CLI),
@@ -2462,6 +2582,27 @@ class BrowserHandler(BaseHTTPRequestHandler):
             == container_key
         ]
         if not matches:
+            try:
+                fallback = self.ensure_manifest_monobehaviour_dump(
+                    bundle_record,
+                    bundle_chunk,
+                    asset,
+                )
+            except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+                fallback = None
+            if fallback is not None:
+                target, dump_meta = fallback
+                return (
+                    bundle_record,
+                    target,
+                    {
+                        "Type": "MonoBehaviourDump",
+                        "Name": Path(str(asset["path"])).stem,
+                        "Container": asset["path"],
+                        "Components": dump_meta.get("exportedFiles", []),
+                    },
+                    asset,
+                )
             self.send_error_json(
                 404,
                 "已解析对应 AssetBundle，但 AnimeStudio 暂不支持导出该资源类型。",
