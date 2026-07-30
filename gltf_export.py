@@ -69,6 +69,8 @@ def build_glb(
             material.get("previewPbr", {}).get("diffuseRampTextureId"),
             material.get("previewPbr", {}).get("specularRampTextureId"),
             material.get("previewPbr", {}).get("sdfLightmapTextureId"),
+            material.get("previewPbr", {}).get("sdfMaskTextureId"),
+            material.get("previewPbr", {}).get("shadowLutTextureId"),
             material.get("previewPbr", {}).get("highlightTextureId"),
             material.get("previewPbr", {}).get("silkStockingsMaskTextureId"),
         )
@@ -258,6 +260,8 @@ def build_glb(
                 "diffuseRampTextureId",
                 "specularRampTextureId",
                 "sdfLightmapTextureId",
+                "sdfMaskTextureId",
+                "shadowLutTextureId",
                 "highlightTextureId",
                 "silkStockingsMaskTextureId",
             )

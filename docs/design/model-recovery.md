@@ -55,7 +55,7 @@ GLB 用于浏览器预览和通用工具下载，不取代 ModelDocument：
 - 根节点增加 `scale: [-1, 1, 1]` 的 Unity 到 glTF 坐标系包装节点；
 - CharacterNPR 按属性签名划分 `skin`、`hair`、`eye`、`cloth` 和 `overlayShadow`；衣物保留标准 PBR 受光，皮肤、头发、眼睛和覆盖阴影暂以 `KHR_materials_unlit` 保住原始色彩关系；游戏特有 Shader 字段仍完整保存在 ModelDocument 中；
 - GLB 材质通过 `extras.endfieldPreview` 携带预览扩展元数据；标准查看器会安全忽略，本站预览器可据此选择 CharacterNPR、丝袜等专用处理，不再依赖材质名猜测；
-- 已启用的 Diff Ramp、Spec Ramp、SDF Lightmap、面部高光和丝袜 Mask 会随 GLB 携带，并以稳定纹理 ID 写入 `extras.endfieldPreview`；宿主可以渐进实现专用材质而无需重新解析 Unity 对象；
+- 已启用的 Diff Ramp、Spec Ramp、SDF Lightmap、SDF Mask、Shadow LUT、面部高光和丝袜 Mask 会随 GLB 携带，并以稳定纹理 ID 写入 `extras.endfieldPreview`；宿主可以渐进实现专用材质而无需重新解析 Unity 对象；
 - 网页预览可选用沿顶点法线外扩、仅绘制背面的轮廓副本；透明覆盖层不参与描边，下载的 GLB 本身仍保持标准且不包含重复轮廓网格；
 - `_UseGrayAsAlpha` 覆盖材质在打包时转换为白色 RGB、原 R 通道写入 Alpha 的标准 PNG；
 - `_MetallicGlossMap` 的 `R=Metal`、`A=Smoothness` 在打包时转换为 glTF 金属粗糙贴图的 `B=Metallic`、`G=1-Smoothness`；原 `G=Spec`、`B=Shadow` 不强行映射为标准 PBR 语义，仍保留在 ModelDocument；

@@ -310,6 +310,14 @@ class AnimeStudioModelTests(unittest.TestCase):
                                 "m_Scale": {"X": 1, "Y": 1},
                                 "m_Offset": {"X": 0, "Y": 0},
                             },
+                            "_SDFMask": {
+                                "m_Scale": {"X": 1, "Y": 1},
+                                "m_Offset": {"X": 0, "Y": 0},
+                            },
+                            "_ShadowLutTex": {
+                                "m_Scale": {"X": 1, "Y": 1},
+                                "m_Offset": {"X": 0, "Y": 0},
+                            },
                         },
                         "m_Ints": {},
                         "m_Floats": {
@@ -322,6 +330,8 @@ class AnimeStudioModelTests(unittest.TestCase):
                             "_SilkStockingsMaxAffect": 0.9,
                             "_Smoothness": 0.25,
                             "_UseDiffRampMap": 1.0,
+                            "_UseSDFLightmap": 1.0,
+                            "_UseShadowLutTex": 1.0,
                         },
                         "m_Colors": {
                             "_BaseColor": {"r": 1, "g": 1, "b": 1, "a": 1},
@@ -332,6 +342,8 @@ class AnimeStudioModelTests(unittest.TestCase):
                 [
                     ref("$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture", "CAB-texture", 30, "Texture2D"),
                     ref("$.m_SavedProperties.m_TexEnvs._DiffRampMap.m_Texture", "CAB-texture", 30, "Texture2D"),
+                    ref("$.m_SavedProperties.m_TexEnvs._SDFMask.m_Texture", "CAB-texture", 30, "Texture2D"),
+                    ref("$.m_SavedProperties.m_TexEnvs._ShadowLutTex.m_Texture", "CAB-texture", 30, "Texture2D"),
                 ],
                 metadata={"container": ""},
             ),
@@ -370,6 +382,8 @@ class AnimeStudioModelTests(unittest.TestCase):
         attach_texture_images(document, textures, {texture_id: "/texture.png"})
         self.assertEqual(texture_id.document_id, document["materials"][0]["previewPbr"]["baseColorTextureId"])
         self.assertEqual(texture_id.document_id, document["materials"][0]["previewPbr"]["diffuseRampTextureId"])
+        self.assertEqual(texture_id.document_id, document["materials"][0]["previewPbr"]["sdfMaskTextureId"])
+        self.assertEqual(texture_id.document_id, document["materials"][0]["previewPbr"]["shadowLutTextureId"])
         for expected, actual in zip(
             [0.1, 0.1, 0.1, 1.0],
             document["materials"][0]["previewPbr"]["baseColorFactor"],

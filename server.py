@@ -1466,6 +1466,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         geometry_path = model_path.with_name("geometry.bin")
         texture_root = model_path.parent / "textures"
+        model_builder_path = Path(build_hierarchy_document.__code__.co_filename)
         source_identity = {
             "recordId": int(record["id"]),
             "length": int(record["length"]),
@@ -1475,6 +1476,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "assetIndex": int(asset["asset_index"]),
             "assetPath": str(asset["path"]),
             "bundleName": str(asset["bundle_name"]),
+            # 解析逻辑变化后自动废弃旧 ModelDocument；跨文件协议变化仍由
+            # MODEL_SNAPSHOT_VERSION 显式控制。
+            "modelBuilderMtimeNs": model_builder_path.stat().st_mtime_ns,
             "dependencies": [
                 {
                     "recordId": int(dependency["id"]),

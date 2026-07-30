@@ -407,6 +407,8 @@ def attach_mesh_geometry(
             (floats.get("_UseDiffRampMap") == 1.0, "_DiffRampMap", "diffuseRampTextureId"),
             (floats.get("_UseSpecRampMap") == 1.0, "_SpecRampMap", "specularRampTextureId"),
             (floats.get("_UseSDFLightmap") == 1.0, "_SDFLightmap", "sdfLightmapTextureId"),
+            (floats.get("_UseSDFLightmap") == 1.0, "_SDFMask", "sdfMaskTextureId"),
+            (floats.get("_UseShadowLutTex") == 1.0, "_ShadowLutTex", "shadowLutTextureId"),
             (floats.get("_FaceHighlightMap") == 1.0, "_HighlightMap", "highlightTextureId"),
             (floats.get("_SilkStockings") == 1.0, "_SilkStockingsMask", "silkStockingsMaskTextureId"),
         ):

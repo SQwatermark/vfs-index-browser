@@ -79,6 +79,8 @@ def load_embedded_preview_images(input_path: Path) -> int:
         "diffuseRampTextureId",
         "specularRampTextureId",
         "sdfLightmapTextureId",
+        "sdfMaskTextureId",
+        "shadowLutTextureId",
         "highlightTextureId",
         "silkStockingsMaskTextureId",
     }
