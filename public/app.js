@@ -1,3 +1,8 @@
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js'
+
 const PAGE_SIZE = 100
 const MANIFEST_VIRTUAL_DIR = '__manifest_assets__'
 
@@ -8,6 +13,7 @@ const state = {
   pageInfo: { page: 1, pages: 1, total: 0 },
   selectedFileId: null,
   selectedFileKey: null,
+  disposeModelViewer: null,
 }
 
 const scopeNames = {
@@ -182,7 +188,10 @@ function renderFiles(files, filePage) {
             title="${escapeHtml(file.path)}"
           >
             <td>
-              <div class="file-name">${escapeHtml(file.name)}</div>
+              <div class="file-name-row">
+                <div class="file-name">${escapeHtml(file.name)}</div>
+                ${file.modelUrl ? `<button class="model-preview-button" data-model-url="${escapeHtml(file.modelUrl)}" title="预览组合模型">3D</button>` : ''}
+              </div>
               <div class="file-path">${escapeHtml(file.file_name)}</div>
             </td>
             <td>${escapeHtml(file.source)}</td>
@@ -213,6 +222,13 @@ function renderFiles(files, filePage) {
       }
     })
   })
+  document.querySelectorAll('.model-preview-button').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const row = button.closest('tr[data-file-key]')
+      selectModel(button.dataset.modelUrl, row.dataset.fileKey)
+    })
+  })
 }
 
 async function loadDirectory() {
@@ -230,9 +246,181 @@ async function loadDirectory() {
 }
 
 function renderPreviewLoading() {
+  disposeModelViewer()
   $('previewContent').innerHTML = '<div class="empty">正在读取文件...</div>'
   $('openRawLink').removeAttribute('href')
   $('downloadLink').removeAttribute('href')
+}
+
+function disposeModelViewer() {
+  state.disposeModelViewer?.()
+  state.disposeModelViewer = null
+}
+
+function disposeModelResources(root) {
+  root?.traverse((object) => {
+    object.geometry?.dispose()
+    const materials = Array.isArray(object.material) ? object.material : [object.material]
+    for (const material of materials) {
+      if (!material) continue
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) value.dispose()
+      }
+      material.dispose()
+    }
+  })
+}
+
+function createOutlineMaterial() {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x16191d,
+    side: THREE.BackSide,
+  })
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.outlineWidth = { value: 0.0035 }
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <begin_vertex>',
+      '#include <begin_vertex>\ntransformed += objectNormal * outlineWidth;',
+    ).replace(
+      'void main() {',
+      'uniform float outlineWidth;\nvoid main() {',
+    )
+  }
+  material.customProgramCacheKey = () => 'endfield-outline-v1'
+  return material
+}
+
+function createOutlineModel(source) {
+  const outline = cloneSkeleton(source)
+  const material = createOutlineMaterial()
+  outline.name = 'EndfieldPreviewOutline'
+  outline.traverse((object) => {
+    if (!object.isMesh) return
+    const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material]
+    const opaque = sourceMaterials.some((value) => value && !value.transparent && value.alphaTest === 0)
+    object.visible = opaque
+    object.material = material
+    object.renderOrder = -1
+  })
+  return outline
+}
+
+function renderModelPreview(data) {
+  disposeModelViewer()
+  const modelDocument = data.document || {}
+  const glbUrl = data.glbUrl
+  const downloadUrl = `${glbUrl}${glbUrl.includes('?') ? '&' : '?'}download=1`
+  $('openRawLink').href = glbUrl
+  $('downloadLink').href = downloadUrl
+  $('previewContent').innerHTML = `
+    <div class="model-summary">
+      <strong>${escapeHtml(data.asset?.path || 'Model')}</strong>
+      <span>${formatInt(modelDocument.nodes?.length)} 节点</span>
+      <span>${formatInt(modelDocument.meshes?.length)} 网格</span>
+      <span>${formatInt(modelDocument.skins?.length)} 蒙皮</span>
+      <span>${formatInt(modelDocument.materials?.length)} 材质</span>
+      <span>${formatInt(modelDocument.images?.length)} 纹理</span>
+    </div>
+    <div id="modelViewport" class="model-viewport">
+      <label class="model-view-option">
+        <input id="modelOutlineToggle" type="checkbox" checked />
+        <span>轮廓线</span>
+      </label>
+      <div id="modelLoading" class="model-loading">正在加载 GLB...</div>
+    </div>
+  `
+
+  const viewport = $('modelViewport')
+  const loading = $('modelLoading')
+  const scene = new THREE.Scene()
+  scene.background = new THREE.Color(0x101317)
+  const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 10000)
+  const renderer = new THREE.WebGLRenderer({ antialias: true })
+  renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  viewport.prepend(renderer.domElement)
+
+  const controls = new OrbitControls(camera, renderer.domElement)
+  controls.enableDamping = true
+  controls.dampingFactor = 0.08
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x28313a, 2.2))
+  const keyLight = new THREE.DirectionalLight(0xffffff, 3.2)
+  keyLight.position.set(4, 6, 5)
+  scene.add(keyLight)
+
+  let model = null
+  let active = true
+  const resize = () => {
+    const width = Math.max(viewport.clientWidth, 1)
+    const height = Math.max(viewport.clientHeight, 1)
+    renderer.setSize(width, height, false)
+    camera.aspect = width / height
+    camera.updateProjectionMatrix()
+  }
+  const observer = new ResizeObserver(resize)
+  observer.observe(viewport)
+  resize()
+
+  new GLTFLoader().load(
+    glbUrl,
+    (gltf) => {
+      if (!active) {
+        disposeModelResources(gltf.scene)
+        return
+      }
+      model = new THREE.Group()
+      model.name = 'EndfieldModelPreview'
+      model.add(gltf.scene)
+      const outline = createOutlineModel(gltf.scene)
+      model.add(outline)
+      $('modelOutlineToggle').addEventListener('change', (event) => {
+        outline.visible = event.currentTarget.checked
+      })
+      scene.add(model)
+      model.updateMatrixWorld(true)
+      const box = new THREE.Box3().setFromObject(model)
+      if (box.isEmpty()) {
+        loading.textContent = '模型没有可显示的几何体'
+        return
+      }
+      const size = box.getSize(new THREE.Vector3())
+      const center = box.getCenter(new THREE.Vector3())
+      model.position.sub(center)
+      const verticalFov = THREE.MathUtils.degToRad(camera.fov)
+      const framedHeight = Math.max(size.y, size.x / camera.aspect)
+      const distance = Math.max(framedHeight / (2 * Math.tan(verticalFov / 2)) * 1.18, 0.1)
+      const viewDirection = new THREE.Vector3(0.7, 0.22, 1.5).normalize()
+      camera.near = Math.max(distance / 1000, 0.001)
+      camera.far = distance + Math.max(size.length() * 10, 10)
+      camera.position.copy(viewDirection.multiplyScalar(distance))
+      camera.updateProjectionMatrix()
+      controls.target.set(0, 0, 0)
+      controls.update()
+      loading.remove()
+    },
+    (event) => {
+      if (!active || !event.total) return
+      loading.textContent = `正在加载 GLB... ${Math.round(event.loaded / event.total * 100)}%`
+    },
+    (error) => {
+      if (!active) return
+      loading.textContent = `模型加载失败：${error.message || error}`
+    },
+  )
+
+  renderer.setAnimationLoop(() => {
+    controls.update()
+    renderer.render(scene, camera)
+  })
+  state.disposeModelViewer = () => {
+    active = false
+    observer.disconnect()
+    renderer.setAnimationLoop(null)
+    controls.dispose()
+    disposeModelResources(model)
+    renderer.dispose()
+    renderer.forceContextLoss()
+  }
 }
 
 function renderBinaryJsonProbe(probe) {
@@ -580,6 +768,20 @@ async function selectVirtualFile(previewUrl, fileKey) {
   }
 }
 
+async function selectModel(modelUrl, fileKey) {
+  state.selectedFileId = null
+  state.selectedFileKey = fileKey
+  document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
+    row.classList.toggle('selected', row.dataset.fileKey === fileKey)
+  })
+  renderPreviewLoading()
+  try {
+    renderModelPreview(await getJson(modelUrl))
+  } catch (error) {
+    $('previewContent').innerHTML = `<div class="notice">模型读取失败：${escapeHtml(error.message)}</div>`
+  }
+}
+
 async function search() {
   const q = $('searchInput').value.trim()
   if (!q) return
@@ -631,6 +833,13 @@ async function init() {
   renderScopes(manifest.scopes)
   renderSummary(manifest.scopes)
   await loadDirectory()
+  const query = new URLSearchParams(window.location.search)
+  const manifestId = query.get('modelManifestId')
+  const assetIndex = query.get('modelAssetIndex')
+  if (manifestId && assetIndex) {
+    const modelUrl = `/api/manifest-asset/model?manifestId=${encodeURIComponent(manifestId)}&assetIndex=${encodeURIComponent(assetIndex)}`
+    await selectModel(modelUrl, `model:${manifestId}:${assetIndex}`)
+  }
 }
 
 init().catch((error) => {

@@ -100,5 +100,10 @@ int32[count] values
 
 ## 下一步
 
-将解析结果写入查询友好的 SQLite 派生索引，并在浏览服务中增加
-`assets/... -> Bundle -> Effective .ab -> AB 内部对象` 的导航链路。
+SQLite 派生索引现在保存三类 Bundle 依赖，并提供直接依赖与传递依赖闭包查询。浏览服务的模型层级快照接口已使用该闭包暂存依赖 AB，并通过 AnimeStudio CABMap 解析跨 Bundle PPtr。
+
+佩丽卡 `chr_0004_pelica_postmodel.prefab` 的真实验证得到 64 个传递依赖 Bundle，全部可以从 Effective VFS 定位。扩大对象导出类型并排除 GameObject 的便利镜像字段后，恢复出 454 个层级节点和 3532 条去重引用边，仅剩 35 条脚本组件引用目标未进入快照。这确认当前闭包方向能够支撑 Prefab 层级、静态几何、骨架、蒙皮、材质、纹理和 LOD 恢复；依赖 Bundle 已加载仍不等于所有 Unity 对象均已导出。
+
+Texture2D 不进入主 JSON 对象快照，而是在解析 Material 后按实际引用名称执行第二次过滤导出。佩丽卡样本只导出 37 个实际引用纹理，而不是扫描并转换 64 个依赖 Bundle 中的全部纹理。
+
+当前 ModelDocument 状态为 `texturedSkinnedModel`。GLB 导出器按显式 `LODGroup` 选择 LOD0，并排除未归组的 `shadowProxyDesktop` Renderer，再继续裁剪未使用的 Mesh、Skin、Accessor、Material 和纹理；佩丽卡 v24 预览 GLB 为 12 个 Mesh、12 个 Skin 和 23 张嵌入图片。图片除标准 PBR 槽位外，还包含由 `extras.endfieldPreview` 标识的 Ramp、SDF、高光和丝袜专用贴图。

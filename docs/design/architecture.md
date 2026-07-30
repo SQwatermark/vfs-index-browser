@@ -25,6 +25,8 @@ SQLite 主索引保存逻辑文件、来源、物理 chunk、偏移、长度、�
 
 manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务根据 Bundle 名称定位 Effective `.ab`，调用 AnimeStudio，并用 AssetMap 的 `Container` 精确匹配导出文件。PCK、USM、TableCfg 和 MemoryPack 也采用相同的按需解析原则。
 
+Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
+
 ## 关键约束
 
 - 普通目录是否含 `.ab` 不再影响目录结构。
@@ -36,6 +38,6 @@ manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用�
 ## 后续演进
 
 1. 建立 manifest 搜索 API 和 Bundle 依赖查看器。
-2. 为模型、材质、动画等组合资源建立可复用的聚合解析接口。
+2. 在现有[组合模型恢复与导出设计](model-recovery.md)基础上继续恢复动画、BlendShape 和游戏特有 Shader。
 3. 将 `server.py` 中 PCK、AB、USM 适配器逐步拆成独立模块。
 4. 增加小型合成样本测试，避免测试依赖本机游戏文件。

@@ -10,6 +10,7 @@
 - 按需解析单个 AssetBundle，不预扫描全部 `.ab` 文件。
 - 预览文本、图片、音频和视频，并下载原始或转换后的文件。
 - 解析 TableCfg/SparkBuffer，并实验性解析 JsonData/MemoryPack 二进制配置。
+- 按需恢复 Prefab 的组合模型，并以自包含 GLB 在浏览器中预览或下载。
 
 ## 架构原则
 
@@ -25,7 +26,7 @@
 安装 Python 依赖：
 
 ```powershell
-python -m pip install brotli
+python -m pip install brotli pillow
 ```
 
 首次从 JSONL/TGZ 索引构建 SQLite 并启动：
@@ -89,6 +90,8 @@ GET /api/internal/raw?id=123&path=Texture2D/example.png
 GET /api/tablecfg/json?id=123
 GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
 GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
+GET /api/manifest-asset/model?manifestId=123&assetIndex=456
+GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456
 ```
 
 manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestId + assetIndex` 稳定定位。`.ab`、`.pck` 和 `.usm` 仍通过 internal API 浏览各自的按需内部视图。
@@ -101,6 +104,17 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema。
 - `tools/decode_memorypack_json.py`：使用已知 schema 解码二进制配置。
+- `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，并根据 `endfieldPreview` 自动建立 Eevee CharacterNPR 预览材质、相机、灯光和可选轮廓。
+
+Blender 脚本必须由 Blender 自带的 Python 执行：
+
+```powershell
+blender --background --factory-startup `
+  --python tools/blender_import_model.py -- `
+  model.glb model.blend --render preview.png
+```
+
+使用 `--outline` 可启用近似的 Freestyle 轮廓。脚本会保留 GLB 导入的骨架、蒙皮、纹理和材质自定义属性；当前节点组是 Eevee 静态预览后端，不等同于原始 HGRP Shader。
 
 格式结论和未完成事项以 `docs/research/` 中的文档为准，不应从临时终端输出推断。
 
@@ -109,4 +123,5 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - manifest 已能建立完整路径到 Bundle 的映射，但尚未对所有 Unity 类型提供预览。
 - manifest 资源会自动衔接对应 AB；AnimeStudio 未支持的 Unity 类型会明确提示无法导出。
 - MemoryPack 解码仍依赖从当前客户端 IL2CPP 数据提取的 schema，游戏升级后需要重新验证。
-- 音频用途、角色模型、任务台本等聚合视图尚未建立。
+- 组合模型已完成首个角色样本的网页与 Blender 验证；当前预览区分衣物 PBR 与面部/头发 CharacterNPR，并携带 Ramp、SDF 等专用纹理，但游戏完整 Shader、动画和 BlendShape 尚未恢复。
+- 音频用途、任务台本等聚合视图尚未建立。

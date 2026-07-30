@@ -10,6 +10,7 @@ import json
 import mimetypes
 import os
 import re
+import shutil
 import sqlite3
 import struct
 import subprocess
@@ -26,6 +27,16 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
+from animestudio_model import (
+    attach_mesh_geometry,
+    attach_texture_images,
+    build_hierarchy_document,
+    collect_material_textures,
+    find_container_root_game_object,
+    load_animestudio_objects,
+)
+from model_document import validate_model_document
+from gltf_export import build_glb
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -49,10 +60,13 @@ DEFAULT_INDEX = (
 DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
+BUNDLED_ANIMESTUDIO_CLI = PROJECT_ROOT / "tools" / "AnimeStudio.CLI" / "AnimeStudio.CLI.exe"
 ANIMESTUDIO_CLI = Path(
     os.environ.get(
         "ANIMESTUDIO_CLI",
-        r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
+        BUNDLED_ANIMESTUDIO_CLI
+        if BUNDLED_ANIMESTUDIO_CLI.exists()
+        else r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
     )
 )
 VGMSTREAM_CLI = Path(
@@ -69,6 +83,7 @@ CHACHA_KEY = bytes.fromhex(
 )
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
+MODEL_SNAPSHOT_VERSION = 24
 AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
@@ -91,6 +106,18 @@ VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
 ASSETBUNDLE_EXPORT_TYPES = ("Texture2D", "Sprite", "TextAsset", "AudioClip", "VideoClip")
+MODEL_SNAPSHOT_TYPES = (
+    "GameObject",
+    "Transform",
+    "MeshFilter",
+    "MeshRenderer",
+    "SkinnedMeshRenderer",
+    "Mesh",
+    "Material",
+    "Animator",
+    "Avatar",
+    "LODGroup",
+)
 AUDIO_ENTRY_RE = re.compile(r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$", re.IGNORECASE)
 PAGE_SIZE_MAX = 500
 MANIFEST_VIRTUAL_DIR = "__manifest_assets__"
@@ -1015,6 +1042,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/manifest-asset/raw":
             self.handle_manifest_asset_raw(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/manifest-asset/model":
+            self.handle_manifest_asset_model(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/model-buffer":
+            self.handle_manifest_asset_model_buffer(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/model-texture":
+            self.handle_manifest_asset_model_texture(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/model-glb":
+            self.handle_manifest_asset_model_glb(parse_qs(parsed.query))
+            return
         if parsed.path == "/api/tablecfg/json":
             self.handle_tablecfg_json(parse_qs(parsed.query))
             return
@@ -1232,6 +1271,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "previewUrl": f"/api/manifest-asset/preview?{params}",
                 }
             )
+            if file_suffix(asset["path"]) == ".prefab":
+                files[-1]["modelUrl"] = f"/api/manifest-asset/model?{params}"
         directory = listing["directory"]
         self.send_json(
             {
@@ -1406,6 +1447,264 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     output.write(data)
                     remaining -= len(data)
         os.replace(tmp, target)
+
+    def model_snapshot_paths(self, record: dict, asset_index: int) -> tuple[Path, Path, Path, Path]:
+        root = INTERNAL_CACHE_DIR / str(record["id"]) / "models" / str(asset_index)
+        return root / "source.ab", root / "objects", root / "model.json", root / "run.json"
+
+    def ensure_model_hierarchy(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+        dependency_bundles: list[dict],
+        dependency_sources: list[tuple[dict, Path]],
+        missing_dependency_bundles: list[dict],
+    ) -> tuple[dict, dict]:
+        source_path, object_root, model_path, run_path = self.model_snapshot_paths(
+            record, int(asset["asset_index"])
+        )
+        geometry_path = model_path.with_name("geometry.bin")
+        texture_root = model_path.parent / "textures"
+        source_identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "assetIndex": int(asset["asset_index"]),
+            "assetPath": str(asset["path"]),
+            "bundleName": str(asset["bundle_name"]),
+            "dependencies": [
+                {
+                    "recordId": int(dependency["id"]),
+                    "length": int(dependency["length"]),
+                    "offset": int(dependency["offset"]),
+                    "chunkPath": str(dependency["chunk_path"]),
+                    "chunkMtimeNs": dependency_chunk.stat().st_mtime_ns,
+                }
+                for dependency, dependency_chunk in dependency_sources
+            ],
+            "missingDependencyBundles": missing_dependency_bundles,
+        }
+        if model_path.exists() and run_path.exists():
+            try:
+                run_meta = json.loads(run_path.read_text(encoding="utf-8"))
+                document = json.loads(model_path.read_text(encoding="utf-8"))
+                if (
+                    run_meta.get("version") == MODEL_SNAPSHOT_VERSION
+                    and run_meta.get("source") == source_identity
+                    and (not document.get("buffers") or geometry_path.exists())
+                    and (not document.get("images") or texture_root.exists())
+                    and not validate_model_document(document)
+                ):
+                    return document, run_meta
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        if not ANIMESTUDIO_CLI.exists():
+            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
+
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        input_root = source_path.parent / "inputs"
+        shutil.rmtree(input_root, ignore_errors=True)
+        input_root.mkdir(parents=True, exist_ok=True)
+        source_path = input_root / "entry.ab"
+        self.write_file_slice(record, chunk_path, source_path)
+        for dependency, dependency_chunk in dependency_sources:
+            dependency_path = input_root / f"dependency-{int(dependency['id'])}.ab"
+            self.write_file_slice(dependency, dependency_chunk, dependency_path)
+        shutil.rmtree(object_root, ignore_errors=True)
+        object_root.mkdir(parents=True, exist_ok=True)
+        map_name = f"vfs-model-{int(record['id'])}-{int(asset['asset_index'])}"
+        build_map_command = [
+            str(ANIMESTUDIO_CLI),
+            str(input_root),
+            str(object_root),
+            "--game",
+            "ArknightsEndfield",
+            "--map_op",
+            "CABMap",
+            "--map_name",
+            map_name,
+            "--logger_flags",
+            "Error",
+            "Warning",
+            "Info",
+        ]
+        command = [
+            str(ANIMESTUDIO_CLI),
+            str(source_path),
+            str(object_root),
+            "--game",
+            "ArknightsEndfield",
+            "--map_op",
+            "Load,CABMap",
+            "--map_name",
+            map_name,
+            "--types",
+            *MODEL_SNAPSHOT_TYPES,
+            "--export_type",
+            "JSON",
+            "--group_assets",
+            "ByType",
+            "--logger_flags",
+            "Error",
+            "Warning",
+            "Info",
+        ]
+        completed_steps = []
+        for step_name, step_command in (("buildCABMap", build_map_command), ("export", command)):
+            completed = subprocess.run(
+                step_command,
+                cwd=str(ANIMESTUDIO_CLI.parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+                check=False,
+            )
+            completed_steps.append(
+                {
+                    "name": step_name,
+                    "command": step_command,
+                    "returncode": completed.returncode,
+                    "stdout": completed.stdout,
+                    "stderr": completed.stderr,
+                }
+            )
+            if completed.returncode != 0:
+                break
+        run_meta = {
+            "version": MODEL_SNAPSHOT_VERSION,
+            "source": source_identity,
+            "steps": completed_steps,
+            "builtAtEpoch": int(time.time()),
+            "scope": "manifestDependencyClosure",
+            "dependencyBundles": dependency_bundles,
+            "missingDependencyBundles": missing_dependency_bundles,
+        }
+        run_path.write_text(json.dumps(run_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        if len(completed_steps) != 2 or completed_steps[-1]["returncode"] != 0:
+            failed_step = completed_steps[-1]["name"]
+            raise RuntimeError(f"AnimeStudio model snapshot step failed: {failed_step}")
+
+        objects = load_animestudio_objects(object_root)
+        if not objects:
+            raise RuntimeError("AnimeStudio produced no GameObject/Transform JSON snapshots")
+        entry = find_container_root_game_object(objects, str(asset["path"]))
+        document = build_hierarchy_document(
+            objects,
+            entry,
+            logical_path=str(asset["path"]),
+            bundle=str(asset["bundle_name"]),
+        )
+        geometry = attach_mesh_geometry(
+            document,
+            objects,
+            buffer_uri=(
+                f"/api/manifest-asset/model-buffer?recordId={int(record['id'])}"
+                f"&assetIndex={int(asset['asset_index'])}"
+            ),
+        )
+        textures = collect_material_textures(document, objects)
+        image_uris = {}
+        if textures:
+            shutil.rmtree(texture_root, ignore_errors=True)
+            texture_root.mkdir(parents=True, exist_ok=True)
+            texture_names = sorted(
+                {str(texture.get("name") or "") for texture in textures.values()} - {""}
+            )
+            texture_command = [
+                str(ANIMESTUDIO_CLI),
+                str(source_path),
+                str(texture_root),
+                "--game",
+                "ArknightsEndfield",
+                "--map_op",
+                "Load,CABMap",
+                "--map_name",
+                map_name,
+                "--types",
+                "Texture2D",
+                "--names",
+                f"^(?:{'|'.join(re.escape(name) for name in texture_names)})$",
+                "--export_type",
+                "Convert",
+                "--group_assets",
+                "ByType",
+                "--logger_flags",
+                "Error",
+                "Warning",
+                "Info",
+            ]
+            completed = subprocess.run(
+                texture_command,
+                cwd=str(ANIMESTUDIO_CLI.parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+                check=False,
+            )
+            completed_steps.append(
+                {
+                    "name": "exportTextures",
+                    "command": texture_command,
+                    "returncode": completed.returncode,
+                    "stdout": completed.stdout,
+                    "stderr": completed.stderr,
+                }
+            )
+            if completed.returncode == 0:
+                for texture_id in textures:
+                    suffix = f"_p{texture_id.path_id & 0xFFFFFFFFFFFFFFFF:016X}.png"
+                    matches = [
+                        path for path in texture_root.rglob("*.png")
+                        if path.name.upper().endswith(suffix.upper())
+                    ]
+                    if len(matches) == 1:
+                        relative = matches[0].relative_to(texture_root).as_posix()
+                        image_uris[texture_id] = (
+                            f"/api/manifest-asset/model-texture?recordId={int(record['id'])}"
+                            f"&assetIndex={int(asset['asset_index'])}&path={quote(relative)}"
+                        )
+            attach_texture_images(document, textures, image_uris)
+            missing_textures = [
+                texture_id.document_id for texture_id in textures if texture_id not in image_uris
+            ]
+            if missing_textures:
+                document["diagnostics"].append(
+                    {
+                        "severity": "warning",
+                        "code": "MODEL_TEXTURES_MISSING",
+                        "message": "部分模型纹理未能导出为预览图片。",
+                        "details": {"textureIds": missing_textures},
+                    }
+                )
+        if missing_dependency_bundles:
+            document["diagnostics"].append(
+                {
+                    "severity": "warning",
+                    "code": "DEPENDENCY_BUNDLES_MISSING",
+                    "message": "部分跨 Bundle 依赖在当前 VFS 中不可用，模型层级可能不完整。",
+                    "details": {"bundles": missing_dependency_bundles},
+                }
+            )
+        validation_errors = validate_model_document(document)
+        if validation_errors:
+            run_meta["validationErrors"] = validation_errors
+            run_path.write_text(json.dumps(run_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+            raise RuntimeError("generated ModelDocument failed semantic validation")
+        run_path.write_text(json.dumps(run_meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        model_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if geometry:
+            geometry_path.write_bytes(geometry)
+        elif geometry_path.exists():
+            geometry_path.unlink()
+        return document, run_meta
 
     def assetbundle_cache_paths(self, record: dict) -> tuple[Path, Path, Path, Path]:
         cache_root = INTERNAL_CACHE_DIR / str(record["id"])
@@ -2056,10 +2355,45 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         return target
 
-    def resolve_manifest_asset_file(
+    def resolve_bundle_sources(
+        self,
+        bundles: list[dict],
+    ) -> tuple[list[tuple[dict, Path]], list[dict]]:
+        """Resolve manifest bundle names to readable VFS records in manifest order."""
+
+        resolved: list[tuple[dict, Path]] = []
+        missing: list[dict] = []
+        with self.connect() as conn:
+            for bundle in bundles:
+                file_name = f"Data/Bundles/Windows/{bundle['name']}"
+                candidates = [
+                    row_to_dict(row)
+                    for row in conn.execute(
+                        "SELECT * FROM files WHERE file_name = ?",
+                        (file_name,),
+                    )
+                ]
+                candidates.sort(
+                    key=lambda row: source_rank(row["source"], bool(row["chunk_exists"]))
+                )
+                source = next(
+                    (
+                        (candidate, Path(candidate["chunk_path"]))
+                        for candidate in candidates
+                        if Path(candidate["chunk_path"]).exists()
+                    ),
+                    None,
+                )
+                if source is None:
+                    missing.append(bundle)
+                else:
+                    resolved.append(source)
+        return resolved, missing
+
+    def resolve_manifest_asset_source(
         self,
         query: dict[str, list[str]],
-    ) -> tuple[dict, Path, dict, dict] | None:
+    ) -> tuple[ManifestIndex, dict, dict, Path] | None:
         try:
             manifest_id = int(query.get("manifestId", [""])[0])
             asset_index = int(query.get("assetIndex", [""])[0])
@@ -2073,7 +2407,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return None
             _, manifest_record, manifest_chunk = resolved_manifest
             try:
-                asset = self.manifest_index(manifest_record, manifest_chunk).asset(asset_index)
+                index = self.manifest_index(manifest_record, manifest_chunk)
+                asset = index.asset(asset_index)
             except (ValueError, OSError, sqlite3.Error) as error:
                 self.send_error_json(400, str(error))
                 return None
@@ -2101,6 +2436,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return None
 
         bundle_record, bundle_chunk = resolved_bundle
+        return index, asset, bundle_record, bundle_chunk
+
+    def resolve_manifest_asset_file(
+        self,
+        query: dict[str, list[str]],
+    ) -> tuple[dict, Path, dict, dict] | None:
+        resolved_source = self.resolve_manifest_asset_source(query)
+        if resolved_source is None:
+            return None
+        _, asset, bundle_record, bundle_chunk = resolved_source
         ensured = self.ensure_assetbundle_export(bundle_record, bundle_chunk)
         if ensured is None:
             return None
@@ -2524,6 +2869,194 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
             return
         self.send_json({**base, "kind": "hex", "hex": hex_preview(data), "truncated": truncated})
+
+    def handle_manifest_asset_model(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        index, asset, bundle_record, bundle_chunk = resolved
+        if file_suffix(str(asset["path"])) != ".prefab":
+            self.send_error_json(400, "Model hierarchy snapshots currently require a .prefab asset")
+            return
+
+        try:
+            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
+            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+            document, run_meta = self.ensure_model_hierarchy(
+                bundle_record,
+                bundle_chunk,
+                asset,
+                dependencies,
+                dependency_sources,
+                missing_dependencies,
+            )
+        except FileNotFoundError as error:
+            self.send_json(
+                {
+                    "kind": "modelDocument",
+                    "status": "toolMissing",
+                    "message": str(error),
+                },
+                status=503,
+            )
+            return
+        except subprocess.TimeoutExpired:
+            self.send_error_json(504, "AnimeStudio timed out while exporting the model hierarchy")
+            return
+        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            self.send_error_json(500, str(error))
+            return
+
+        manifest_id = int(query["manifestId"][0])
+        asset_index = int(asset["asset_index"])
+        self.send_json(
+            {
+                "kind": "modelDocument",
+                "status": (
+                    "texturedSkinnedModel"
+                    if document.get("images") and document.get("skins")
+                    else "staticGeometry"
+                    if document.get("meshes")
+                    else "hierarchyOnly"
+                ),
+                "asset": asset,
+                "glbUrl": (
+                    f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
+                    f"&assetIndex={asset_index}"
+                ),
+                "document": document,
+                "run": {
+                    "scope": run_meta.get("scope"),
+                    "builtAtEpoch": run_meta.get("builtAtEpoch"),
+                    "dependencyBundles": run_meta.get("dependencyBundles", []),
+                    "missingDependencyBundles": run_meta.get("missingDependencyBundles", []),
+                },
+            }
+        )
+
+    def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        index, asset, bundle_record, bundle_chunk = resolved
+        if file_suffix(str(asset["path"])) != ".prefab":
+            self.send_error_json(400, "GLB export currently requires a .prefab asset")
+            return
+
+        try:
+            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
+            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+            document, _ = self.ensure_model_hierarchy(
+                bundle_record,
+                bundle_chunk,
+                asset,
+                dependencies,
+                dependency_sources,
+                missing_dependencies,
+            )
+            _, _, model_path, _ = self.model_snapshot_paths(
+                bundle_record, int(asset["asset_index"])
+            )
+            geometry_path = model_path.with_name("geometry.bin")
+            if not geometry_path.is_file():
+                raise FileNotFoundError("model geometry buffer not found")
+
+            texture_root = (model_path.parent / "textures").resolve()
+            image_paths: dict[str, Path] = {}
+            for image in document.get("images", []):
+                parsed = urlparse(str(image.get("uri") or ""))
+                image_query = parse_qs(parsed.query)
+                if parsed.path != "/api/manifest-asset/model-texture":
+                    raise ValueError(f"unsupported model image URI: {image.get('uri')}")
+                if int(image_query.get("recordId", ["-1"])[0]) != int(bundle_record["id"]):
+                    raise ValueError("model image recordId does not match the current model")
+                if int(image_query.get("assetIndex", ["-1"])[0]) != int(asset["asset_index"]):
+                    raise ValueError("model image assetIndex does not match the current model")
+                relative = unquote(image_query.get("path", [""])[0]).replace("\\", "/").strip("/")
+                target = (texture_root / relative).resolve()
+                if not relative or texture_root not in target.parents or not target.is_file():
+                    raise FileNotFoundError(f"model texture not found: {relative}")
+                image_paths[str(image["id"])] = target
+
+            glb_path = model_path.with_name("model.glb")
+            # Exporter changes can alter the GLB without rebuilding ModelDocument.
+            exporter_path = Path(build_glb.__code__.co_filename)
+            source_paths = [model_path, geometry_path, exporter_path, *image_paths.values()]
+            newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
+            if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
+                glb = build_glb(
+                    document,
+                    geometry_path.read_bytes(),
+                    lambda image: image_paths[str(image["id"])].read_bytes(),
+                )
+                temporary = glb_path.with_suffix(".glb.tmp")
+                temporary.write_bytes(glb)
+                os.replace(temporary, glb_path)
+        except subprocess.TimeoutExpired:
+            self.send_error_json(504, "AnimeStudio timed out while exporting the model")
+            return
+        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            self.send_error_json(500, str(error))
+            return
+
+        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
+        disposition = "attachment" if download else "inline"
+        name = f"{Path(str(asset['path'])).stem}.glb"
+        self.send_response(200)
+        self.send_header("Content-Type", "model/gltf-binary")
+        self.send_header("Content-Length", str(glb_path.stat().st_size))
+        self.send_header("Content-Disposition", f"{disposition}; filename*=UTF-8''{quote(name)}")
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.end_headers()
+        with glb_path.open("rb") as source:
+            while data := source.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
+
+    def handle_manifest_asset_model_buffer(self, query: dict[str, list[str]]) -> None:
+        try:
+            record_id = int(query.get("recordId", [""])[0])
+            asset_index = int(query.get("assetIndex", [""])[0])
+            if record_id < 0 or asset_index < 0:
+                raise ValueError
+        except (ValueError, IndexError):
+            self.send_error_json(400, "recordId and assetIndex must be non-negative integers")
+            return
+        target = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index) / "geometry.bin"
+        if not target.is_file():
+            self.send_error_json(404, "model geometry buffer not found")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(target.stat().st_size))
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.end_headers()
+        with target.open("rb") as source:
+            while data := source.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
+
+    def handle_manifest_asset_model_texture(self, query: dict[str, list[str]]) -> None:
+        try:
+            record_id = int(query.get("recordId", [""])[0])
+            asset_index = int(query.get("assetIndex", [""])[0])
+            if record_id < 0 or asset_index < 0:
+                raise ValueError
+        except (ValueError, IndexError):
+            self.send_error_json(400, "recordId and assetIndex must be non-negative integers")
+            return
+        root = (INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index) / "textures").resolve()
+        relative = unquote(query.get("path", [""])[0]).replace("\\", "/").strip("/")
+        target = (root / relative).resolve()
+        if not relative or root not in target.parents or not target.is_file():
+            self.send_error_json(404, "model texture not found")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(target.stat().st_size))
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.end_headers()
+        with target.open("rb") as source:
+            while data := source.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
 
     def handle_manifest_asset_raw(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_file(query)

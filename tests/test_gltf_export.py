@@ -1,0 +1,127 @@
+import json
+import struct
+import unittest
+from io import BytesIO
+
+from PIL import Image
+
+from gltf_export import build_glb
+
+
+class GltfExportTests(unittest.TestCase):
+    def test_builds_self_contained_glb(self):
+        document = {
+            "asset": {"rootNodeIds": ["node:root"]},
+            "bufferViews": [
+                {"id": "view:positions", "bufferId": "buffer", "byteOffset": 0, "byteLength": 12},
+                {"id": "view:unused", "bufferId": "buffer", "byteOffset": 12, "byteLength": 12},
+            ],
+            "accessors": [
+                {"id": "positions", "bufferViewId": "view:positions", "componentType": "f32", "type": "vec3", "count": 1},
+                {"id": "unused", "bufferViewId": "view:unused", "componentType": "f32", "type": "vec3", "count": 1},
+            ],
+            "images": [
+                {"id": "image", "mimeType": "image/png", "uri": "/image.png"},
+                {"id": "packed-image", "mimeType": "image/png", "uri": "/packed.png"},
+                {"id": "normal-image", "mimeType": "image/png", "uri": "/normal.png"},
+                {"id": "unused-image", "mimeType": "image/png", "uri": "/unused.png"},
+            ],
+            "textures": [
+                {"id": "texture", "imageId": "image"},
+                {"id": "packed-texture", "imageId": "packed-image"},
+                {"id": "normal-texture", "imageId": "normal-image"},
+                {"id": "unused-texture", "imageId": "unused-image"},
+            ],
+            "materials": [
+                {
+                    "id": "material",
+                    "name": "Material",
+                    "previewPbr": {
+                        "alphaMode": "BLEND",
+                        "baseColorTextureId": "texture",
+                        "baseColorTextureUsesGrayAsAlpha": True,
+                        "diffuseRampTextureId": "packed-texture",
+                        "metallicGlossTextureId": "packed-texture",
+                        "normalTextureId": "normal-texture",
+                        "materialFamily": "characterNpr",
+                        "materialRole": "skin",
+                        "silkStockings": {"color": [0.0, 0.0, 0.0], "maxAffect": 0.9},
+                        "unlit": True,
+                    },
+                },
+                {"id": "unused-material", "name": "Unused", "previewPbr": {"baseColorTextureId": "unused-texture"}},
+            ],
+            "meshes": [
+                {"id": "mesh", "name": "Mesh", "primitives": [{"topology": "triangles", "attributes": {"POSITION": "positions"}, "materialId": "material"}]},
+                {"id": "unused-mesh", "name": "Unused", "primitives": [{"topology": "triangles", "attributes": {"POSITION": "unused"}, "materialId": "unused-material"}]},
+            ],
+            "nodes": [
+                {"id": "node:root", "name": "Root", "children": ["node:lod1", "node:shadow"], "transform": {}, "meshId": "mesh"},
+                {"id": "node:lod1", "name": "LOD1", "children": [], "transform": {}, "meshId": "unused-mesh", "extras": {"lodLevel": 1}},
+                {"id": "node:shadow", "name": "Body_shadowProxyDesktop", "children": [], "transform": {}, "meshId": "unused-mesh"},
+            ],
+            "skins": [],
+        }
+
+        source_images = {}
+        for image_id, color in (
+            ("image", (64, 255, 255, 255)),
+            ("packed-image", (64, 128, 32, 192)),
+            ("normal-image", (128, 64, 0, 255)),
+        ):
+            payload = BytesIO()
+            Image.new("RGBA", (1, 1), color).save(payload, format="PNG")
+            source_images[image_id] = payload.getvalue()
+        glb = build_glb(document, b"\0" * 24, lambda image: source_images[image["id"]])
+
+        magic, version, length = struct.unpack_from("<III", glb)
+        self.assertEqual(0x46546C67, magic)
+        self.assertEqual(2, version)
+        self.assertEqual(len(glb), length)
+        json_length, json_type = struct.unpack_from("<II", glb, 12)
+        self.assertEqual(0x4E4F534A, json_type)
+        payload = json.loads(glb[20:20 + json_length].decode("utf-8"))
+        self.assertEqual("2.0", payload["asset"]["version"])
+        self.assertEqual([-1.0, 1.0, 1.0], payload["nodes"][-1]["scale"])
+        self.assertEqual(3, len(payload["images"]))
+        self.assertEqual(1, len(payload["meshes"]))
+        self.assertEqual(1, len(payload["materials"]))
+        self.assertEqual("BLEND", payload["materials"][0]["alphaMode"])
+        self.assertEqual(
+            {
+                "materialFamily": "characterNpr",
+                "materialRole": "skin",
+                "diffuseRampTextureId": "packed-texture",
+                "silkStockings": {"color": [0.0, 0.0, 0.0], "maxAffect": 0.9},
+            },
+            payload["materials"][0]["extras"]["endfieldPreview"],
+        )
+        self.assertEqual(["KHR_materials_unlit"], payload["extensionsUsed"])
+        self.assertEqual(
+            {}, payload["materials"][0]["extensions"]["KHR_materials_unlit"]
+        )
+        pbr = payload["materials"][0]["pbrMetallicRoughness"]
+        self.assertEqual(1.0, pbr["metallicFactor"])
+        self.assertEqual(1.0, pbr["roughnessFactor"])
+        self.assertIn("metallicRoughnessTexture", pbr)
+        self.assertEqual(1, len(payload["accessors"]))
+        self.assertEqual(12, payload["bufferViews"][0]["byteLength"])
+        binary_header = 20 + json_length
+        binary_length, binary_type = struct.unpack_from("<II", glb, binary_header)
+        self.assertEqual(0x004E4942, binary_type)
+        binary = glb[binary_header + 8:binary_header + 8 + binary_length]
+        pixels = []
+        for image in payload["images"]:
+            image_view = payload["bufferViews"][image["bufferView"]]
+            image_payload = binary[
+                image_view["byteOffset"]:image_view["byteOffset"] + image_view["byteLength"]
+            ]
+            pixels.append(Image.open(BytesIO(image_payload)).getpixel((0, 0)))
+        self.assertEqual(
+            [(255, 255, 255, 64), (255, 63, 64, 255), (128, 191, 238, 255)],
+            pixels,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

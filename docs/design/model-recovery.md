@@ -1,0 +1,137 @@
+# 组合模型恢复与导出设计
+
+## 目标
+
+模型恢复不是导出单个 `Mesh`，而是从 Prefab 入口恢复场景层级、网格、骨架、蒙皮、材质、纹理和 LOD 关系。解析结果先写入与输出格式无关的 `ModelDocument`，再由独立导出器生成 GLB 或其他交付格式。
+
+当前首个真实样本是佩丽卡展示模型：
+
+```text
+assets/beyond/dynamicassets/gameplay/actors/postmodels/characters/chr_0004_pelica_postmodel.prefab
+```
+
+## 数据流
+
+```text
+manifest.hgmmap
+  -> 逻辑路径、入口 Bundle 和传递依赖闭包
+  -> AnimeStudio CABMap 与 Unity 对象快照
+  -> ModelDocument v16 + geometry.bin + textures/
+  -> 自包含 GLB
+  -> Three.js 网页预览 / 下载
+```
+
+各层职责如下：
+
+1. `manifest_index.py` 定位入口 Bundle，并查询三类 Bundle 依赖的传递闭包。
+2. `server.py` 按需暂存相关 AB，驱动 AnimeStudio 导出 CABMap、对象 JSON 和引用纹理。
+3. `animestudio_model.py` 根据显式 `sourceFile + pathId` 和 PPtr 恢复组合模型，禁止靠文件名猜引用。
+4. `model_document.py` 定义并校验稳定的中间协议，Schema 位于 `schemas/model-document.schema.json`。
+5. `gltf_export.py` 从 ModelDocument 选择预览资源并生成自包含 GLB，不重新解释 Unity 对象。
+6. 前端通过 Three.js 加载 GLB，普通文件浏览行为不受模型预览入口影响。
+
+## ModelDocument 边界
+
+ModelDocument 保存完整恢复结果，而不是某个预览格式的镜像：
+
+- `nodes`：GameObject/Transform 层级、组件关联和 LOD 标注；
+- `meshes`：Primitive、顶点属性、索引和二进制 accessor；
+- `skeletons`：骨骼层级；
+- `skins`：关节集合、根骨骼和逆绑定矩阵；
+- `materials`：Unity Shader 身份、原始 TexEnv/Int/Float/Color 以及单独的预览映射；
+- `textures`、`images`：实际引用纹理和导出图片；
+- `dependencies`、`source`、`diagnostics`：来源追踪、依赖状态和不能静默丢失的问题。
+
+几何数据使用 `buffers -> bufferViews -> accessors` 引用 `geometry.bin`。该结构借鉴 glTF，但内部 ID、原始 Shader 参数和诊断不受 glTF 表达能力限制。
+
+## GLB 导出策略
+
+GLB 用于浏览器预览和通用工具下载，不取代 ModelDocument：
+
+- 文件自包含几何、蒙皮矩阵和 PNG 纹理；
+- 有 `LODGroup` 的 Renderer 只导出 `LOD0`；未归组 Renderer 默认保留，但命名明确的 `shadowProxyDesktop` 只用于阴影代理，不进入可见 GLB；
+- 根据选中的 Mesh 反向裁剪 Skin、Accessor、BufferView、Material、Texture 和 Image；
+- 二进制 Buffer 在导出时重新紧凑排列，不携带未使用的低 LOD 几何；
+- 根节点增加 `scale: [-1, 1, 1]` 的 Unity 到 glTF 坐标系包装节点；
+- CharacterNPR 按属性签名划分 `skin`、`hair`、`eye`、`cloth` 和 `overlayShadow`；衣物保留标准 PBR 受光，皮肤、头发、眼睛和覆盖阴影暂以 `KHR_materials_unlit` 保住原始色彩关系；游戏特有 Shader 字段仍完整保存在 ModelDocument 中；
+- GLB 材质通过 `extras.endfieldPreview` 携带预览扩展元数据；标准查看器会安全忽略，本站预览器可据此选择 CharacterNPR、丝袜等专用处理，不再依赖材质名猜测；
+- 已启用的 Diff Ramp、Spec Ramp、SDF Lightmap、面部高光和丝袜 Mask 会随 GLB 携带，并以稳定纹理 ID 写入 `extras.endfieldPreview`；宿主可以渐进实现专用材质而无需重新解析 Unity 对象；
+- 网页预览可选用沿顶点法线外扩、仅绘制背面的轮廓副本；透明覆盖层不参与描边，下载的 GLB 本身仍保持标准且不包含重复轮廓网格；
+- `_UseGrayAsAlpha` 覆盖材质在打包时转换为白色 RGB、原 R 通道写入 Alpha 的标准 PNG；
+- `_MetallicGlossMap` 的 `R=Metal`、`A=Smoothness` 在打包时转换为 glTF 金属粗糙贴图的 `B=Metallic`、`G=1-Smoothness`；原 `G=Spec`、`B=Shadow` 不强行映射为标准 PBR 语义，仍保留在 ModelDocument；
+- HGRP 导出的双通道 DirectX 切线空间法线在打包时翻转 G，并由 RG 重建 Z；不能把 `B=0` 的源图直接交给 glTF Normal Texture；
+- `_SilkStockings` 当前只近似基础色压暗，尚未复刻专用 Mask、各向异性高光和干湿响应。
+
+逆绑定矩阵是一个已验证的关键约束：AnimeStudio 的 `Matrix4x4` JSON 采用行向量表示，平移位于 `M30/M31/M32`。写入 glTF 的列主序数组时必须保持 JSON 的行顺序，等价于完成约定转换。测试必须使用非对称矩阵；单位矩阵无法发现行列颠倒。
+
+## HTTP 接口
+
+```text
+GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源索引>
+GET /api/manifest-asset/model-glb?manifestId=<manifest文件ID>&assetIndex=<资源索引>
+GET /api/manifest-asset/model-buffer?recordId=<VFS记录ID>&assetIndex=<资源索引>
+GET /api/manifest-asset/model-texture?recordId=<VFS记录ID>&assetIndex=<资源索引>&path=<纹理路径>
+```
+
+模型 JSON 返回 `glbUrl`。GLB 缓存同时观察 `model.json`、`geometry.bin`、引用纹理和导出器源码的修改时间，避免只改导出规则却继续命中旧文件。
+
+前端支持直接链接：
+
+```text
+/?modelManifestId=<manifest文件ID>&modelAssetIndex=<资源索引>
+```
+
+## 佩丽卡验证结果
+
+2026-07-30 的真实样本恢复结果：
+
+- 64 个传递依赖 Bundle，均能从 Effective VFS 定位；
+- 454 个模型层级节点，51 个 Renderer 节点；
+- 44 个去重 Mesh、18 个 Material；
+- 1 个 Skeleton、276 根骨骼、51 个 Skin；
+- 37 张实际引用纹理完成按需导出；
+- `LODGroup` 明确恢复 4 层，分别引用 12、12、10、10 个 Renderer；另有 7 个 `shadowProxyDesktop` Renderer，不作为可见表面导出；
+- ModelDocument 状态为 `texturedSkinnedModel`。
+
+LOD0 GLB 经过依赖裁剪后的结果：
+
+| 项目 | 数量 |
+| --- | ---: |
+| Node | 455，包含一个坐标系包装节点 |
+| Mesh | 12 |
+| Skin | 12 |
+| Material | 11 |
+| Image / Texture | 23 / 23 |
+| Accessor / BufferView | 96 / 119 |
+| 文件大小 | 37,526,108 字节 |
+
+浏览器验证确认模型完整、姿态和构图正常，控制台无错误。这证明 Manifest 依赖闭包、跨 Bundle PPtr、几何、骨架、蒙皮、材质、纹理、LOD 和 GLB 预览链路已经连通。
+
+## Blender 预览后端
+
+Blender 4.3 的 glTF 导入器会把材质 `extras.endfieldPreview` 保留为 `Material["endfieldPreview"]` 自定义属性，因此 Blender 后端可以直接消费 GLB，不需要再次读取 ModelDocument。`tools/blender_import_model.py` 当前负责：
+
+- 导入 GLB 并保留骨架、蒙皮、材质分区和纹理；
+- 只转换 `materialFamily == "characterNpr"` 的材质，其他材质保持 glTF 导入结果；
+- 保留导入器生成的基础色纹理与颜色乘算节点，将输出接入 Eevee `Diffuse -> Shader to RGB -> Color Ramp` 分段受光链；
+- 建立验证相机、双区域光和深色 World；
+- 可选启用 Freestyle 外轮廓，并输出可继续编辑的 `.blend` 和验证 PNG。
+
+该后端首先验证统一材质语义能否跨宿主复用。Color Ramp 和 Freestyle 参数目前是预览默认值，不是从游戏 Shader 反编译得到的常量。Freestyle 会把眼睛、发丝等独立网格边界识别为轮廓，精度低于后续计划中的材质分类反面外扩方案。
+
+## 当前限制
+
+- 当前预览已区分衣物 PBR 与面部/头发风格化渲染，但 Toon Ramp、眼睛高光/散射、头发高光、乘算覆盖阴影和丝袜各向异性仍与游戏存在差异。游戏画面没有显眼描边，因此轮廓只保留为可选诊断效果，不作为默认还原目标。
+- Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 生成 Eevee 分段受光节点，但尚未读取真实 `_DiffRampMap`，也没有为 Eye、OverlayShadow 和 SilkStockings 建立完整专用节点组。
+- Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 读取真实 `_DiffRampMap`；当前用世界法线与预览主光方向的点积近似 Ramp 横坐标，并用显式环境光偏置避免在 SDF/Shadow LUT 缺席时压黑背光面。该偏置应在完整阴影公式接入后删除；Eye、OverlayShadow 和 SilkStockings 也尚无完整专用节点组。
+- BlendShape、AnimationClip、AnimatorController 和物理骨骼尚未进入最终预览链路。
+- 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。
+- GLB 当前保留完整节点层级，因此低 LOD Renderer 节点仍存在，但不会引用被裁剪的 Mesh 和 Skin。
+
+## 实现原则
+
+- 原始值与派生预览值分开保存，预览映射不得覆盖 Unity Shader 原始参数。
+- 不支持的 Unity 类型、意外字段和断裂引用必须形成诊断或错误。
+- GLB、glTF、FBX 等输出都应从 ModelDocument 生成，不能各自重复解析 Unity 对象。
+- Schema 发生不兼容修改时提升主版本，读取器明确拒绝未知主版本。
+- 真实样本用于端到端验证；坐标、矩阵、LOD 和资源裁剪规则还必须有小型合成回归测试。

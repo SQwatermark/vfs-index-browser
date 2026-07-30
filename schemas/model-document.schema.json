@@ -1,0 +1,261 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://endfield.local/schemas/model-document.schema.json",
+  "title": "Endfield ModelDocument",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "asset", "buffers", "bufferViews", "accessors", "nodes", "meshes", "skeletons", "skins", "materials", "textures", "images", "animations", "animatorControllers", "dependencies", "diagnostics"],
+  "properties": {
+    "format": { "const": "EndfieldModelDocument" },
+    "version": { "const": "1.0.0" },
+    "asset": { "$ref": "#/$defs/asset" },
+    "buffers": { "type": "array", "items": { "$ref": "#/$defs/buffer" } },
+    "bufferViews": { "type": "array", "items": { "$ref": "#/$defs/bufferView" } },
+    "accessors": { "type": "array", "items": { "$ref": "#/$defs/accessor" } },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "meshes": { "type": "array", "items": { "$ref": "#/$defs/mesh" } },
+    "skeletons": { "type": "array", "items": { "$ref": "#/$defs/skeleton" } },
+    "skins": { "type": "array", "items": { "$ref": "#/$defs/skin" } },
+    "materials": { "type": "array", "items": { "$ref": "#/$defs/material" } },
+    "textures": { "type": "array", "items": { "$ref": "#/$defs/texture" } },
+    "images": { "type": "array", "items": { "$ref": "#/$defs/image" } },
+    "animations": { "type": "array", "items": { "$ref": "#/$defs/animation" } },
+    "animatorControllers": { "type": "array", "items": { "$ref": "#/$defs/namedObject" } },
+    "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "logicalPath": { "type": "string" },
+        "bundle": { "type": "string" },
+        "cab": { "type": "string" },
+        "sourceFile": { "type": "string" },
+        "container": { "type": "string" },
+        "guid": { "type": "string" },
+        "pathId": { "type": "integer" },
+        "classId": { "type": "integer" }
+      },
+      "minProperties": 1
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "source", "rootNodeIds"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" },
+        "rootNodeIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true }
+      }
+    },
+    "namedObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "buffer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "uri", "byteLength"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "uri": { "type": "string" },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "bufferView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "bufferId", "byteOffset", "byteLength"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "bufferId": { "$ref": "#/$defs/id" },
+        "byteOffset": { "type": "integer", "minimum": 0 },
+        "byteLength": { "type": "integer", "minimum": 0 },
+        "byteStride": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "accessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "bufferViewId", "componentType", "type", "count"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "bufferViewId": { "$ref": "#/$defs/id" },
+        "byteOffset": { "type": "integer", "minimum": 0, "default": 0 },
+        "componentType": { "enum": ["i8", "u8", "i16", "u16", "u32", "f16", "f32"] },
+        "type": { "enum": ["scalar", "vec2", "vec3", "vec4", "mat4"] },
+        "count": { "type": "integer", "minimum": 0 },
+        "normalized": { "type": "boolean", "default": false },
+        "min": { "type": "array", "items": { "type": "number" } },
+        "max": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "translation": { "$ref": "#/$defs/vec3" },
+        "rotation": { "$ref": "#/$defs/vec4" },
+        "scale": { "$ref": "#/$defs/vec3" },
+        "matrix": { "type": "array", "items": { "type": "number" }, "minItems": 16, "maxItems": 16 }
+      }
+    },
+    "vec3": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+    "vec4": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "active", "children", "transform"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "active": { "type": "boolean" },
+        "parentId": { "$ref": "#/$defs/id" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "transform": { "$ref": "#/$defs/transform" },
+        "meshId": { "$ref": "#/$defs/id" },
+        "skinId": { "$ref": "#/$defs/id" },
+        "skeletonId": { "$ref": "#/$defs/id" },
+        "source": { "$ref": "#/$defs/source" },
+        "extras": { "type": "object" }
+      }
+    },
+    "mesh": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "primitives"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "primitives": { "type": "array", "items": { "$ref": "#/$defs/primitive" } },
+        "blendShapes": { "type": "array", "items": { "$ref": "#/$defs/blendShape" } },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "primitive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topology", "attributes"],
+      "properties": {
+        "topology": { "enum": ["triangles", "triangleStrip", "lines", "points"] },
+        "attributes": { "type": "object", "additionalProperties": { "$ref": "#/$defs/id" } },
+        "indicesAccessorId": { "$ref": "#/$defs/id" },
+        "materialId": { "$ref": "#/$defs/id" }
+      }
+    },
+    "blendShape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "frames"],
+      "properties": {
+        "name": { "type": "string" },
+        "frames": { "type": "array", "items": { "type": "object", "required": ["weight", "attributes"], "properties": { "weight": { "type": "number" }, "attributes": { "type": "object", "additionalProperties": { "$ref": "#/$defs/id" } } }, "additionalProperties": false } }
+      }
+    },
+    "skeleton": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "bones"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "bones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "transform"], "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "parentId": { "$ref": "#/$defs/id" }, "transform": { "$ref": "#/$defs/transform" }, "source": { "$ref": "#/$defs/source" } }, "additionalProperties": false } }
+      }
+    },
+    "skin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "skeletonId", "jointIds", "inverseBindMatricesAccessorId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "skeletonId": { "$ref": "#/$defs/id" },
+        "rootBoneId": { "$ref": "#/$defs/id" },
+        "jointIds": { "type": "array", "items": { "$ref": "#/$defs/id" } },
+        "inverseBindMatricesAccessorId": { "$ref": "#/$defs/id" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "material": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "shader", "properties"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "shader": { "type": "string" },
+        "properties": { "type": "object" },
+        "previewPbr": { "type": "object" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "texture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "imageId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "imageId": { "$ref": "#/$defs/id" },
+        "sampler": { "type": "object" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "uri", "mimeType"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "uri": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "duration", "channels"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "name": { "type": "string" },
+        "duration": { "type": "number", "minimum": 0 },
+        "channels": { "type": "array", "items": { "type": "object", "required": ["targetId", "property", "inputAccessorId", "outputAccessorId", "interpolation"], "properties": { "targetId": { "$ref": "#/$defs/id" }, "property": { "enum": ["translation", "rotation", "scale", "blendShapeWeight", "materialProperty"] }, "inputAccessorId": { "$ref": "#/$defs/id" }, "outputAccessorId": { "$ref": "#/$defs/id" }, "interpolation": { "enum": ["step", "linear", "cubic"] }, "propertyName": { "type": "string" } }, "additionalProperties": false } },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "kind", "status"],
+      "properties": {
+        "from": { "$ref": "#/$defs/source" },
+        "to": { "$ref": "#/$defs/source" },
+        "kind": { "type": "string" },
+        "status": { "enum": ["resolved", "missing", "unsupported"] }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["severity", "code", "message"],
+      "properties": {
+        "severity": { "enum": ["info", "warning", "error"] },
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "message": { "type": "string" },
+        "objectId": { "$ref": "#/$defs/id" },
+        "source": { "$ref": "#/$defs/source" },
+        "details": { "type": "object" }
+      }
+    }
+  }
+}
