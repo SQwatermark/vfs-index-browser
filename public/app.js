@@ -320,6 +320,7 @@ function renderModelPreview(data) {
       <span>${formatInt(modelDocument.skins?.length)} 蒙皮</span>
       <span>${formatInt(modelDocument.materials?.length)} 材质</span>
       <span>${formatInt(modelDocument.images?.length)} 纹理</span>
+      ${data.animationAsset ? `<span>${escapeHtml(data.animationAsset.path)} 动画</span>` : ''}
     </div>
     <div id="modelViewport" class="model-viewport">
       <label class="model-view-option">
@@ -349,7 +350,9 @@ function renderModelPreview(data) {
   scene.add(keyLight)
 
   let model = null
+  let mixers = []
   let active = true
+  const clock = new THREE.Clock()
   const resize = () => {
     const width = Math.max(viewport.clientWidth, 1)
     const height = Math.max(viewport.clientHeight, 1)
@@ -373,6 +376,13 @@ function renderModelPreview(data) {
       model.add(gltf.scene)
       const outline = createOutlineModel(gltf.scene)
       model.add(outline)
+      if (gltf.animations.length) {
+        mixers = [gltf.scene, outline].map((root) => {
+          const mixer = new THREE.AnimationMixer(root)
+          mixer.clipAction(gltf.animations[0]).play()
+          return mixer
+        })
+      }
       $('modelOutlineToggle').addEventListener('change', (event) => {
         outline.visible = event.currentTarget.checked
       })
@@ -409,6 +419,8 @@ function renderModelPreview(data) {
   )
 
   renderer.setAnimationLoop(() => {
+    const delta = clock.getDelta()
+    for (const mixer of mixers) mixer.update(delta)
     controls.update()
     renderer.render(scene, camera)
   })
@@ -416,6 +428,8 @@ function renderModelPreview(data) {
     active = false
     observer.disconnect()
     renderer.setAnimationLoop(null)
+    for (const mixer of mixers) mixer.stopAllAction()
+    mixers = []
     controls.dispose()
     disposeModelResources(model)
     renderer.dispose()
@@ -854,8 +868,11 @@ async function init() {
   const query = new URLSearchParams(window.location.search)
   const manifestId = query.get('modelManifestId')
   const assetIndex = query.get('modelAssetIndex')
+  const animationAssetIndex = query.get('animationAssetIndex')
   if (manifestId && assetIndex) {
-    const modelUrl = `/api/manifest-asset/model?manifestId=${encodeURIComponent(manifestId)}&assetIndex=${encodeURIComponent(assetIndex)}`
+    const params = new URLSearchParams({ manifestId, assetIndex })
+    if (animationAssetIndex) params.set('animationAssetIndex', animationAssetIndex)
+    const modelUrl = `/api/manifest-asset/model?${params}`
     await selectModel(modelUrl, `model:${manifestId}:${assetIndex}`)
   }
 }

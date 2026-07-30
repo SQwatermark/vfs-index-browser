@@ -114,9 +114,19 @@ GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
 GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456
+GET /api/manifest-asset/model?manifestId=123&assetIndex=456&animationAssetIndex=789
+GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
 
 manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestId + assetIndex` 稳定定位。`.ab`、`.pck` 和 `.usm` 仍通过 internal API 浏览各自的按需内部视图。
+
+模型接口可选的 `animationAssetIndex` 指向同一 manifest 内的 `AnimationClip`。
+服务按需导出紧凑动画数据并生成独立的“模型 + 动画”GLB 缓存，不修改基础
+`ModelDocument` 和几何缓存。直接预览链接使用：
+
+```text
+/?modelManifestId=123&modelAssetIndex=456&animationAssetIndex=789
+```
 
 ## 研究工具
 

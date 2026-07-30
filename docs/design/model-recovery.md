@@ -69,16 +69,21 @@ GLB 用于浏览器预览和通用工具下载，不取代 ModelDocument：
 ```text
 GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model-glb?manifestId=<manifest文件ID>&assetIndex=<资源索引>
+GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
+GET /api/manifest-asset/model-glb?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
 GET /api/manifest-asset/model-buffer?recordId=<VFS记录ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model-texture?recordId=<VFS记录ID>&assetIndex=<资源索引>&path=<纹理路径>
 ```
 
 模型 JSON 返回 `glbUrl`。GLB 缓存同时观察 `model.json`、`geometry.bin`、引用纹理和导出器源码的修改时间，避免只改导出规则却继续命中旧文件。
+指定 `animationAssetIndex` 时，服务复制基础文档并追加动画，不修改模型快照；
+派生 GLB 按动画资源索引单独缓存，并观察动画 JSON 与适配器源码的修改时间。
 
 前端支持直接链接：
 
 ```text
 /?modelManifestId=<manifest文件ID>&modelAssetIndex=<资源索引>
+/?modelManifestId=<manifest文件ID>&modelAssetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
 ```
 
 ## 佩丽卡验证结果

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import gzip
 import io
 import json
@@ -37,6 +38,7 @@ from animestudio_model import (
 )
 from model_document import validate_model_document
 from gltf_export import build_glb
+from animestudio_animation import attach_animation_clip
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -96,6 +98,7 @@ ASSETBUNDLE_META_VERSION = 2
 MONOBEHAVIOUR_DUMP_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 24
+ANIMATION_CLIP_EXPORT_VERSION = 1
 AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
@@ -1528,6 +1531,120 @@ class BrowserHandler(BaseHTTPRequestHandler):
         root = INTERNAL_CACHE_DIR / str(record["id"]) / "models" / str(asset_index)
         return root / "source.ab", root / "objects", root / "model.json", root / "run.json"
 
+    def animation_clip_export_paths(
+        self,
+        record: dict,
+        asset_index: int,
+    ) -> tuple[Path, Path, Path]:
+        root = (
+            INTERNAL_CACHE_DIR
+            / str(record["id"])
+            / "manifest-assets"
+            / str(asset_index)
+            / "animation"
+        )
+        return root / "source.ab", root / "exported", root / "meta.json"
+
+    def ensure_animation_clip_export(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+    ) -> tuple[dict, Path, dict]:
+        if not ANIMESTUDIO_CLI.exists():
+            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
+
+        source_path, export_root, meta_path = self.animation_clip_export_paths(
+            record,
+            int(asset["asset_index"]),
+        )
+        source_identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "assetIndex": int(asset["asset_index"]),
+            "assetPath": str(asset["path"]),
+            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CLI),
+        }
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                target = export_root / str(meta.get("relativePath") or "")
+                if (
+                    meta.get("version") == ANIMATION_CLIP_EXPORT_VERSION
+                    and meta.get("source") == source_identity
+                    and target.is_file()
+                ):
+                    return json.loads(target.read_text(encoding="utf-8")), target, meta
+            except (OSError, ValueError, json.JSONDecodeError):
+                pass
+
+        source_path.parent.mkdir(parents=True, exist_ok=True)
+        self.write_file_slice(record, chunk_path, source_path)
+        shutil.rmtree(export_root, ignore_errors=True)
+        export_root.mkdir(parents=True, exist_ok=True)
+        animation_name = str(asset["path"]).rsplit("##", 1)[-1]
+        command = [
+            str(ANIMESTUDIO_CLI),
+            str(source_path),
+            str(export_root),
+            "--game",
+            "ArknightsEndfield",
+            "--types",
+            "AnimationClip",
+            "--export_type",
+            "AnimationJSON",
+            "--group_assets",
+            "ByType",
+            "--logger_flags",
+            "Error",
+            "Warning",
+            "Info",
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=str(ANIMESTUDIO_CLI.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"AnimeStudio animation export failed: "
+                f"{completed.stderr.strip() or completed.stdout.strip()}"
+            )
+        candidates = sorted(export_root.rglob("*.animation.json"))
+        matching = []
+        for candidate in candidates:
+            candidate_clip = json.loads(candidate.read_text(encoding="utf-8"))
+            if str(candidate_clip.get("name") or "").casefold() == animation_name.casefold():
+                matching.append((candidate, candidate_clip))
+        if len(matching) != 1:
+            raise RuntimeError(
+                f"AnimeStudio exported {len(candidates)} animation JSON files, "
+                f"but {len(matching)} match {animation_name!r}; expected exactly one"
+            )
+        target, clip = matching[0]
+        meta = {
+            "version": ANIMATION_CLIP_EXPORT_VERSION,
+            "source": source_identity,
+            "relativePath": target.relative_to(export_root).as_posix(),
+            "command": command,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "builtAtEpoch": int(time.time()),
+        }
+        meta_path.write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return clip, target, meta
+
     def ensure_model_hierarchy(
         self,
         record: dict,
@@ -2781,6 +2898,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
         bundle_record, bundle_chunk = resolved_bundle
         return index, asset, bundle_record, bundle_chunk
 
+    def resolve_optional_animation_source(
+        self,
+        query: dict[str, list[str]],
+    ) -> tuple[ManifestIndex, dict, dict, Path] | None:
+        values = query.get("animationAssetIndex")
+        if not values:
+            return None
+        animation_query = dict(query)
+        animation_query["assetIndex"] = values
+        return self.resolve_manifest_asset_source(animation_query)
+
     def resolve_manifest_asset_file(
         self,
         query: dict[str, list[str]],
@@ -3304,6 +3432,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if resolved is None:
             return
         index, asset, bundle_record, bundle_chunk = resolved
+        animation_resolved = self.resolve_optional_animation_source(query)
+        if query.get("animationAssetIndex") and animation_resolved is None:
+            return
+        animation_asset = animation_resolved[1] if animation_resolved else None
         if file_suffix(str(asset["path"])) != ".prefab":
             self.send_error_json(400, "Model hierarchy snapshots currently require a .prefab asset")
             return
@@ -3338,6 +3470,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         manifest_id = int(query["manifestId"][0])
         asset_index = int(asset["asset_index"])
+        animation_parameter = (
+            f"&animationAssetIndex={int(animation_asset['asset_index'])}"
+            if animation_asset
+            else ""
+        )
         self.send_json(
             {
                 "kind": "modelDocument",
@@ -3349,9 +3486,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     else "hierarchyOnly"
                 ),
                 "asset": asset,
+                "animationAsset": animation_asset,
                 "glbUrl": (
                     f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}"
+                    f"&assetIndex={asset_index}{animation_parameter}"
                 ),
                 "document": document,
                 "run": {
@@ -3368,6 +3506,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if resolved is None:
             return
         index, asset, bundle_record, bundle_chunk = resolved
+        animation_resolved = self.resolve_optional_animation_source(query)
+        if query.get("animationAssetIndex") and animation_resolved is None:
+            return
         if file_suffix(str(asset["path"])) != ".prefab":
             self.send_error_json(400, "GLB export currently requires a .prefab asset")
             return
@@ -3375,7 +3516,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         try:
             dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
             dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, _ = self.ensure_model_hierarchy(
+            base_document, _ = self.ensure_model_hierarchy(
                 bundle_record,
                 bundle_chunk,
                 asset,
@@ -3389,6 +3530,34 @@ class BrowserHandler(BaseHTTPRequestHandler):
             geometry_path = model_path.with_name("geometry.bin")
             if not geometry_path.is_file():
                 raise FileNotFoundError("model geometry buffer not found")
+            document = copy.deepcopy(base_document)
+            geometry = geometry_path.read_bytes()
+            animation_path = None
+            animation_asset_index = None
+            if animation_resolved:
+                _, animation_asset, animation_record, animation_chunk = animation_resolved
+                clip, animation_path, _ = self.ensure_animation_clip_export(
+                    animation_record,
+                    animation_chunk,
+                    animation_asset,
+                )
+                animation_asset_index = int(animation_asset["asset_index"])
+                geometry = attach_animation_clip(
+                    document,
+                    geometry,
+                    clip,
+                    animation_id=f"animation:{animation_asset_index}",
+                    source={
+                        "logicalPath": str(animation_asset["path"]),
+                        "bundle": str(animation_asset["bundle_name"]),
+                    },
+                )
+                validation_errors = validate_model_document(document)
+                if validation_errors:
+                    raise RuntimeError(
+                        "animated ModelDocument failed semantic validation: "
+                        + "; ".join(validation_errors)
+                    )
 
             texture_root = (model_path.parent / "textures").resolve()
             image_paths: dict[str, Path] = {}
@@ -3407,15 +3576,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     raise FileNotFoundError(f"model texture not found: {relative}")
                 image_paths[str(image["id"])] = target
 
-            glb_path = model_path.with_name("model.glb")
+            glb_path = model_path.with_name(
+                f"model-animation-{animation_asset_index}.glb"
+                if animation_asset_index is not None
+                else "model.glb"
+            )
             # Exporter changes can alter the GLB without rebuilding ModelDocument.
             exporter_path = Path(build_glb.__code__.co_filename)
-            source_paths = [model_path, geometry_path, exporter_path, *image_paths.values()]
+            animation_adapter_path = Path(attach_animation_clip.__code__.co_filename)
+            source_paths = [
+                model_path,
+                geometry_path,
+                exporter_path,
+                animation_adapter_path,
+                *image_paths.values(),
+            ]
+            if animation_path is not None:
+                source_paths.append(animation_path)
             newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
             if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
                 glb = build_glb(
                     document,
-                    geometry_path.read_bytes(),
+                    geometry,
                     lambda image: image_paths[str(image["id"])].read_bytes(),
                 )
                 temporary = glb_path.with_suffix(".glb.tmp")
