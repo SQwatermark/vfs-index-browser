@@ -199,6 +199,20 @@ Eye Shader 的 BaseMap Alpha 参与眼睛散射与高光计算，材质本身保
 “中性面部姿态”建模为模型解析之后、宿主渲染之前的独立输入，并从动画或控制器
 数据恢复；不能在通用解析层硬编码佩丽卡的虹膜骨骼偏移。
 
+佩丽卡待机动画
+`assets/beyond/arts/entity/actor/girl/pelica/animations/3c/a_actor_pelica_idle_loop.fbx##a_actor_pelica_idle_loop`
+已经从 manifest 定位到独立 AnimationClip。其 272 个 Transform 绑定路径哈希
+均可由角色骨架相对路径的 Unity CRC32 精确还原，绑定中明确包含左右
+`eye*Joint`、`face*IrisJoint`、瞳孔、眼睑和面部关节；虹膜相关关节同时具有
+位移和旋转通道。这进一步证明眼部位置应由动画或运行时姿态恢复，而不是修改
+网格、逆绑定矩阵或添加角色专用偏移。
+
+当前 AnimeStudio 转换后的 YAML 已保留绑定表、`60 Hz` 采样率、`2 s` 时长和
+循环标记，但没有输出可直接使用的 Transform 关键帧。下一步需要复用其
+`AnimationClipConverter` 对 Streamed、Dense、Constant 和 ACL 曲线的解码过程，
+生成带骨骼路径的结构化动画数据，再选取稳定帧作为中性姿态候选。绑定存在只
+证明动画控制这些关节，不足以推导具体姿态数值。
+
 ### 官方公开技术背景
 
 Apple Developer 对终末地高级技术总监的采访确认，项目不是直接使用 Unity

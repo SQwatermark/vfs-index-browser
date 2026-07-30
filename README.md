@@ -9,6 +9,7 @@
 - 在 `manifest.hgmmap` 同级提供虚拟目录，浏览完整 AssetInfo 逻辑树。
 - 按需解析单个 AssetBundle，不预扫描全部 `.ab` 文件。
 - 预览文本、图片、音频和视频，并下载原始或转换后的文件。
+- 按逻辑路径定位 AnimationClip 等 Unity 子资源，并处理无 Container 的命名子资源。
 - 解析 TableCfg/SparkBuffer，并实验性解析 JsonData/MemoryPack 二进制配置。
 - 按需恢复 Prefab 的组合模型，并以自包含 GLB 在浏览器中预览或下载。
 

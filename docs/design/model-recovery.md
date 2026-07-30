@@ -144,7 +144,11 @@ python tools/select_shader_variants.py `
 - 当前预览已区分衣物 PBR 与面部/头发风格化渲染，并恢复衣物 Spec 通道和覆盖阴影的近似语义；Toon Ramp、眼睛高光/散射、头发高光、覆盖阴影逐通道乘算和丝袜各向异性仍与游戏存在差异。游戏画面没有显眼描边，因此轮廓只保留为可选诊断效果，不作为默认还原目标。
 - Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 读取真实 `_DiffRampMap`；当前用世界法线与 Profile 方向的点积近似 Ramp 横坐标，并用环境光参数近似明暗范围。方位角暂按 Blender `+Y` 为 `0°`、绕 `Z` 轴旋转解释，这是根据角色正面受光样本校准的预览约定，尚不是已证明的 HGRP shader 公式。
 - 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye、OverlayShadow 和 SilkStockings 仍无完整专用节点组。
-- BlendShape、AnimationClip、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
+- manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并按唯一子资源名和 PathID
+  解析 AnimeStudio 导出文件；这只解决了资源读取，不等于动画已经进入模型预览。当前动画
+  YAML 能提供采样率、时长和绑定表，但终末地使用的压缩曲线尚未转换为 ModelDocument
+  可消费的关键帧。
+- BlendShape、AnimationClip 姿态应用、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
 - 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。
 - GLB 当前保留完整节点层级，因此低 LOD Renderer 节点仍存在，但不会引用被裁剪的 Mesh 和 Skin。
 

@@ -112,12 +112,19 @@ SOURCE_PRIORITY = {
     "StreamingAssets": 1,
 }
 
-TEXT_EXTENSIONS = {".json", ".lua", ".md", ".txt", ".csv", ".xml", ".yaml", ".yml"}
+TEXT_EXTENSIONS = {".anim", ".json", ".lua", ".md", ".txt", ".csv", ".xml", ".yaml", ".yml"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
-ASSETBUNDLE_EXPORT_TYPES = ("Texture2D", "Sprite", "TextAsset", "AudioClip", "VideoClip")
+ASSETBUNDLE_EXPORT_TYPES = (
+    "Texture2D",
+    "Sprite",
+    "TextAsset",
+    "AudioClip",
+    "VideoClip",
+    "AnimationClip",
+)
 CUBEMAP_FACE_NAMES = (
     "PositiveX",
     "NegativeX",
@@ -946,6 +953,34 @@ def internal_preview_kind(path: Path) -> str:
     if suffix in TEXT_EXTENSIONS:
         return "text"
     return "binary"
+
+
+def assetbundle_export_types_match(meta: dict) -> bool:
+    return tuple(meta.get("exportTypes") or ()) == ASSETBUNDLE_EXPORT_TYPES
+
+
+def manifest_asset_entries(meta: dict, logical_path: str) -> list[dict]:
+    normalized = logical_path.replace("\\", "/").strip("/")
+    container_key = normalized.casefold()
+    entries = list(meta.get("assetEntries") or [])
+    exact = [
+        entry
+        for entry in entries
+        if str(entry.get("Container") or "").replace("\\", "/").strip("/").casefold()
+        == container_key
+    ]
+    if exact or "##" not in normalized:
+        return exact
+
+    # Imported FBX sub-assets use ``path.fbx##clip_name`` in the manifest, while
+    # AnimeStudio exposes the AnimationClip name without a container.
+    sub_asset_name = normalized.rsplit("##", 1)[1].casefold()
+    by_name = [
+        entry
+        for entry in entries
+        if str(entry.get("Name") or "").casefold() == sub_asset_name
+    ]
+    return by_name if len(by_name) == 1 else []
 
 
 def safe_relative_path(root: Path, raw_path: str) -> Path | None:
@@ -2021,7 +2056,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        if meta.get("version") == ASSETBUNDLE_META_VERSION and meta.get("mapReturncode") == 0:
+        if (
+            meta.get("version") == ASSETBUNDLE_META_VERSION
+            and meta.get("mapReturncode") == 0
+            and assetbundle_export_types_match(meta)
+        ):
             return meta
         return None
 
@@ -2117,7 +2156,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if export_root.exists() and meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if meta.get("version") == ASSETBUNDLE_META_VERSION and meta.get("returncode") == 0:
+                if (
+                    meta.get("version") == ASSETBUNDLE_META_VERSION
+                    and meta.get("returncode") == 0
+                    and assetbundle_export_types_match(meta)
+                ):
                     return export_root, meta
             except (OSError, json.JSONDecodeError):
                 pass
@@ -2209,22 +2252,44 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return None
         return export_root, meta
 
-    def asset_metadata_by_export_name(self, meta: dict) -> dict[tuple[str, str], dict]:
-        out = {}
+    def asset_metadata_by_export_name(self, meta: dict) -> dict[tuple[str, str], list[dict]]:
+        out: dict[tuple[str, str], list[dict]] = {}
         for entry in meta.get("assetEntries") or []:
             name = str(entry.get("Name") or "").lower()
             asset_type = str(entry.get("Type") or "").lower()
             if name and asset_type:
-                out[(asset_type, name)] = entry
+                out.setdefault((asset_type, name), []).append(entry)
         return out
 
-    def metadata_for_internal_file(self, child: Path, export_root: Path, metadata_by_name: dict[tuple[str, str], dict]) -> dict | None:
+    def metadata_for_internal_file(
+        self,
+        child: Path,
+        export_root: Path,
+        metadata_by_name: dict[tuple[str, str], list[dict]],
+    ) -> dict | None:
         try:
             asset_type = child.relative_to(export_root).parts[0].lower()
         except (ValueError, IndexError):
             return None
-        name = child.stem.lower()
-        return metadata_by_name.get((asset_type, name))
+        name = child.stem
+        path_id = None
+        suffixed = re.fullmatch(r"(.+)_p([0-9a-fA-F]{16})", name)
+        if suffixed:
+            name = suffixed.group(1)
+            unsigned_path_id = int(suffixed.group(2), 16)
+            path_id = (
+                unsigned_path_id - (1 << 64)
+                if unsigned_path_id >= (1 << 63)
+                else unsigned_path_id
+            )
+        candidates = metadata_by_name.get((asset_type, name.lower()), [])
+        if path_id is not None:
+            candidates = [
+                entry
+                for entry in candidates
+                if str(entry.get("PathID") or "") == str(path_id)
+            ]
+        return candidates[0] if len(candidates) == 1 else None
 
     def asset_metadata_matches(self, entry: dict | None, asset_type: str, asset_name: str, path_id: str) -> bool:
         if not entry:
@@ -2729,13 +2794,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if ensured is None:
             return None
         export_root, meta = ensured
-        container_key = asset["path"].replace("\\", "/").strip("/").casefold()
-        matches = [
-            entry
-            for entry in meta.get("assetEntries") or []
-            if str(entry.get("Container") or "").replace("\\", "/").strip("/").casefold()
-            == container_key
-        ]
+        matches = manifest_asset_entries(meta, asset["path"])
         if not matches:
             try:
                 fallback = self.ensure_manifest_monobehaviour_dump(
