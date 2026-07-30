@@ -73,6 +73,12 @@ ANIMESTUDIO_CLI = Path(
 ANIMESTUDIO_MONOBEHAVIOUR_CLI = Path(
     os.environ.get("ANIMESTUDIO_MONOBEHAVIOUR_CLI", ANIMESTUDIO_CLI)
 )
+ANIMESTUDIO_CUBEMAP_CLI = Path(
+    os.environ.get(
+        "ANIMESTUDIO_CUBEMAP_CLI",
+        r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
+    )
+)
 VGMSTREAM_CLI = Path(
     os.environ.get(
         "VGMSTREAM_CLI",
@@ -88,6 +94,7 @@ CHACHA_KEY = bytes.fromhex(
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
 MONOBEHAVIOUR_DUMP_VERSION = 1
+CUBEMAP_EXPORT_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 24
 AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
@@ -111,6 +118,14 @@ VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
 ASSETBUNDLE_EXPORT_TYPES = ("Texture2D", "Sprite", "TextAsset", "AudioClip", "VideoClip")
+CUBEMAP_FACE_NAMES = (
+    "PositiveX",
+    "NegativeX",
+    "PositiveY",
+    "NegativeY",
+    "PositiveZ",
+    "NegativeZ",
+)
 MODEL_SNAPSHOT_TYPES = (
     "GameObject",
     "Transform",
@@ -1758,6 +1773,125 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         return root / "exported", root / "dump.txt", root / "meta.json"
 
+    def manifest_cubemap_export_paths(
+        self,
+        record: dict,
+        asset_index: int,
+    ) -> tuple[Path, Path]:
+        root = (
+            INTERNAL_CACHE_DIR
+            / str(record["id"])
+            / "manifest-assets"
+            / str(asset_index)
+            / "cubemap"
+        )
+        return root / "exported", root / "meta.json"
+
+    def ensure_manifest_cubemap_export(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+    ) -> tuple[dict[str, Path], dict] | None:
+        if file_suffix(str(asset["path"])) not in {".exr", ".hdr", ".cubemap"}:
+            return None
+        if not ANIMESTUDIO_CUBEMAP_CLI.exists():
+            raise FileNotFoundError(f"AnimeStudio Cubemap CLI not found: {ANIMESTUDIO_CUBEMAP_CLI}")
+
+        export_root, meta_path = self.manifest_cubemap_export_paths(
+            record,
+            int(asset["asset_index"]),
+        )
+        source_path, _, _, _ = self.assetbundle_cache_paths(record)
+        source_identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "assetIndex": int(asset["asset_index"]),
+            "assetPath": str(asset["path"]),
+            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CUBEMAP_CLI),
+        }
+
+        def exported_faces() -> dict[str, Path]:
+            faces = {}
+            for path in export_root.rglob("*"):
+                if not path.is_file() or file_suffix(path.name) not in IMAGE_EXTENSIONS:
+                    continue
+                stem = path.stem.casefold()
+                for face_name in CUBEMAP_FACE_NAMES:
+                    if stem.endswith(f"_{face_name}".casefold()):
+                        faces[face_name] = path
+                        break
+            return faces
+
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                faces = exported_faces()
+                if (
+                    meta.get("version") == CUBEMAP_EXPORT_VERSION
+                    and meta.get("source") == source_identity
+                    and meta.get("returncode") == 0
+                ):
+                    return (faces, meta) if set(faces) == set(CUBEMAP_FACE_NAMES) else None
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        self.write_file_slice(record, chunk_path, source_path)
+        shutil.rmtree(export_root, ignore_errors=True)
+        export_root.mkdir(parents=True, exist_ok=True)
+        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
+        command = [
+            str(ANIMESTUDIO_CUBEMAP_CLI),
+            str(source_path),
+            str(export_root),
+            "--game",
+            "ArknightsEndfield",
+            "--types",
+            "Cubemap",
+            "--containers",
+            f"^{re.escape(normalized_container)}$",
+            "--export_type",
+            "Convert",
+            "--group_assets",
+            "ByType",
+            "--logger_flags",
+            "Error",
+            "Warning",
+            "Info",
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=str(ANIMESTUDIO_CUBEMAP_CLI.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            check=False,
+        )
+        faces = exported_faces()
+        meta = {
+            "version": CUBEMAP_EXPORT_VERSION,
+            "source": source_identity,
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "builtAtEpoch": int(time.time()),
+            "faces": {
+                name: str(path.relative_to(export_root)).replace("\\", "/")
+                for name, path in faces.items()
+            },
+        }
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        if completed.returncode != 0 or set(faces) != set(CUBEMAP_FACE_NAMES):
+            return None
+        return faces, meta
+
     def ensure_manifest_monobehaviour_dump(
         self,
         record: dict,
@@ -2585,8 +2719,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def resolve_manifest_asset_file(
         self,
         query: dict[str, list[str]],
+        resolved_source: tuple[ManifestIndex, dict, dict, Path] | None = None,
     ) -> tuple[dict, Path, dict, dict] | None:
-        resolved_source = self.resolve_manifest_asset_source(query)
+        resolved_source = resolved_source or self.resolve_manifest_asset_source(query)
         if resolved_source is None:
             return None
         _, asset, bundle_record, bundle_chunk = resolved_source
@@ -2641,6 +2776,29 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return bundle_record, target, asset_meta, asset
         self.send_error_json(404, "已找到资源元数据，但对应的导出文件缺失。")
         return None
+
+    def resolve_manifest_cubemap_files(
+        self,
+        query: dict[str, list[str]],
+        resolved_source: tuple[ManifestIndex, dict, dict, Path] | None = None,
+    ) -> tuple[dict, dict[str, Path], dict, dict] | None:
+        resolved_source = resolved_source or self.resolve_manifest_asset_source(query)
+        if resolved_source is None:
+            return None
+        _, asset, bundle_record, bundle_chunk = resolved_source
+        try:
+            ensured = self.ensure_manifest_cubemap_export(bundle_record, bundle_chunk, asset)
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            return None
+        if ensured is None:
+            return None
+        faces, _ = ensured
+        asset_meta = {
+            "Type": "Cubemap",
+            "Name": Path(str(asset["path"])).stem,
+            "Container": asset["path"],
+        }
+        return bundle_record, faces, asset_meta, asset
 
     def resolve_assetbundle_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, dict | None] | None:
         file_id = self.file_id_from_query(query)
@@ -2992,7 +3150,54 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 remaining -= len(data)
 
     def handle_manifest_asset_preview(self, query: dict[str, list[str]]) -> None:
-        resolved = self.resolve_manifest_asset_file(query)
+        resolved_source = self.resolve_manifest_asset_source(query)
+        if resolved_source is None:
+            return
+        cubemap = self.resolve_manifest_cubemap_files(query, resolved_source)
+        if cubemap is not None:
+            bundle_record, faces, asset_meta, manifest_asset = cubemap
+            manifest_id = query.get("manifestId", [""])[0]
+            asset_index = query.get("assetIndex", [""])[0]
+            face_payload = []
+            for face_name in CUBEMAP_FACE_NAMES:
+                target = faces[face_name]
+                raw_url = (
+                    f"/api/manifest-asset/raw?manifestId={manifest_id}"
+                    f"&assetIndex={asset_index}&face={face_name}"
+                )
+                face_payload.append(
+                    {
+                        "name": face_name,
+                        "size": target.stat().st_size,
+                        "contentType": guess_content_type(target.name),
+                        "rawUrl": raw_url,
+                        "downloadUrl": f"{raw_url}&download=1",
+                    }
+                )
+            default_face = next(item for item in face_payload if item["name"] == "PositiveZ")
+            total_size = sum(item["size"] for item in face_payload)
+            self.send_json(
+                {
+                    "file": {
+                        **bundle_record,
+                        "file_name": manifest_asset["path"],
+                        "length": total_size,
+                    },
+                    "resolvedFile": bundle_record,
+                    "usedFallback": False,
+                    "name": Path(str(manifest_asset["path"])).name,
+                    "size": total_size,
+                    "rawUrl": default_face["rawUrl"],
+                    "downloadUrl": default_face["downloadUrl"],
+                    "asset": asset_meta,
+                    "message": f"来自 {manifest_asset['bundle_name']}，按 Unity Cubemap 面序导出",
+                    "kind": "cubemap",
+                    "faces": face_payload,
+                }
+            )
+            return
+
+        resolved = self.resolve_manifest_asset_file(query, resolved_source)
         if resolved is None:
             return
         bundle_record, target, asset_meta, manifest_asset = resolved
@@ -3224,10 +3429,25 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
 
     def handle_manifest_asset_raw(self, query: dict[str, list[str]]) -> None:
-        resolved = self.resolve_manifest_asset_file(query)
-        if resolved is None:
+        resolved_source = self.resolve_manifest_asset_source(query)
+        if resolved_source is None:
             return
-        _, target, _, _ = resolved
+        face_name = query.get("face", [""])[0]
+        if face_name:
+            cubemap = self.resolve_manifest_cubemap_files(query, resolved_source)
+            if cubemap is None:
+                self.send_error_json(404, "Cubemap face not found")
+                return
+            _, faces, _, _ = cubemap
+            target = faces.get(face_name)
+            if target is None:
+                self.send_error_json(404, "Unknown Cubemap face")
+                return
+        else:
+            resolved = self.resolve_manifest_asset_file(query, resolved_source)
+            if resolved is None:
+                return
+            _, target, _, _ = resolved
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
         disposition = "attachment" if download else "inline"
         with target.open("rb") as file:

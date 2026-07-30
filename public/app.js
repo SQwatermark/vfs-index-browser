@@ -538,6 +538,24 @@ function renderPreview(data) {
     $('previewContent').innerHTML = `${meta}${message}<img class="media-preview" src="${data.rawUrl}" alt="${escapeHtml(file.name || file.file_name)}" />`
     return
   }
+  if (data.kind === 'cubemap') {
+    const faces = data.faces.map((face) => `
+      <figure class="cubemap-face">
+        <img src="${escapeHtml(face.rawUrl)}" alt="${escapeHtml(face.name)}" />
+        <figcaption>
+          <strong>${escapeHtml(face.name)}</strong>
+          <span>${formatBytes(face.size)}</span>
+          <a href="${escapeHtml(face.downloadUrl)}">下载</a>
+        </figcaption>
+      </figure>
+    `).join('')
+    $('previewContent').innerHTML = `
+      ${meta}
+      ${message}
+      <div class="cubemap-grid">${faces}</div>
+    `
+    return
+  }
   if (data.kind === 'video') {
     $('previewContent').innerHTML = `${meta}${message}<video class="media-preview" src="${data.rawUrl}" controls></video>`
     return

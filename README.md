@@ -73,6 +73,16 @@ $env:ANIMESTUDIO_MONOBEHAVIOUR_CLI =
 
 两个变量默认指向同一个程序；只有部署中确实使用两种 AnimeStudio 构建时才需拆分。
 
+manifest 中的 Cubemap 会按 container 精确导出六个面，并在预览区组成可逐面打开、
+下载的画廊。若主 CLI 是模型快照专用的定制构建，可把支持六面导出的标准构建单独配置为：
+
+```powershell
+$env:ANIMESTUDIO_CUBEMAP_CLI =
+  "D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe"
+```
+
+Cubemap 缓存会记录 EXE、CLI DLL 和核心 DLL 的文件身份，工具重新构建后自动失效。
+
 ## 主要模块
 
 | 路径 | 职责 |
