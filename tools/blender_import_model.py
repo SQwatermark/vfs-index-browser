@@ -17,6 +17,10 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from character_lighting import CharacterLighting, load_character_lighting
+
 
 def parse_args() -> argparse.Namespace:
     arguments = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
@@ -24,7 +28,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", type=Path, help="Input GLB exported by the VFS browser")
     parser.add_argument("output", type=Path, help="Output .blend file")
     parser.add_argument("--render", type=Path, help="Optional preview image path")
-    parser.add_argument("--outline", action="store_true", help="Enable approximate Freestyle outlines")
+    parser.add_argument(
+        "--lighting",
+        type=Path,
+        help="Optional character-lighting JSON built from CharInfo and its cubemap",
+    )
+    parser.add_argument(
+        "--outline",
+        action="store_true",
+        help="Enable approximate Freestyle outlines",
+    )
     return parser.parse_args(arguments)
 
 
@@ -113,7 +126,10 @@ def load_embedded_preview_images(input_path: Path) -> int:
     return loaded
 
 
-def build_character_npr_nodes(material: bpy.types.Material) -> bool:
+def build_character_npr_nodes(
+    material: bpy.types.Material,
+    lighting: CharacterLighting | None,
+) -> bool:
     metadata = material_preview_metadata(material)
     if (
         metadata.get("materialFamily") != "characterNpr"
@@ -155,15 +171,24 @@ def build_character_npr_nodes(material: bpy.types.Material) -> bool:
         light_dot.name = "Endfield NPR Main Light Dot"
         light_dot.label = "世界法线 · 主光方向"
         light_dot.operation = "DOT_PRODUCT"
-        direction = Vector((-1.0, -1.0, 1.0)).normalized()
+        direction = Vector(
+            lighting.ambient.blender_direction()
+            if lighting is not None
+            else (-1.0, -1.0, 1.0)
+        ).normalized()
         light_dot.inputs[1].default_value = tuple(direction)
         light_dot.location = (790, -260)
         normalize_light = nodes.new("ShaderNodeMath")
         normalize_light.name = "Endfield NPR Normalize NdotL"
-        normalize_light.label = "NdotL -> Ramp [0.55,1]（环境光近似）"
+        normalize_light.label = "NdotL → Ramp（环境光近似）"
         normalize_light.operation = "MULTIPLY_ADD"
-        normalize_light.inputs[1].default_value = 0.225
-        normalize_light.inputs[2].default_value = 0.775
+        multiplier, addend = (
+            lighting.ambient.npr_ramp_transform()
+            if lighting is not None
+            else (0.225, 0.775)
+        )
+        normalize_light.inputs[1].default_value = multiplier
+        normalize_light.inputs[2].default_value = addend
         normalize_light.use_clamp = True
         normalize_light.location = (980, -260)
         ramp_vector = nodes.new("ShaderNodeCombineXYZ")
@@ -246,7 +271,43 @@ def add_area_light(name: str, location: Vector, energy: float, size: float, targ
     point_camera(light, target)
 
 
-def configure_preview_scene(enable_outline: bool) -> None:
+def configure_world(lighting: CharacterLighting | None) -> None:
+    scene = bpy.context.scene
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("Endfield Preview World")
+    if lighting is None or lighting.cubemap.equirectangular_path is None:
+        scene.world.use_nodes = False
+        scene.world.color = (0.025, 0.03, 0.04)
+        return
+
+    panorama_path = lighting.cubemap.equirectangular_path
+    if not panorama_path.is_file():
+        raise FileNotFoundError(f"lighting panorama does not exist: {panorama_path}")
+    scene.world.use_nodes = True
+    nodes = scene.world.node_tree.nodes
+    links = scene.world.node_tree.links
+    nodes.clear()
+    environment = nodes.new("ShaderNodeTexEnvironment")
+    environment.name = "Endfield Character Cubemap"
+    environment.label = f"角色 Cubemap（{lighting.cubemap.encoding}）"
+    environment.image = bpy.data.images.load(str(panorama_path), check_existing=True)
+    environment.image.pack()
+    environment.interpolation = "Linear"
+    environment.location = (-420, 0)
+    background = nodes.new("ShaderNodeBackground")
+    background.name = "Endfield Character Ambient"
+    background.inputs["Strength"].default_value = lighting.ambient.base_intensity
+    background.location = (-120, 0)
+    output = nodes.new("ShaderNodeOutputWorld")
+    output.location = (120, 0)
+    links.new(environment.outputs["Color"], background.inputs["Color"])
+    links.new(background.outputs["Background"], output.inputs["Surface"])
+
+
+def configure_preview_scene(
+    enable_outline: bool,
+    lighting: CharacterLighting | None,
+) -> None:
     scene = bpy.context.scene
     scene.render.engine = "BLENDER_EEVEE_NEXT"
     scene.render.resolution_x = 768
@@ -257,9 +318,7 @@ def configure_preview_scene(enable_outline: bool) -> None:
     scene.view_settings.view_transform = "AgX"
     scene.view_settings.look = "AgX - Medium High Contrast"
 
-    if scene.world is None:
-        scene.world = bpy.data.worlds.new("Endfield Preview World")
-    scene.world.color = (0.025, 0.03, 0.04)
+    configure_world(lighting)
     minimum, maximum = scene_bounds()
     center = (minimum + maximum) * 0.5
     size = maximum - minimum
@@ -276,17 +335,33 @@ def configure_preview_scene(enable_outline: bool) -> None:
     point_camera(camera, center + Vector((0.0, 0.0, size.z * 0.02)))
 
     light_scale = max(size.length, 1.0)
+    main_direction = Vector(
+        lighting.ambient.blender_direction()
+        if lighting is not None
+        else (-1.0, -1.0, 1.0)
+    ).normalized()
+    # The recovered profile direction can be exactly horizontal. A small
+    # elevation keeps the preview key light useful without changing its azimuth.
+    if abs(main_direction.z) < 0.15:
+        main_direction.z = 0.15
+        main_direction.normalize()
+    base_intensity = lighting.ambient.base_intensity if lighting is not None else 1.0
+    directional_intensity = (
+        lighting.ambient.directional_intensity if lighting is not None else 0.6
+    )
     add_area_light(
         "Endfield Key Light",
-        center + Vector((-light_scale, -light_scale, light_scale)),
-        260,
+        center + main_direction * light_scale,
+        260 * base_intensity * directional_intensity,
         light_scale,
         center,
     )
     add_area_light(
         "Endfield Fill Light",
-        center + Vector((light_scale, -light_scale * 0.4, light_scale * 0.3)),
-        110,
+        center
+        - main_direction * light_scale * 0.6
+        + Vector((0.0, 0.0, light_scale * 0.5)),
+        110 * base_intensity * (1.0 - directional_intensity * 0.5),
         light_scale * 0.8,
         center,
     )
@@ -315,9 +390,12 @@ def main() -> None:
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=str(input_path))
+    lighting = load_character_lighting(args.lighting) if args.lighting else None
     loaded_preview_images = load_embedded_preview_images(input_path)
-    converted = sum(build_character_npr_nodes(material) for material in bpy.data.materials)
-    configure_preview_scene(args.outline)
+    converted = sum(
+        build_character_npr_nodes(material, lighting) for material in bpy.data.materials
+    )
+    configure_preview_scene(args.outline, lighting)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     bpy.ops.wm.save_as_mainfile(filepath=str(output_path))
@@ -328,7 +406,8 @@ def main() -> None:
         bpy.ops.render.render(write_still=True)
     print(
         f"Imported {input_path.name}; loaded {loaded_preview_images} preview images; "
-        f"converted {converted} CharacterNPR materials"
+        f"converted {converted} CharacterNPR materials; "
+        f"lighting={'configured' if lighting is not None else 'fallback'}"
     )
 
 

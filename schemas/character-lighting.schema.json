@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://endfield.local/schemas/character-lighting.schema.json",
+  "title": "Endfield Character Lighting",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "source",
+    "ambient",
+    "cubemap"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "source": {
+      "type": "object",
+      "description": "Provenance retained for diagnostics; fields do not affect rendering."
+    },
+    "ambient": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseIntensity",
+        "customDirectionDegrees",
+        "directionalIntensity",
+        "directionalParameter"
+      ],
+      "properties": {
+        "baseIntensity": {
+          "type": "number",
+          "minimum": 0
+        },
+        "customDirectionDegrees": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "number"
+          }
+        },
+        "directionalIntensity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "directionalParameter": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "cubemap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "encoding",
+        "faces"
+      ],
+      "properties": {
+        "encoding": {
+          "enum": [
+            "ldr-png",
+            "hdr-exr"
+          ]
+        },
+        "faces": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "PositiveX",
+            "NegativeX",
+            "PositiveY",
+            "NegativeY",
+            "PositiveZ",
+            "NegativeZ"
+          ],
+          "properties": {
+            "PositiveX": {
+              "type": "string",
+              "minLength": 1
+            },
+            "NegativeX": {
+              "type": "string",
+              "minLength": 1
+            },
+            "PositiveY": {
+              "type": "string",
+              "minLength": 1
+            },
+            "NegativeY": {
+              "type": "string",
+              "minLength": 1
+            },
+            "PositiveZ": {
+              "type": "string",
+              "minLength": 1
+            },
+            "NegativeZ": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "equirectangularPath": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

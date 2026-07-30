@@ -135,6 +135,22 @@ blender --background --factory-startup `
   model.glb model.blend --render preview.png
 ```
 
+角色信息界面的 Cubemap 六面导出后，可先构建独立的光照输入：
+
+```powershell
+python tools/build_character_lighting.py `
+  path/to/exported/Cubemap `
+  path/to/character-lighting.json
+
+blender --background --factory-startup `
+  --python tools/blender_import_model.py -- `
+  model.glb model.blend `
+  --lighting path/to/character-lighting.json `
+  --render preview.png
+```
+
+`character-lighting.json` 保存原始 Profile 参数、六面相对路径和生成的等距柱状环境贴图路径。当前 AnimeStudio 通过 PNG 输出 BC6H Cubemap，因此这条链路属于 LDR 预览，不能保留原资源的 HDR 动态范围。
+
 使用 `--outline` 可启用近似的 Freestyle 轮廓。脚本会保留 GLB 导入的骨架、蒙皮、纹理和材质自定义属性；当前节点组是 Eevee 静态预览后端，不等同于原始 HGRP Shader。
 
 格式结论和未完成事项以 `docs/research/` 中的文档为准，不应从临时终端输出推断。

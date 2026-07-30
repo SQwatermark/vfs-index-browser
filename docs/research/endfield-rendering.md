@@ -160,9 +160,20 @@ MonoBehaviour TypeTree 后，可确认 Profile 包含一个 `HGCharacterVolume` 
 `assets/beyond/arts/entity/common/hdris/t_hdri_reflection_char_01.exr`。其 Unity
 类型是 `Cubemap`（ClassID 89），格式为 BC6H，尺寸为 `128×128×6`，包含 8
 级 mip。像素流共 131232 字节，正好等于六份 21872 字节的单面完整 mip 链，
-可确认数据按“每面一整条 mip 链”连续存储。AnimeStudio 的 BC6H 解码器能够在
-把 Cubemap 临时按 Texture2D 解析时正确输出第一面，但正式支持仍需按六面切分，
-不能把当前单面实验结果当作完整环境贴图。
+可确认数据按“每面一整条 mip 链”连续存储。AnimeStudio 现已按 Unity 顺序输出
+`PositiveX`、`NegativeX`、`PositiveY`、`NegativeY`、`PositiveZ`、
+`NegativeZ` 六面；不执行普通 Texture2D 的垂直翻转时，标准方向采样可生成连续
+的等距柱状环境图，真实角色预览中未出现面接缝或上下颠倒。
+
+`tools/build_character_lighting.py` 将六面与上述四项生效参数整理为版本化
+`character-lighting.json`，`tools/blender_import_model.py --lighting` 会用它
+驱动 Eevee World、区域光方向以及 Skin/Hair 的 Ramp 采样范围。`(180, 0)` 当前
+按“方位角从 Blender `+Y` 起算，180° 指向角色正面 `-Y`”解释；这是由角色正面
+受光结果校准的预览约定，仍需结合 HGRP shader 或运行时常量验证。
+
+当前六面通过 ImageSharp 输出为普通 PNG，只保留 LDR 色值。它足以验证方向和
+初始光照构图，但不能还原 BC6H HDR 动态范围、粗糙度对应的 mip 选择或游戏内
+曝光。后续需要增加 float BC6H 到 EXR/DDS 的路径，再进行物理高光校准。
 
 ### 官方公开技术背景
 
