@@ -4,3 +4,7 @@ server.err
 __pycache__/
 *.py[cod]
 .idea/
+.tmp/
+experiments/**/*.blend
+experiments/**/*.blend1
+experiments/**/*.png

@@ -12,6 +12,7 @@
 - 按逻辑路径定位 AnimationClip 等 Unity 子资源，并处理无 Container 的命名子资源。
 - 解析 TableCfg/SparkBuffer，并实验性解析 JsonData/MemoryPack 二进制配置。
 - 按需恢复 Prefab 的组合模型，并以自包含 GLB 在浏览器中预览或下载。
+- 将缓存 GLB 派生为贴图内嵌、可继续编辑的 Blender 文件。
 
 ## 架构原则
 
@@ -84,6 +85,16 @@ $env:ANIMESTUDIO_CUBEMAP_CLI =
 
 Cubemap 缓存会记录 EXE、CLI DLL 和核心 DLL 的文件身份，工具重新构建后自动失效。
 
+模型预览页可以直接生成并下载 `.blend`。服务默认查找 PATH 中的 Blender，
+然后回退到 Blender 4.3 的标准 Windows 安装位置；其他安装位置可配置：
+
+```powershell
+$env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
+```
+
+首次下载会在后台调用 Blender，后续请求复用模型缓存目录中的结果。GLB、材质
+后端或光照代码更新后，缓存会自动重新生成。
+
 ## 主要模块
 
 | 路径 | 职责 |
@@ -114,6 +125,7 @@ GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
 GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456
+GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456&animationAssetIndex=789
 GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
@@ -159,15 +171,19 @@ blender --background --factory-startup `
   --python tools/blender_import_model.py -- `
   model.glb model.blend `
   --lighting path/to/character-lighting.json `
+  --main-light-direction 0 -1 0 `
   --framing portrait `
   --render preview.png
 ```
 
 `character-lighting.json` 保存原始 Profile 参数、六面相对路径和生成的等距柱状环境贴图路径。当前 AnimeStudio 通过 PNG 输出 BC6H Cubemap，因此这条链路属于 LDR 预览，不能保留原资源的 HDR 动态范围。
 
-`--framing` 支持 `full` 和 `portrait` 两种验证构图；使用 `--outline` 可启用近似的 Freestyle 轮廓。脚本会保留 GLB 导入的骨架、蒙皮、纹理和材质自定义属性；当前节点组是 Eevee 静态预览后端，不等同于原始 HGRP Shader。
+`--main-light-direction` 是独立的预览主光方向，不从 CharacterVolume 的环境光方向推导。`--framing` 支持 `full` 和 `portrait` 两种验证构图；使用 `--outline` 可启用近似的 Freestyle 轮廓。脚本会保留 GLB 导入的骨架、蒙皮、纹理和材质自定义属性，并为面部 SDF、身体 Skin、头发和丝袜选择独立路径；当前节点组是 Eevee 静态预览后端，不等同于完整 HGRP Shader。
 
 格式结论和未完成事项以 `docs/research/` 中的文档为准，不应从临时终端输出推断。
+当前角色、NPC、Shader、动画和音频工作的统一优先级见
+[资源恢复整合路线](docs/design/integrated-roadmap.md)。
+完整的文档、生产模块和研究工具入口见[文档与工具导航](docs/README.md)。
 
 ## 当前限制
 

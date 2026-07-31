@@ -44,7 +44,11 @@ FractalMiner 归档的 1.3.3 Shader 与佩丽卡真实材质共同确认：
 
 佩丽卡面部材质同时启用了 `_UseDiffRampMap`、`_UseSDFLightmap`、`_UseShadowLutTex` 和 `_FaceHighlightMap`。对应的 `_DiffRampMap`、`_SDFLightmap`、`_SDFMask`、`_ShadowLutTex` 与 `_HighlightMap` 已能随 ModelDocument 和 GLB 完整导出。
 
-`_SDFLightmap` 的 R/G 通道呈左右镜像的面部距离场，但单独选择一个通道并映射到 Diff Ramp 会使整张脸落入错误的阴影色阶。该实验说明 SDF 贴图不是可直接显示的颜色输入；正确实现至少还需要恢复光照在面部局部坐标中的方向、左右通道选择、距离阈值、`_SDFMask` 分区及 `_ShadowLutTex` 调色关系。在公式确认前，Blender 默认预览继续使用稳定的法线受光近似，不启用实验性 SDF 节点。
+`_SDFLightmap` 的 R/G 通道呈左右镜像的面部距离场，不能把单个通道直接当作 Diff Ramp 输入。当前 Blender 后端已接入材质匹配变体 `b225` 中可确认的左右采样、R/G 阈值多项式与 `_SDFMask.g` 混合主干；面部不再退回普通法线受光。Normal、Emotion、Highlight、Shadow LUT 等其余分支，以及运行时 `_CharacterParams` 偏置和相机侧补偿仍未恢复，必须作为明确边界保留，不能用视觉调参伪装成原公式。
+
+由于 DiffRamp 只是完整面部颜色链的中间结果，直接与 BaseMap 相乘会使肤色整体
+发灰。当前正式 Surface 暂用 BaseMap 回退，SDF 节点链仍保留在材质中供检查；
+完成 Shadow LUT 和运行时参数后再启用其最终输出。
 
 ### 编译变体定位
 
@@ -77,7 +81,7 @@ FractalMiner 归档的 1.3.3 Shader 与佩丽卡真实材质共同确认：
 
 ### SDF 核心流程
 
-`b225` 中已经能够还原的面部 SDF 主干可表达为以下伪代码：
+材质匹配的 `b225` 与相邻变体共享以下面部 SDF 主干；Blender 当前只实现这段主干，而没有宣称实现整个 `b225`：
 
 ```text
 lightX = dot(mainLightDirection, objectRight)
@@ -101,6 +105,11 @@ normalSignal = dot(transformToWorld(pseudoNormal), mainLightDirection)
 diffuseSignal = lerp(sdfSignal, normalSignal, mask.g)
 diffuseColor = DiffRamp(float2(diffuseSignal * 0.5 + 0.5, 0.5))
 ```
+
+其中方向阈值并不只由面部局部主光方向决定。`b225` 还会将相机前向、
+`_CharacterParams12.x` 与主光背向程度组合进阈值。当前 Blender 后端令该相机侧
+补偿为中性，因此正面主光适合检查节点和贴图链路，但大角度侧光仍可能出现比
+游戏更生硬的明暗分界；这属于已知缺口，不应通过任意模糊 SDF 来隐藏。
 
 Shader 属性声明将 `_SDFMask` 的 RGB 通道直接命名为 `RimMask / SDFMask / FlatSHMask`：
 

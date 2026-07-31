@@ -125,16 +125,24 @@ Blender 4.3 的 glTF 导入器会把材质 `extras.endfieldPreview` 保留为 `M
 
 - 导入 GLB 并保留骨架、蒙皮、材质分区和纹理；
 - 只转换 `materialFamily == "characterNpr"` 的材质，其他材质保持 glTF 导入结果；
-- 保留导入器生成的基础色纹理与颜色乘算节点，将输出接入 Eevee `Diffuse -> Shader to RGB -> Color Ramp` 分段受光链；
+- 保留导入器生成的基础色纹理与颜色乘算节点，并按面部 SDF、身体 Skin 和头发分别建立 CharacterNPR 路径；
+- 面部复刻材质匹配变体 `b225` 中的 SDF R/G 阈值、左右采样和 `_SDFMask.g` 混合主干，身体 Skin 复刻 `b191` 中可确认的 `N dot L -> DiffRamp` 主干；
+- 主光方向由 `--main-light-direction` 显式传入；CharacterVolume Profile 的 `charAmbientLightCustomDir` 仅用于环境光，不再误作场景主光；
+- 在恢复的颜色载体上混入少量 Blender Diffuse 作为阴影接收兼容层，使预览能响应场景遮挡；该层不是游戏 Shader 公式；
 - 从转换后的 ORM 贴图 Alpha 读取 HGRP 原始 Spec 通道，为衣物 Principled 材质恢复逐像素高光强度；
+- 对 `silkStockings` 材质使用独立节点组，以原始 BaseMap、视角相关染色、各向异性高光、湿润粗糙度和环境光下限近似游戏分支；存在四通道 Mask 时自动接入；
 - 将 `CharacterNPR_OverlayShadow` 的乘算混合语义近似为透明黑层衰减；这是 Eevee 无法读取目标帧缓冲时的灰度近似，不是原 Shader 的逐通道精确复刻；
 - 建立验证相机、双区域光和 World；传入 `--lighting` 时用角色 Cubemap 和生效的 `HGCharacterVolume` 环境光参数替代硬编码输入；
 - 通过 `--framing full|portrait` 切换全身和上半身验证构图；
 - 可选启用 Freestyle 外轮廓，并输出可继续编辑的 `.blend` 和验证 PNG。
 
+模型 API 还提供按需 `.blend` 下载。服务端先复用自包含 GLB，再根据 GLB、
+Blender 导入器、材质后端和光照模块的修改时间决定是否重新生成。Blender
+派生失败不会破坏已缓存 GLB，临时文件也不会作为完整产物返回。
+
 光照数据通过版本化的 `character-lighting.json` 进入 Blender，而不是由 Blender 脚本解析 TypeTree 文本。该文档保留 Profile 与 Cubemap 来源、环境光原始值、六面相对路径、贴图编码和派生的等距柱状贴图路径，格式由 `schemas/character-lighting.schema.json` 固定。`character_lighting.py` 负责严格校验和坐标换算，`tools/build_character_lighting.py` 负责六面投影，Blender 后端只消费稳定语义。这样将来换成 HDR EXR 或修正方向约定时，不需要改动模型恢复层。
 
-该后端首先验证统一材质语义能否跨宿主复用。Color Ramp 和 Freestyle 参数目前是预览默认值，不是从游戏 Shader 反编译得到的常量。Freestyle 会把眼睛、发丝等独立网格边界识别为轮廓，精度低于后续计划中的材质分类反面外扩方案。
+该后端首先验证统一材质语义能否跨宿主复用。面部和身体的核心 Ramp 输入来自已选 Shader 变体，但运行时 `_CharacterParams` 偏置、面部相机侧补偿、完整阴影和颜色 LUT 尚未恢复；这些边界会写入材质诊断字段。Freestyle 会把眼睛、发丝等独立网格边界识别为轮廓，且游戏画面没有显眼描边，因此只保留为可选诊断效果。
 
 角色 Prefab 中的 Animator 没有绑定 Controller。佩丽卡真实样本的面部与虹膜网格均无 BlendShape，渲染器默认权重也为空；骨骼顺序、BindPose 和静止姿态矩阵可以回到一致模型空间。因此，眼位与表情差异不能通过“补导默认 BlendShape”解决，而应作为运行时面部控制或中性姿态输入单独恢复。预览后端不应把单个角色的经验偏移写入通用模型解析器。
 
@@ -153,9 +161,9 @@ python tools/select_shader_variants.py `
 
 ## 当前限制
 
-- 当前预览已区分衣物 PBR 与面部/头发风格化渲染，并恢复衣物 Spec 通道和覆盖阴影的近似语义；Toon Ramp、眼睛高光/散射、头发高光、覆盖阴影逐通道乘算和丝袜各向异性仍与游戏存在差异。游戏画面没有显眼描边，因此轮廓只保留为可选诊断效果，不作为默认还原目标。
-- Blender 后端已能按 `materialRole` 选择处理路径并为 Skin/Hair 读取真实 `_DiffRampMap`；当前用世界法线与 Profile 方向的点积近似 Ramp 横坐标，并用环境光参数近似明暗范围。方位角暂按 Blender `+Y` 为 `0°`、绕 `Z` 轴旋转解释，这是根据角色正面受光样本校准的预览约定，尚不是已证明的 HGRP shader 公式。
-- 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye、OverlayShadow 和 SilkStockings 仍无完整专用节点组。
+- 当前预览已区分衣物 PBR 与面部/头发风格化渲染，并恢复衣物 Spec 通道、丝袜专用节点组和覆盖阴影的近似语义；Toon Ramp、眼睛高光/散射、头发高光、覆盖阴影逐通道乘算和丝袜定制 NDF 仍与游戏存在差异。游戏画面没有显眼描边，因此轮廓只保留为可选诊断效果，不作为默认还原目标。
+- Blender 后端已能按 `materialRole` 和 SDF 贴图身份选择面部、身体 Skin 与 Hair 路径，并读取真实 `_DiffRampMap`。主光与环境光已分离；默认主光 `(0, -1, 0)` 只是正面检查用的预览设置，不代表游戏运行时配置。
+- 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye 和 OverlayShadow 仍无完整专用节点组；没有保存 `_SilkStockingsMask` 的旧材质只能使用丝袜节点组的默认通道值。
 - manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并按唯一子资源名和 PathID
   解析 AnimeStudio 导出文件；ACL 2.1 压缩曲线可导出为紧凑 JSON，并已进入
   独立模型动画文档和浏览器播放链路。
