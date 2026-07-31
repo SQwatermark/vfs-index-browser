@@ -22,6 +22,10 @@ _LANGUAGE_ALIASES = {
     "korean": "korean",
     "kr": "korean",
 }
+_MEDIA_LANGUAGE_ALIASES = {
+    **_LANGUAGE_ALIASES,
+    "sfx": "sfx",
+}
 
 
 class AudioDialogFormatError(ValueError):
@@ -73,7 +77,7 @@ class AudioMediaEntry:
         ):
             raise AudioDialogFormatError("media source must be a non-empty trimmed string")
         if self.language is not None:
-            object.__setattr__(self, "language", normalize_audio_language(self.language))
+            object.__setattr__(self, "language", normalize_audio_media_language(self.language))
         for name in ("bank_id", "bank_offset", "bank_size", "bank_wem_offset"):
             value = getattr(self, name)
             if value is not None:
@@ -158,6 +162,22 @@ def normalize_audio_language(language: object) -> str:
         return _LANGUAGE_ALIASES[normalized]
     except KeyError as exc:
         raise AudioDialogFormatError(f"unsupported audio language: {language!r}") from exc
+
+
+def normalize_audio_media_language(language: object) -> str:
+    """Normalize language tags emitted by PCK metadata.
+
+    Wwise packages use ``sfx`` for language-neutral media. It is a valid
+    package classification, but it must not match any AudioDialog language.
+    """
+
+    if not isinstance(language, str) or not language.strip():
+        raise AudioDialogFormatError("media language must be a non-empty string")
+    normalized = language.strip().lower()
+    try:
+        return _MEDIA_LANGUAGE_ALIASES[normalized]
+    except KeyError as exc:
+        raise AudioDialogFormatError(f"unsupported media language: {language!r}") from exc
 
 
 def normalize_audio_dialog_path(path: object, dialog_key: str | int | None = None) -> str:
@@ -245,7 +265,9 @@ def map_audio_dialog_records(
                 (
                     entry
                     for entry in media_by_id.get(record.media_id, ())
-                    if entry.language is None or entry.language == record.language
+                    # Language-specific PCKs classify streamed voice media as
+                    # Wwise SFX; the containing package supplies its language.
+                    if entry.language in {None, "sfx", record.language}
                 ),
                 key=_media_sort_key,
             )
