@@ -1,6 +1,6 @@
 import unittest
 
-from tools.inspect_npc_avatar_mesh import parse_avatar_mesh
+from npc_avatar_config import parse_avatar_mesh
 
 
 SAMPLE = """\

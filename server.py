@@ -29,6 +29,14 @@ from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directo
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
+from npc_avatar_resources import build_avatar_mesh_resource_plan
+from string_path_hash import StringPathHashIndex
+from npc_avatar_config import (
+    attach_resolved_paths,
+    is_avatar_mesh_asset_path,
+    parse_avatar_mesh,
+    summarize_avatar_mesh,
+)
 from animestudio_model import (
     attach_mesh_geometry,
     attach_texture_images,
@@ -122,6 +130,7 @@ ANIMATION_CLIP_EXPORT_VERSION = 1
 MODEL_GLB_VERSION = 3
 MODEL_BLEND_VERSION = 2
 AUDIO_PACKAGE_META_VERSION = 1
+STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
@@ -1053,6 +1062,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
     db_path: Path
     manifest_indexes: dict[tuple[int, int, str], ManifestIndex] = {}
     manifest_index_lock = threading.Lock()
+    shared_resource_lock = threading.Lock()
     memorypack_schema: SchemaIndex | None = None
     memorypack_union_map: dict[str, dict[int, str]] | None = None
     memorypack_load_error: str | None = None
@@ -1178,6 +1188,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/manifest-asset/raw":
             self.handle_manifest_asset_raw(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/avatar-plan":
+            self.handle_manifest_asset_avatar_plan(parse_qs(parsed.query))
             return
         if parsed.path == "/api/manifest-asset/model":
             self.handle_manifest_asset_model(parse_qs(parsed.query))
@@ -1416,6 +1429,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
             if file_suffix(asset["path"]) == ".prefab":
                 files[-1]["modelUrl"] = f"/api/manifest-asset/model?{params}"
+            if is_avatar_mesh_asset_path(asset["path"]):
+                files[-1]["avatarPlanUrl"] = (
+                    f"/api/manifest-asset/avatar-plan?{params}"
+                )
         directory = listing["directory"]
         self.send_json(
             {
@@ -1750,6 +1767,86 @@ class BrowserHandler(BaseHTTPRequestHandler):
         with chunk_path.open("rb") as file:
             file.seek(int(record["offset"]) + relative_offset)
             return file.read(length)
+
+    def resolve_logical_file_source(self, logical_id: str) -> tuple[dict, Path] | None:
+        """Resolve one local VFS logical file, preferring its effective entry."""
+
+        with closing(self.connect()) as conn:
+            effective_ids = {
+                int(row[0])
+                for row in conn.execute(
+                    """
+                    SELECT file_id FROM entries
+                    WHERE scope = 'effective' AND type = 'file' AND path = ?
+                      AND file_id IS NOT NULL
+                    """,
+                    (logical_id,),
+                )
+            }
+            candidates = [
+                row_to_dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM files WHERE logical_id = ?",
+                    (logical_id,),
+                )
+            ]
+        candidates.sort(
+            key=lambda row: (
+                0 if int(row["id"]) in effective_ids else 1,
+                *source_rank(row["source"], bool(row["chunk_exists"])),
+            )
+        )
+        for candidate in candidates:
+            chunk_path = Path(candidate["chunk_path"])
+            if chunk_path.is_file():
+                return candidate, chunk_path
+        return None
+
+    def ensure_string_path_hash_file(self) -> tuple[Path, dict]:
+        """Materialize the effective runtime path table into the shared cache."""
+
+        resolved = self.resolve_logical_file_source(STRING_PATH_HASH_LOGICAL_ID)
+        if resolved is None:
+            raise FileNotFoundError(
+                f"local VFS file is unavailable: {STRING_PATH_HASH_LOGICAL_ID}"
+            )
+        record, chunk_path = resolved
+        root = INTERNAL_CACHE_DIR / "shared" / "string-path-hash"
+        target = root / "StringPathHash.bin"
+        meta_path = root / "meta.json"
+        identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "fileDataMd5": str(record.get("file_data_md5") or ""),
+        }
+
+        with self.shared_resource_lock:
+            if target.is_file() and meta_path.is_file():
+                try:
+                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                    if (
+                        meta.get("source") == identity
+                        and target.stat().st_size == int(record["length"])
+                    ):
+                        return target, meta
+                except (OSError, json.JSONDecodeError):
+                    pass
+            root.mkdir(parents=True, exist_ok=True)
+            target.unlink(missing_ok=True)
+            self.write_file_slice(record, chunk_path, target)
+            meta = {
+                "version": 1,
+                "source": identity,
+                "builtAtEpoch": int(time.time()),
+            }
+            meta_path.write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        return target, meta
 
     def write_file_slice(self, record: dict, chunk_path: Path, target: Path) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -3802,6 +3899,69 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "missingDependencyBundles": run_meta.get("missingDependencyBundles", []),
                 },
             }
+        )
+
+    def handle_manifest_asset_avatar_plan(
+        self,
+        query: dict[str, list[str]],
+    ) -> None:
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        index, asset, bundle_record, bundle_chunk = resolved
+        if not is_avatar_mesh_asset_path(str(asset["path"])):
+            self.send_error_json(400, "resource is not an NPC AvatarMesh asset")
+            return
+        try:
+            lod = int(query.get("lod", ["0"])[0])
+            exported = self.ensure_manifest_monobehaviour_dump(
+                bundle_record,
+                bundle_chunk,
+                asset,
+            )
+            if exported is None:
+                raise RuntimeError("AnimeStudio produced no AvatarMesh TypeTree dump")
+            dump_path, dump_meta = exported
+            avatar_mesh = parse_avatar_mesh(
+                dump_path.read_text(encoding="utf-8", errors="replace")
+            )
+            path_hash_file, path_hash_meta = self.ensure_string_path_hash_file()
+            attach_resolved_paths(
+                avatar_mesh,
+                StringPathHashIndex(path_hash_file),
+            )
+            plan = build_avatar_mesh_resource_plan(
+                index,
+                avatar_mesh,
+                lod=lod,
+            )
+        except FileNotFoundError as error:
+            self.send_error_json(503, str(error))
+            return
+        except subprocess.TimeoutExpired:
+            self.send_error_json(504, "AnimeStudio timed out while exporting AvatarMesh")
+            return
+        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            self.send_error_json(500, str(error))
+            return
+        self.send_json(
+            {
+                "kind": "avatarMeshResourcePlan",
+                "asset": asset,
+                "summary": summarize_avatar_mesh(avatar_mesh),
+                "avatarMesh": avatar_mesh,
+                "plan": plan,
+                "run": {
+                    "dump": {
+                        "builtAtEpoch": dump_meta.get("builtAtEpoch"),
+                        "toolArtifacts": dump_meta.get("source", {}).get(
+                            "toolArtifacts", []
+                        ),
+                    },
+                    "stringPathHash": path_hash_meta,
+                },
+            },
+            compress=True,
         )
 
     def ensure_manifest_asset_model_glb(

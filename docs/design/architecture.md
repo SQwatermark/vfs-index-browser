@@ -25,7 +25,9 @@ SQLite 主索引保存逻辑文件、来源、物理 chunk、偏移、长度、�
 
 manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务根据 Bundle 名称定位 Effective `.ab`，调用 AnimeStudio，并用 AssetMap 的 `Container` 精确匹配导出文件。常规资源类型无法导出时，`.asset` 和 `.prefab` 可按同一 container 精确回退到 MonoBehaviour TypeTree Dump；同一逻辑资源关联的多个组件会合并为一份可预览文本，而不会扫描整个 Bundle。Cubemap 也按 container 独立解析，但一个逻辑资源会产生六个带方向身份的面，HTTP 层以多产物预览返回，不能套用普通资源“一项对应一个文件”的假设。PCK、USM、TableCfg 和 MemoryPack 采用相同的按需解析原则。
 
-Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。NPC AvatarMesh 和可操控角色 Prefab 的入口差异止于标准对象图，后续统一遵循[角色材质恢复管线](material-pipeline.md)。
+Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
+
+AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 并从本地 VFS 的 effective `StringPathHash.bin` 恢复引用候选，`npc_avatar_resources.py` 再通过 manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和 Bundle。HTTP API `/api/manifest-asset/avatar-plan` 暂时暴露这份中间计划以便真实样本验证；它不是第二种公开模型格式。对象提取完成后仍进入同一个 ModelDocument 和[角色材质恢复管线](material-pipeline.md)。
 
 ## 关键约束
 
