@@ -40,6 +40,14 @@ class ServerAvatarResourceTests(unittest.TestCase):
             "data_tag_npc_avatarmesh.asset"
         ))
 
+    def test_recognizes_supported_model_entry_paths(self):
+        self.assertTrue(server.is_model_entry_path("Assets/Character/sample.prefab"))
+        self.assertTrue(server.is_model_entry_path(
+            "Assets/Beyond/DynamicAssets/Gameplay/NPC/AvatarMesh/Actor/"
+            "data_npc_avatarmesh_andrew.asset"
+        ))
+        self.assertFalse(server.is_model_entry_path("Assets/Effects/sample.asset"))
+
     def test_materializes_effective_string_path_hash_once(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

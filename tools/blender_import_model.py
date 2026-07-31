@@ -1218,6 +1218,17 @@ def configure_world(lighting: CharacterLighting | None) -> None:
     links.new(background.outputs["Background"], output.inputs["Surface"])
 
 
+def configure_armature_viewport() -> int:
+    armatures = [obj for obj in bpy.data.objects if obj.type == "ARMATURE"]
+    for armature in armatures:
+        # 骨架仍完整保留供动画编辑使用，但默认不遮挡角色模型。
+        armature.data.display_type = "STICK"
+        armature.show_in_front = False
+        armature.select_set(False)
+        armature.hide_set(True)
+    return len(armatures)
+
+
 def configure_preview_scene(
     enable_outline: bool,
     lighting: CharacterLighting | None,
@@ -1327,6 +1338,7 @@ def main() -> None:
     configured_overlays = sum(
         configure_overlay_shadow_nodes(material) for material in bpy.data.materials
     )
+    configured_armatures = configure_armature_viewport()
     configure_preview_scene(
         args.outline,
         lighting,
@@ -1347,6 +1359,7 @@ def main() -> None:
         f"configured {configured_silk} silk-stockings materials; "
         f"configured {configured_cloth} Character cloth materials; "
         f"configured {configured_overlays} overlay shadows; "
+        f"configured {configured_armatures} hidden armatures; "
         f"lighting={'configured' if lighting is not None else 'fallback'}"
     )
 

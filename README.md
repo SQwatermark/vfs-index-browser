@@ -85,8 +85,9 @@ $env:ANIMESTUDIO_CUBEMAP_CLI =
 
 Cubemap 缓存会记录 EXE、CLI DLL 和核心 DLL 的文件身份，工具重新构建后自动失效。
 
-模型预览页可以直接生成并下载 `.blend`。服务默认查找 PATH 中的 Blender，
-然后回退到 Blender 4.3 的标准 Windows 安装位置；其他安装位置可配置：
+模型预览页可以直接生成并下载 `.blend`，Prefab 与 AvatarMesh（含 `lod`）使用同一
+导出链路。服务默认查找 PATH 中的 Blender，然后选择标准 Windows 安装目录下版本号
+最高的 Blender；其他安装位置可配置：
 
 ```powershell
 $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
@@ -130,6 +131,7 @@ GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456
+GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&lod=0
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456&animationAssetIndex=789
 GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```

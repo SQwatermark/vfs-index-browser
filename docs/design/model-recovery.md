@@ -150,9 +150,21 @@ Blender 4.3 的 glTF 导入器会把材质 extras 保留为自定义属性。Ble
 - 通过 `--framing full|portrait` 切换全身和上半身验证构图；
 - 可选启用 Freestyle 外轮廓，并输出可继续编辑的 `.blend` 和验证 PNG。
 
-模型 API 还提供按需 `.blend` 下载。服务端先复用自包含 GLB，再根据 GLB、
-Blender 导入器、材质后端和光照模块的修改时间决定是否重新生成。Blender
-派生失败不会破坏已缓存 GLB，临时文件也不会作为完整产物返回。
+模型 API 还为 Prefab 和 AvatarMesh 两类入口提供按需 `.blend` 下载。AvatarMesh 请求
+通过 `lod` 选择部件后进入同一 ModelDocument、GLB 和 Blender Shader 后端，不维护第二套
+材质转换逻辑。服务端优先使用 `BLENDER_EXE` 或 PATH 中的 Blender；未显式配置时选择
+标准 Windows 安装目录下版本号最高的 Blender。生成缓存同时受 GLB、Blender 导入器、
+材质后端和光照模块的修改时间约束。Blender 派生失败不会破坏已缓存 GLB，临时文件也
+不会作为完整产物返回。
+
+```text
+GET /api/manifest-asset/model-blend?manifestId=451359&assetIndex=<Prefab>
+GET /api/manifest-asset/model-blend?manifestId=451359&assetIndex=<AvatarMesh>&lod=0
+```
+
+远程真实样本 `data_npc_avatarmesh_qinjc.asset` 已生成 Blender 4.4 可读取的 20.4 MiB
+文件；其中 9 个材质均保留 `endfieldShaderBackend` 和对应 CharacterNPR/PBR 节点树，证明
+AvatarMesh 的几何、蒙皮、材质和贴图不是仅在网页 GLB 中生效。
 
 光照数据通过版本化的 `character-lighting.json` 进入 Blender，而不是由 Blender 脚本解析 TypeTree 文本。该文档保留 Profile 与 Cubemap 来源、环境光原始值、六面相对路径、贴图编码和派生的等距柱状贴图路径，格式由 `schemas/character-lighting.schema.json` 固定。`character_lighting.py` 负责严格校验和坐标换算，`tools/build_character_lighting.py` 负责六面投影，Blender 后端只消费稳定语义。这样将来换成 HDR EXR 或修正方向约定时，不需要改动模型恢复层。
 

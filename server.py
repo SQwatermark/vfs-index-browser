@@ -128,13 +128,24 @@ VGMSTREAM_CLI = Path(
 )
 USM_CONVERT = Path(os.environ.get("USM_CONVERT", PROJECT_ROOT / "tools" / "usm-convert.exe"))
 FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
-BLENDER_EXE = Path(
-    os.environ.get(
-        "BLENDER_EXE",
-        shutil.which("blender")
-        or r"C:\Program Files\Blender Foundation\Blender 4.3\blender.exe",
+
+
+def find_blender_executable() -> Path:
+    configured = os.environ.get("BLENDER_EXE") or shutil.which("blender")
+    if configured:
+        return Path(configured)
+    install_root = Path(r"C:\Program Files\Blender Foundation")
+    installed = sorted(
+        install_root.glob("Blender */blender.exe"),
+        key=lambda path: tuple(
+            int(value) for value in re.findall(r"\d+", path.parent.name)
+        ),
+        reverse=True,
     )
-)
+    return installed[0] if installed else install_root / "Blender 4.3" / "blender.exe"
+
+
+BLENDER_EXE = find_blender_executable()
 BLENDER_MODEL_IMPORTER = PROJECT_ROOT / "tools" / "blender_import_model.py"
 
 CHACHA_KEY = bytes.fromhex(
@@ -149,7 +160,7 @@ AVATAR_MODEL_SNAPSHOT_VERSION = 1
 ANIMATION_CLIP_EXPORT_VERSION = 1
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
-MODEL_BLEND_VERSION = 2
+MODEL_BLEND_VERSION = 3
 AUDIO_PACKAGE_META_VERSION = 1
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
@@ -862,6 +873,10 @@ def escape_sql_like(value: str) -> str:
 
 def file_suffix(file_name: str) -> str:
     return Path(file_name).suffix.lower()
+
+
+def is_model_entry_path(path: str) -> bool:
+    return file_suffix(path) == ".prefab" or is_avatar_mesh_asset_path(path)
 
 
 def dotnet_tool_identity(executable: Path) -> list[dict]:
@@ -4412,7 +4427,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         animation_asset = animation_resolved[1] if animation_resolved else None
         is_prefab = file_suffix(str(asset["path"])) == ".prefab"
         is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
-        if not is_prefab and not is_avatar_mesh:
+        if not is_model_entry_path(str(asset["path"])):
             self.send_error_json(400, "resource is not a supported model entry")
             return
         if is_avatar_mesh and animation_asset:
@@ -4486,8 +4501,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 ),
                 "blendUrl": (
                     f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}&v={MODEL_BLEND_VERSION}"
-                    if is_prefab and BLENDER_EXE.is_file() and BLENDER_MODEL_IMPORTER.is_file()
+                    f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_BLEND_VERSION}"
+                    if (is_prefab or is_avatar_mesh)
+                    and BLENDER_EXE.is_file()
+                    and BLENDER_MODEL_IMPORTER.is_file()
                     else None
                 ),
                 "animationUrl": animation_url,
@@ -4634,7 +4651,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if resolved is None:
             return
         path = str(resolved[1]["path"])
-        if file_suffix(path) != ".prefab" and not is_avatar_mesh_asset_path(path):
+        if not is_model_entry_path(path):
             self.send_error_json(400, "resource is not a supported model entry")
             return
 
@@ -4668,15 +4685,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
         resolved = self.resolve_manifest_asset_source(query)
         if resolved is None:
             return
-        if file_suffix(str(resolved[1]["path"])) != ".prefab":
-            self.send_error_json(400, "Blender export currently requires a .prefab asset")
+        path = str(resolved[1]["path"])
+        if not is_model_entry_path(path):
+            self.send_error_json(400, "resource is not a supported model entry")
             return
         if not BLENDER_EXE.is_file():
             self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
             return
 
         try:
-            asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(resolved)
+            lod = int(query.get("lod", ["0"])[0])
+            asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(
+                resolved,
+                lod=lod,
+            )
             blend_path = model_path.with_name("model.blend")
             material_backend = PROJECT_ROOT / "blender_materials.py"
             source_paths = [
