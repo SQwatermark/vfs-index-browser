@@ -2120,6 +2120,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         objects = load_animestudio_objects(object_root)
         if not objects:
+            bare_snapshots = sum(
+                1
+                for asset_type in ("GameObject", "Transform")
+                for _ in (object_root / asset_type).glob("*.json")
+            )
+            if bare_snapshots:
+                raise RuntimeError(
+                    f"AnimeStudio exported {bare_snapshots} GameObject/Transform JSON files "
+                    "without required $animestudio identity metadata"
+                )
             raise RuntimeError("AnimeStudio produced no GameObject/Transform JSON snapshots")
         entry = find_container_root_game_object(objects, str(asset["path"]))
         document = build_hierarchy_document(

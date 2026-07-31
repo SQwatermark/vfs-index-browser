@@ -163,6 +163,14 @@ Deathgirl LOD0 实测结果：
 
 Andrew 的眼镜部件挂接到 `glass:glass_jnt`；Deepfin 与 Pelica 还覆盖了脊柱、头部和衣物控制骨。三个样本均从 FBX 子资产唯一推导出 Avatar，说明 NPC 与可操控角色可以复用同一资源计划。首次请求因 manifest schema 升级重建派生索引约耗时 59 秒，缓存后另外两个样本各约 0.5 秒。
 
+浏览器会在 AvatarMesh 资产行显示“资源”按钮，并将计划渲染为完整性摘要、Avatar、LOD 部件和直接 Bundle 四部分。也可以使用查询参数直接打开指定样本：
+
+```text
+http://HOST:8765/?avatarPlanManifestId=451359&avatarPlanAssetIndex=157272&lod=0
+```
+
+人工验证时应检查：页面状态是否为“引用完整”，部件数是否与目标 LOD 一致，每个部件是否都有 Mesh、材质和根骨，以及直接 Bundle 数是否合理。未解析 Mesh 或 Avatar 会以错误状态显示；停用部件与 `mainPrefabHash` 未还原则作为独立提示，不会伪装成完整模型导出失败。
+
 资源计划列出的 Bundle 只表示 Mesh、Material 与 Avatar 的直接存储位置。实际对象导出还必须加入这些 Bundle 的传递依赖闭包，材质引用的 Texture2D、Shader 等资源可能位于依赖 Bundle；不能把“直接资源已唯一定位”误解为“模型所需输入已经全部闭合”。
 
 ```powershell

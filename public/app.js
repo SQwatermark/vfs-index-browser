@@ -250,6 +250,7 @@ function renderFiles(files, filePage) {
             <td>
               <div class="file-name-row">
                 <div class="file-name">${escapeHtml(file.name)}</div>
+                ${file.avatarPlanUrl ? `<button class="avatar-plan-button" data-avatar-plan-url="${escapeHtml(file.avatarPlanUrl)}" title="AvatarMesh resource plan">资源</button>` : ''}
                 ${file.modelUrl ? `<button class="model-preview-button" data-model-url="${escapeHtml(file.modelUrl)}" title="预览组合模型">3D</button>` : ''}
               </div>
               <div class="file-path">${escapeHtml(file.file_name)}</div>
@@ -284,6 +285,13 @@ function renderFiles(files, filePage) {
       event.stopPropagation()
       const row = button.closest('tr[data-file-key]')
       selectModel(button.dataset.modelUrl, row.dataset.fileKey)
+    })
+  })
+  document.querySelectorAll('.avatar-plan-button').forEach((button) => {
+    button.addEventListener('click', (event) => {
+      event.stopPropagation()
+      const row = button.closest('tr[data-file-key]')
+      selectAvatarPlan(button.dataset.avatarPlanUrl, row.dataset.fileKey)
     })
   })
 }
@@ -844,6 +852,87 @@ function renderPreview(data) {
   $('previewContent').innerHTML = `${meta}<div class="empty">暂不支持预览该文件类型，请下载查看。</div>`
 }
 
+function renderPlanAsset(asset, fallback = '未解析') {
+  if (!asset) return `<span class="avatar-plan-missing">${escapeHtml(fallback)}</span>`
+  return `
+    <div class="avatar-plan-asset">
+      <strong>${escapeHtml(asset.name || asset.path || '未命名资源')}</strong>
+      <span class="mono">${escapeHtml(asset.path || '')}</span>
+      <span class="mono">${escapeHtml(asset.bundleName || '')}</span>
+    </div>
+  `
+}
+
+function renderAvatarPlan(data) {
+  disposeModelViewer()
+  const plan = data.plan || {}
+  const summary = data.summary || {}
+  const parts = plan.parts || []
+  const bundles = plan.bundles || []
+  const unresolved = Number(summary.unresolvedReferenceCount || 0)
+  const complete = unresolved === 0 && plan.avatarAsset && parts.length > 0
+
+  $('openRawLink').textContent = '打开 JSON'
+  $('openRawLink').href = data.planUrl
+  $('downloadLink').removeAttribute('href')
+  $('downloadLink').textContent = '无需下载'
+  $('previewContent').innerHTML = `
+    <section class="avatar-plan-header">
+      <div>
+        <span class="avatar-plan-eyebrow">AvatarMesh 资源计划</span>
+        <h3>${escapeHtml(plan.name || data.asset?.name || 'AvatarMesh')}</h3>
+        <p class="mono">${escapeHtml(data.asset?.path || '')}</p>
+      </div>
+      <span class="avatar-plan-state ${complete ? 'complete' : 'incomplete'}">
+        ${complete ? '引用完整' : `${unresolved} 项未解析`}
+      </span>
+    </section>
+    <div class="avatar-plan-metrics">
+      <div><span>LOD</span><strong>${formatInt(plan.lod)}</strong></div>
+      <div><span>槽位</span><strong>${formatInt(summary.slotCount)}</strong></div>
+      <div><span>部件</span><strong>${formatInt(parts.length)}</strong></div>
+      <div><span>直接 Bundle</span><strong>${formatInt(bundles.length)}</strong></div>
+    </div>
+    ${summary.mainPrefabHashResolved ? '' : '<div class="notice">mainPrefabHash 未还原；这不影响已列出的 Avatar、Mesh 和 Material 引用验证。</div>'}
+    <section class="avatar-plan-section">
+      <h4>Avatar</h4>
+      ${renderPlanAsset(plan.avatarAsset, '未解析 Avatar')}
+    </section>
+    <section class="avatar-plan-section">
+      <h4>LOD ${formatInt(plan.lod)} 部件</h4>
+      <div class="avatar-part-list">
+        ${parts.map((part) => `
+          <article class="avatar-part ${part.meshAsset ? '' : 'has-error'}">
+            <header>
+              <div>
+                <strong>${escapeHtml(part.meshName || `部件 ${part.meshIndex}`)}</strong>
+                <span>${escapeHtml(part.slotName || `槽位 ${part.slotIndex}`)}</span>
+              </div>
+              <span class="tag ${part.active ? '' : 'warn'}">${part.active ? '启用' : '停用'}</span>
+            </header>
+            <dl>
+              <dt>根骨</dt><dd>${escapeHtml(part.rootBoneName || '未配置')}</dd>
+              <dt>Mesh</dt><dd>${renderPlanAsset(part.meshAsset, '未解析 Mesh')}</dd>
+              <dt>材质</dt><dd class="avatar-material-list">
+                ${(part.materialAssets || []).length
+                  ? part.materialAssets.map((asset) => renderPlanAsset(asset, '未解析 Material')).join('')
+                  : '<span class="avatar-plan-missing">未配置材质</span>'}
+              </dd>
+            </dl>
+          </article>
+        `).join('') || '<div class="empty">当前 LOD 没有部件</div>'}
+      </div>
+    </section>
+    <details class="avatar-plan-bundles">
+      <summary>直接 Bundle <span>${formatInt(bundles.length)}</span></summary>
+      <p>此列表只表示 Avatar、Mesh 和 Material 直接所在的 Bundle，实际导出还需要计算纹理、Shader 等传递依赖。</p>
+      <div class="avatar-bundle-list">
+        ${bundles.map((bundle) => `<span class="mono">${escapeHtml(bundle.bundleName || '')}</span>`).join('')}
+      </div>
+    </details>
+  `
+}
+
 async function loadInternalList(fileId, path = '', page = 1) {
   const target = $('internalList')
   target.innerHTML = '<div class="empty">正在解析内部结构...</div>'
@@ -1062,6 +1151,21 @@ async function selectModel(modelUrl, fileKey) {
   }
 }
 
+async function selectAvatarPlan(planUrl, fileKey) {
+  state.selectedFileId = null
+  state.selectedFileKey = fileKey
+  document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
+    row.classList.toggle('selected', row.dataset.fileKey === fileKey)
+  })
+  renderPreviewLoading()
+  try {
+    const data = await getJson(planUrl)
+    renderAvatarPlan({ ...data, planUrl })
+  } catch (error) {
+    $('previewContent').innerHTML = `<div class="notice">资源计划读取失败：${escapeHtml(error.message)}</div>`
+  }
+}
+
 async function search() {
   const q = $('searchInput').value.trim()
   if (!q) return
@@ -1133,7 +1237,20 @@ async function init() {
   const manifestId = query.get('modelManifestId')
   const assetIndex = query.get('modelAssetIndex')
   const animationAssetIndex = query.get('animationAssetIndex')
-  if (manifestId && assetIndex) {
+  const avatarPlanManifestId = query.get('avatarPlanManifestId')
+  const avatarPlanAssetIndex = query.get('avatarPlanAssetIndex')
+  if (avatarPlanManifestId && avatarPlanAssetIndex) {
+    const params = new URLSearchParams({
+      manifestId: avatarPlanManifestId,
+      assetIndex: avatarPlanAssetIndex,
+      lod: query.get('lod') || '0',
+    })
+    const planUrl = `/api/manifest-asset/avatar-plan?${params}`
+    await selectAvatarPlan(
+      planUrl,
+      `avatar-plan:${avatarPlanManifestId}:${avatarPlanAssetIndex}`,
+    )
+  } else if (manifestId && assetIndex) {
     const params = new URLSearchParams({ manifestId, assetIndex })
     if (animationAssetIndex) params.set('animationAssetIndex', animationAssetIndex)
     const modelUrl = `/api/manifest-asset/model?${params}`
