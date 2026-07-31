@@ -1,14 +1,19 @@
 import struct
+import tempfile
 import unittest
+from pathlib import Path
 
 from animestudio_model import (
     AnimeStudioObject,
     UnityObjectId,
     attach_mesh_geometry,
     attach_texture_images,
+    build_standalone_material_objects,
     build_hierarchy_document,
     collect_material_textures,
     find_container_root_game_object,
+    infer_character_material_role,
+    load_standalone_material_payloads,
 )
 from model_document import validate_model_document
 
@@ -42,6 +47,57 @@ def ref(path, source_file, path_id, type_name):
 
 
 class AnimeStudioModelTests(unittest.TestCase):
+    def test_skin_signature_takes_precedence_over_eye_highlight(self):
+        role = infer_character_material_role(
+            {"_SDFLightmap", "_EyeHighLight"},
+            {"_characterRenderQueue": 2000.0},
+        )
+
+        self.assertEqual("skin", role)
+
+    def test_adapts_standalone_material_texture_references(self):
+        payload = {
+            "m_Name": "Body",
+            "m_SavedProperties": {
+                "m_TexEnvs": {
+                    "_BaseMap": {
+                        "m_Texture": {
+                            "m_PathID": 42,
+                            "Name": "Body_D",
+                            "IsNull": False,
+                        }
+                    }
+                }
+            },
+        }
+
+        objects = build_standalone_material_objects(
+            {"body": payload},
+            material_source_prefix="material",
+            texture_source_prefix="texture",
+        )
+
+        material = next(iter(objects.values()))
+        self.assertEqual("Body", material.name)
+        self.assertEqual(
+            {
+                "path": "$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture",
+                "targetType": "Texture2D",
+                "targetSourceFile": "texture:body_d",
+                "targetPathId": 42,
+                "targetName": "Body_D",
+            },
+            material.metadata["pptrReferences"][0],
+        )
+
+    def test_standalone_material_loader_rejects_non_material_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "texture.json"
+            path.write_text('{"m_Name":"Texture"}', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "m_SavedProperties"):
+                load_standalone_material_payloads(Path(directory))
+
     def test_builds_transform_hierarchy_from_resolved_pptr_metadata(self):
         source_file = "CAB-sample"
         root_id = UnityObjectId(source_file, 1)

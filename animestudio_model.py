@@ -30,6 +30,30 @@ GEOMETRY_BUFFER_ID = "buffer:geometry"
 LOD_RENDERER_PATH_RE = re.compile(r"^\$\.m_LODs\[(\d+)]\.renderers\[\d+]\.renderer$")
 
 
+def infer_character_material_role(
+    property_names: set[str],
+    floats: Mapping[str, Any],
+) -> str | None:
+    """Classify a character material from its Shader property signature."""
+
+    if floats.get("_UseGrayAsAlpha") == 1.0:
+        return "overlayShadow"
+    if not isinstance(floats.get("_characterRenderQueue"), (int, float)):
+        return None
+
+    # Skin and face shaders also expose eye-highlight properties. Their SDF
+    # signature is more specific and must be checked first.
+    if "_SDFLightmap" in property_names:
+        return "skin"
+    if "_StrokeMap" in property_names:
+        return "hair"
+    if "_EnableRealisticLighting" in property_names or "_ClearCoat" in property_names:
+        return "cloth"
+    if "_EyeHighLight" in property_names:
+        return "eye"
+    return "generic"
+
+
 @dataclass(frozen=True, order=True)
 class UnityObjectId:
     source_file: str
@@ -88,6 +112,95 @@ def load_animestudio_objects(root: Path) -> dict[UnityObjectId, AnimeStudioObjec
             previous = objects[obj.identity].source_path
             raise ValueError(f"duplicate Unity object {obj.identity}: {previous} and {path}")
         objects[obj.identity] = obj
+    return objects
+
+
+def load_standalone_material_payloads(root: Path) -> dict[str, Mapping[str, Any]]:
+    """Load bare Material JSON exports that do not carry AnimeStudio metadata."""
+
+    materials = {}
+    for path in sorted(root.rglob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"cannot read Material JSON {path}: {error}") from error
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"Material JSON root is not an object: {path}")
+        name = payload.get("m_Name")
+        saved_properties = payload.get("m_SavedProperties")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"Material JSON has no m_Name: {path}")
+        if not isinstance(saved_properties, Mapping):
+            raise ValueError(f"Material JSON has no m_SavedProperties: {path}")
+        key = name.casefold()
+        if key in materials:
+            raise ValueError(f"duplicate Material name: {name}")
+        materials[key] = payload
+    return materials
+
+
+def build_standalone_material_objects(
+    material_payloads: Mapping[str, Mapping[str, Any]],
+    *,
+    material_source_prefix: str,
+    texture_source_prefix: str,
+) -> dict[UnityObjectId, AnimeStudioObject]:
+    """Adapt bare Material exports to the object graph used by prefab assets."""
+
+    objects = {}
+    for key, payload in material_payloads.items():
+        name = payload.get("m_Name")
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"standalone Material {key!r} has no m_Name")
+        identity = UnityObjectId(f"{material_source_prefix}:{name.casefold()}", 1)
+        references = []
+        saved_properties = payload.get("m_SavedProperties")
+        texture_environments = (
+            saved_properties.get("m_TexEnvs")
+            if isinstance(saved_properties, Mapping)
+            else None
+        )
+        if isinstance(texture_environments, Mapping):
+            for slot, environment in texture_environments.items():
+                texture = (
+                    environment.get("m_Texture")
+                    if isinstance(environment, Mapping)
+                    else None
+                )
+                if not isinstance(texture, Mapping) or texture.get("IsNull") is not False:
+                    continue
+                texture_name = texture.get("Name")
+                path_id = texture.get("m_PathID")
+                if (
+                    not isinstance(texture_name, str)
+                    or not texture_name
+                    or not isinstance(path_id, int)
+                ):
+                    raise ValueError(
+                        f"Material {name!r} has an unresolved texture in {slot}"
+                    )
+                references.append(
+                    {
+                        "path": (
+                            "$.m_SavedProperties.m_TexEnvs."
+                            f"{slot}.m_Texture"
+                        ),
+                        "targetType": "Texture2D",
+                        "targetSourceFile": (
+                            f"{texture_source_prefix}:{texture_name.casefold()}"
+                        ),
+                        "targetPathId": path_id,
+                        "targetName": texture_name,
+                    }
+                )
+        objects[identity] = AnimeStudioObject(
+            identity=identity,
+            class_id=21,
+            type_name="Material",
+            name=name,
+            metadata={"pptrReferences": references},
+            payload=payload,
+        )
     return objects
 
 
@@ -320,6 +433,24 @@ def attach_mesh_geometry(
         shader_target = _reference_target(shader_reference) if shader_reference else None
         shader = material.payload.get("m_Shader")
         shader_name = shader.get("Name") if isinstance(shader, Mapping) else None
+        if (
+            not shader_name
+            and shader_target is None
+            and isinstance(shader, Mapping)
+            and shader.get("IsNull") is False
+        ):
+            add_diagnostic(
+                document,
+                "warning",
+                "MATERIAL_SHADER_UNRESOLVED",
+                f"Material {material.name!r} references a Shader whose identity is unavailable.",
+                object_id=material_id.document_id,
+                source=_source(material),
+                details={
+                    "fileId": shader.get("m_FileID"),
+                    "pathId": shader.get("m_PathID"),
+                },
+            )
         floats = _plain_mapping(saved.get("m_Floats"))
         colors = _plain_mapping(saved.get("m_Colors"))
         property_names = set(texture_environments) | set(floats) | set(colors)
@@ -370,9 +501,8 @@ def attach_mesh_geometry(
             preview["alphaCutoff"] = _clamp_number(
                 floats.get("_AlphaClipThreshold"), 0.0, 1.0, default=0.5
             )
-        material_role = None
-        if floats.get("_UseGrayAsAlpha") == 1.0:
-            material_role = "overlayShadow"
+        material_role = infer_character_material_role(property_names, floats)
+        if material_role == "overlayShadow":
             preview["alphaMode"] = "BLEND"
             preview["baseColorTextureUsesGrayAsAlpha"] = True
             preview["unlit"] = True
@@ -383,17 +513,7 @@ def attach_mesh_geometry(
                         for channel in ("r", "g", "b")
                     ]
                 }
-        elif isinstance(floats.get("_characterRenderQueue"), (int, float)):
-            if "_EyeHighLight" in property_names:
-                material_role = "eye"
-            elif "_StrokeMap" in property_names:
-                material_role = "hair"
-            elif "_SDFLightmap" in property_names:
-                material_role = "skin"
-            elif "_EnableRealisticLighting" in property_names or "_ClearCoat" in property_names:
-                material_role = "cloth"
-            else:
-                material_role = "generic"
+        elif material_role is not None:
             preview["materialFamily"] = "characterNpr"
             if material_role != "cloth":
                 preview["unlit"] = True
