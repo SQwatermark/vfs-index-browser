@@ -16,7 +16,7 @@ HEAD1 = 0xFF11FF11
 HEAD2 = 0xF1F2F3F4
 BUNDLE_RECORD_SIZE = 48
 ASSET_RECORD_SIZE = 24
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _dotnet_string(data: bytes, offset: int) -> tuple[str, int]:
@@ -153,6 +153,7 @@ class ManifestIndex:
                 );
                 CREATE INDEX assets_parent_name ON assets(parent, name COLLATE NOCASE);
                 CREATE INDEX assets_path ON assets(path);
+                CREATE INDEX assets_path_nocase ON assets(path COLLATE NOCASE);
                 CREATE INDEX dirs_parent_name ON directories(parent, name COLLATE NOCASE);
                 CREATE INDEX dependencies_bundle_kind ON bundle_dependencies(bundle_index, kind);
             """)
@@ -254,6 +255,27 @@ class ManifestIndex:
                 JOIN bundles b ON b.bundle_index = a.bundle_index WHERE a.asset_index = ?
             """, (asset_index,)).fetchone()
         return dict(row) if row else None
+
+    def assets_by_path(self, path: str) -> list[dict]:
+        """Return every asset matching one normalized logical path.
+
+        StringPathHash records and manifest paths do not use consistent casing, so
+        identity matching must be case-insensitive. Returning all rows keeps hash
+        collisions and malformed duplicate manifest entries visible to callers.
+        """
+
+        path = _normal_path(path)
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT a.asset_index AS assetIndex, a.path, a.parent, a.name,
+                       a.bundle_index AS bundleIndex, b.name AS bundleName,
+                       a.size, a.path_hash AS pathHash
+                FROM assets a
+                JOIN bundles b ON b.bundle_index = a.bundle_index
+                WHERE a.path = ? COLLATE NOCASE
+                ORDER BY a.asset_index
+            """, (path,)).fetchall()
+        return [dict(row) for row in rows]
 
     def bundle_dependencies(self, bundle_index: int, *, transitive: bool = True) -> list[dict]:
         """Return direct dependencies or their deterministic transitive closure."""

@@ -89,6 +89,10 @@ ModelDocument 校验和派生导出。
 4. **装配验证**：检查材质槽数量、骨骼名、BindPose、根变换和 LOD 是否兼容，再生成
    `ResolvedModelAssembly`。
 
+引用解析已由 `npc_avatar_resources.py` 建立第一版严格资源计划：它不打开 Bundle，先用
+manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和所需 Bundle。Andrew LOD0 的
+7 个部件已通过真实索引验证。下一步是让服务器按该计划提取对象并送入统一模型构建器。
+
 未知选择规则不得静默取第一个候选。工具可以允许显式指定部件以便研究，但必须把该选择
 标记为调用方输入，而非游戏默认值。
 

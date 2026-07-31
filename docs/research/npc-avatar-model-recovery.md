@@ -141,6 +141,20 @@ Deathgirl LOD0 实测结果：
 
 裸 Mesh 本身使用 Z 轴向上，因此不能逐个修改顶点。适配器在所有网格和骨骼共同的根节点施加 `-90° X` 旋转，既满足 glTF 的 Y-up 约定，也不会破坏后续动画坐标。
 
+## Manifest 资源计划
+
+`npc_avatar_resources.py` 在配置解析和 Unity 对象提取之间建立了可独立验证的资源边界：
+
+1. 按指定 LOD 遍历所有 AvatarMesh 槽位；
+2. 将路径哈希解析出的候选路径与 manifest 做大小写不敏感的精确匹配；
+3. 为每个 Mesh 保留有序且允许重复的材质槽；
+4. 从所选 Mesh 的 `FBX##子资产` 路径推导同源 Avatar；
+5. 输出精确资产、Bundle 列表和根骨名称，供后续按需提取。
+
+候选路径可能来自哈希碰撞。只有最终恰好命中一个 manifest 资产时才视为成功；缺失、重复资产、多个 FBX 来源或无法推导 Avatar 都会明确报错。调用方也可以显式传入 Avatar 路径，但不会静默选择候选项。
+
+Andrew LOD0 已完成真实 manifest 验证：7 个 Mesh、7 个材质槽和 1 个 Avatar 均唯一命中，共涉及 13 个 Bundle。其眼镜部件挂接到 `glass:glass_jnt`，因此该样本也覆盖了非通用根骨名称。
+
 ```powershell
 python tools/build_npc_avatar_preview.py `
   deathgirl-avatar-mesh.json `
@@ -167,7 +181,7 @@ Avatar 默认姿态与 Mesh 绑定姿态的大部分局部变换相同，但手�
 
 几何、骨架和引用关系已经闭合。后续工作集中在：
 
-1. 将 AvatarMesh 装配器接入服务器的 Manifest 资产预览流程；
+1. 将 AvatarMesh 资源计划和装配器接入服务器的 Manifest 资产预览流程；
 2. 按解析出的 Material 路径加载材质和纹理；
 3. 验证现有 AnimationClip 能否直接按骨骼路径映射到 NPC 完整层级；
 4. 将 NPC 材质参数映射到现有近似 Shader。
