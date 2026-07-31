@@ -153,7 +153,17 @@ Deathgirl LOD0 实测结果：
 
 候选路径可能来自哈希碰撞。只有最终恰好命中一个 manifest 资产时才视为成功；缺失、重复资产、多个 FBX 来源或无法推导 Avatar 都会明确报错。调用方也可以显式传入 Avatar 路径，但不会静默选择候选项。
 
-Andrew LOD0 已完成真实 manifest 验证：7 个 Mesh、7 个材质槽和 1 个 Avatar 均唯一命中，共涉及 13 个 Bundle。其眼镜部件挂接到 `glass:glass_jnt`，因此该样本也覆盖了非通用根骨名称。
+远程本地游戏环境已通过 `/api/manifest-asset/avatar-plan` 完成三个 LOD0 样本验证：
+
+| 样本 | 类型 | Mesh | 直接 Bundle | 未解析引用 |
+| --- | --- | ---: | ---: | ---: |
+| Andrew | 通用 NPC | 7 | 13 | 0 |
+| Deepfin | 可操控角色 | 10 | 18 | 0 |
+| Pelica | 可操控角色 | 12 | 21 | 0 |
+
+Andrew 的眼镜部件挂接到 `glass:glass_jnt`；Deepfin 与 Pelica 还覆盖了脊柱、头部和衣物控制骨。三个样本均从 FBX 子资产唯一推导出 Avatar，说明 NPC 与可操控角色可以复用同一资源计划。首次请求因 manifest schema 升级重建派生索引约耗时 59 秒，缓存后另外两个样本各约 0.5 秒。
+
+资源计划列出的 Bundle 只表示 Mesh、Material 与 Avatar 的直接存储位置。实际对象导出还必须加入这些 Bundle 的传递依赖闭包，材质引用的 Texture2D、Shader 等资源可能位于依赖 Bundle；不能把“直接资源已唯一定位”误解为“模型所需输入已经全部闭合”。
 
 ```powershell
 python tools/build_npc_avatar_preview.py `

@@ -31,6 +31,7 @@ schema、测试或生产代码后，才算正式进入实现路线。
 | `animestudio_model.py` | AnimeStudio Unity 对象适配和共享几何/材质构建 |
 | `npc_avatar_config.py` | AvatarMesh TypeTree、路径哈希引用和配置摘要 |
 | `npc_avatar_resources.py` | AvatarMesh 到 manifest 具体资源与 Bundle 的严格解析 |
+| `avatar_mesh_snapshot.py` | AvatarMesh 所需 AnimeStudio 对象与纹理导出契约 |
 | `npc_avatar_model.py` | AvatarMesh 通用 NPC 适配 |
 | `gltf_export.py` | ModelDocument 到自包含 GLB 的派生导出 |
 | `blender_materials.py` | Blender 材质节点后端 |
