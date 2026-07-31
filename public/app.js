@@ -7,6 +7,7 @@ import { createModelAnimationClip } from './model-animation.js'
 const PAGE_SIZE = 100
 const MANIFEST_VIRTUAL_DIR = '__manifest_assets__'
 const AUDIO_DIALOG_SCOPE = 'audioDialog'
+const WWISE_SCOPE = 'wwise'
 
 const state = {
   scope: 'effective',
@@ -25,6 +26,7 @@ const scopeNames = {
   StreamingAssets: 'StreamingAssets',
   all: 'All Sources',
   audioDialog: 'AudioDialog',
+  wwise: 'Wwise Audio',
 }
 
 const $ = (id) => document.getElementById(id)
@@ -95,9 +97,10 @@ async function getJson(url) {
 
 function renderScopes(scopes) {
   const select = $('scopeSelect')
-  const options = scopes.some((scope) => scope.scope === AUDIO_DIALOG_SCOPE)
-    ? scopes
-    : [...scopes, { scope: AUDIO_DIALOG_SCOPE }]
+  const virtualScopes = [AUDIO_DIALOG_SCOPE, WWISE_SCOPE]
+    .filter((scope) => !scopes.some((item) => item.scope === scope))
+    .map((scope) => ({ scope }))
+  const options = [...scopes, ...virtualScopes]
   select.innerHTML = options
     .map((scope) => `<option value="${escapeHtml(scope.scope)}">${scopeNames[scope.scope] || scope.scope}</option>`)
     .join('')
@@ -302,6 +305,10 @@ async function loadDirectory() {
     await loadAudioDialogDirectory()
     return
   }
+  if (state.scope === WWISE_SCOPE) {
+    await loadWwiseDirectory()
+    return
+  }
   const params = new URLSearchParams({
     scope: state.scope,
     path: state.path,
@@ -312,6 +319,29 @@ async function loadDirectory() {
   renderStats(data.directory)
   renderDirs(data.dirs, data.virtual)
   renderFiles(data.files, data.filePage)
+}
+
+async function loadWwiseDirectory() {
+  const params = new URLSearchParams({
+    path: state.path,
+    page: state.page,
+    pageSize: PAGE_SIZE,
+  })
+  try {
+    const data = await getJson(`/api/wwise/list?${params}`)
+    renderStats(data.directory)
+    renderDirs(data.dirs.map((directory) => ({
+      ...directory,
+      virtualKind: WWISE_SCOPE,
+    })))
+    renderFiles(data.files, data.page)
+  } catch (error) {
+    renderStats({ file_count: 0, total_bytes: 0, encrypted_count: 0, missing_chunk_count: 0 })
+    renderDirs([])
+    renderFiles([], { page: 1, pages: 1, total: 0 })
+    clearPreviewSelection()
+    $('previewContent').innerHTML = `<div class="notice">Wwise 索引读取失败：${escapeHtml(error.message)}</div>`
+  }
 }
 
 async function loadAudioDialogDirectory() {
@@ -741,9 +771,109 @@ function renderAudioDialogPreview(data) {
   `
 }
 
+function renderWwiseMediaPreview(data) {
+  const media = data.media
+  $('openRawLink').textContent = '打开 WAV'
+  $('openRawLink').href = data.rawUrl
+  $('downloadLink').textContent = '下载 WAV'
+  $('downloadLink').href = data.wavDownloadUrl
+  $('previewContent').innerHTML = `
+    <div class="preview-meta">
+      <strong>Media ${escapeHtml(media.media_id)}</strong>
+      <span>${escapeHtml(media.logical_path)}</span>
+      <span>PCK ${formatInt(media.pck_file_id)} · offset ${formatInt(media.offset)} · len ${formatInt(media.size)}</span>
+      <span>${escapeHtml(media.source)} · ${escapeHtml(media.language || 'sfx')}${media.bank_id == null ? '' : ` · bank ${escapeHtml(media.bank_id)}`}</span>
+    </div>
+    <audio class="audio-preview" src="${escapeHtml(data.rawUrl)}" controls></audio>
+    <div class="preview-actions inline-actions">
+      <a class="link-button" href="${escapeHtml(data.wemDownloadUrl)}">下载 WEM</a>
+      <a class="link-button" href="${escapeHtml(data.wavDownloadUrl)}">下载 WAV</a>
+    </div>
+  `
+}
+
+function renderWwiseEventPreview(data) {
+  const event = data.event
+  resetPreviewActions()
+  const relations = event.relations.length
+    ? `<table class="string-probe-table">
+        <thead><tr><th>来源</th><th>关系</th><th>目标</th><th>证据</th></tr></thead>
+        <tbody>${event.relations.map((relation) => `
+          <tr>
+            <td class="mono">${escapeHtml(relation.source_kind)} ${escapeHtml(relation.source_id)}</td>
+            <td>${escapeHtml(relation.relation)}</td>
+            <td class="mono">${escapeHtml(relation.target_kind)} ${escapeHtml(relation.target_id)}</td>
+            <td>${escapeHtml(relation.evidence)}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>`
+    : '<div class="empty small">没有恢复出可确认的关系</div>'
+  const media = event.media.length
+    ? event.media.map((item) => `
+        <div class="wwise-media-card">
+          <div class="preview-meta">
+            <strong>Media ${escapeHtml(item.media_id)}</strong>
+            <span>${escapeHtml(item.logical_path)} · ${escapeHtml(item.language || 'sfx')}</span>
+          </div>
+          <audio class="audio-preview" src="${escapeHtml(item.rawUrl)}" controls preload="none"></audio>
+          <a class="link-button" href="${escapeHtml(item.wemDownloadUrl)}">下载 WEM</a>
+        </div>
+      `).join('')
+    : '<div class="notice">关系图尚未连接到可读取的物理 Media。</div>'
+  $('previewContent').innerHTML = `
+    <div class="preview-meta">
+      <strong>Event ${escapeHtml(event.event_id)}</strong>
+      <span>${escapeHtml(event.logical_path)} · bank ${escapeHtml(event.bank_id)}</span>
+      <span>${formatInt(event.relations.length)} 条关系 · ${formatInt(event.media_ids.length)} 个 Media ID · ${formatInt(event.media.length)} 个物理候选</span>
+    </div>
+    <div class="binary-json-section"><strong>关系链</strong>${relations}</div>
+    <div class="binary-json-section"><strong>可播放媒体</strong>${media}</div>
+  `
+}
+
+function renderWwiseBankPreview(data) {
+  const bank = data.bank
+  resetPreviewActions()
+  $('previewContent').innerHTML = `
+    <div class="preview-meta">
+      <strong>Bank ${escapeHtml(bank.bank_id)}</strong>
+      <span>${escapeHtml(bank.logical_path)} · PCK ${formatInt(bank.pck_file_id)}</span>
+      <span>offset ${formatInt(bank.offset)} · len ${formatInt(bank.size)}</span>
+      <span>${formatInt(bank.object_count)} 个对象 · ${formatInt(bank.relation_count)} 条关系</span>
+      <span>${formatInt(bank.diagnostic_count)} 个未解析关系诊断</span>
+    </div>
+    <table class="string-probe-table">
+      <thead><tr><th>HIRC 类型</th><th>数量</th></tr></thead>
+      <tbody>${bank.object_kinds.map((item) => `
+        <tr><td>${escapeHtml(item.kind)}</td><td>${formatInt(item.count)}</td></tr>
+      `).join('')}</tbody>
+    </table>
+    ${bank.diagnostics.length ? `
+      <div class="binary-json-section">
+        <strong>未解析关系</strong>
+        ${bank.diagnostics.map((item) => `
+          <div class="notice"><span class="mono">${escapeHtml(item.object_kind)} ${escapeHtml(item.object_id)}</span> · ${escapeHtml(item.message)}</div>
+        `).join('')}
+      </div>
+    ` : ''}
+  `
+}
+
 function renderPreview(data) {
   if (data.kind === 'audioDialog') {
     renderAudioDialogPreview(data)
+    return
+  }
+  if (data.kind === 'wwiseMedia') {
+    renderWwiseMediaPreview(data)
+    return
+  }
+  if (data.kind === 'wwiseEvent') {
+    renderWwiseEventPreview(data)
+    return
+  }
+  if (data.kind === 'wwiseBank') {
+    renderWwiseBankPreview(data)
     return
   }
   const file = data.file
@@ -1223,17 +1353,27 @@ function bindEvents() {
 function syncScopeControls() {
   const isAudioDialog = state.scope === AUDIO_DIALOG_SCOPE
   $('audioLanguageField').classList.toggle('hidden', !isAudioDialog)
-  $('searchField').classList.toggle('hidden', isAudioDialog)
+  $('searchField').classList.toggle('hidden', isAudioDialog || state.scope === WWISE_SCOPE)
 }
 
 async function init() {
   bindEvents()
   const manifest = await getJson('/api/manifest')
+  const query = new URLSearchParams(window.location.search)
+  const requestedScope = query.get('scope')
+  const availableScopes = new Set([
+    ...manifest.scopes.map((item) => item.scope),
+    AUDIO_DIALOG_SCOPE,
+    WWISE_SCOPE,
+  ])
+  if (requestedScope && availableScopes.has(requestedScope)) {
+    state.scope = requestedScope
+    state.path = (query.get('path') || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+  }
   renderScopes(manifest.scopes)
   renderSummary(manifest.scopes)
   syncScopeControls()
   await loadDirectory()
-  const query = new URLSearchParams(window.location.search)
   const manifestId = query.get('modelManifestId')
   const assetIndex = query.get('modelAssetIndex')
   const animationAssetIndex = query.get('animationAssetIndex')

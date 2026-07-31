@@ -6,6 +6,7 @@
 - [shiyume-repositories.md](shiyume-repositories.md)：模型恢复、材质、Shader、动画和物理骨骼仓库的结构性参考。
 - [endfield-rendering.md](endfield-rendering.md)：公开访谈、Shader 与真实材质共同支持的 PBR/NPR 混合渲染路线。
 - [npc-avatar-model-recovery.md](npc-avatar-model-recovery.md)：普通 NPC 的 AvatarMesh 组合结构、StringPathHash 路径解析与 Deathgirl 样本验证。
+- [wwise-audio-and-npc-web-preview.md](wwise-audio-and-npc-web-preview.md)：非对话音频的 Wwise 关系索引、音乐聚合结构，以及 AvatarMesh NPC 接入网页预览的方案。
 
 Shader 的公式级实验暂位于 `experiments/endfield_blender_shader/`；其中面部与丝袜结论已经
 汇入[资源恢复整合路线](../design/integrated-roadmap.md)，实验目录和工具职责见

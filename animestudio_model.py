@@ -162,7 +162,7 @@ def build_standalone_material_objects(
         name = payload.get("m_Name")
         if not isinstance(name, str) or not name:
             raise ValueError(f"standalone Material {key!r} has no m_Name")
-        identity = UnityObjectId(f"{material_source_prefix}:{name.casefold()}", 1)
+        identity = UnityObjectId(f"{material_source_prefix}:{key.casefold()}", 1)
         references = []
         saved_properties = payload.get("m_SavedProperties")
         texture_environments = (
@@ -208,7 +208,10 @@ def build_standalone_material_objects(
             class_id=21,
             type_name="Material",
             name=name,
-            metadata={"pptrReferences": references},
+            metadata={
+                "logicalName": key,
+                "pptrReferences": references,
+            },
             payload=payload,
         )
     return objects

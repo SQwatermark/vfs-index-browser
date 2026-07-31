@@ -116,6 +116,7 @@ class AnimeStudioModelTests(unittest.TestCase):
 
         material = next(iter(objects.values()))
         self.assertEqual("Body", material.name)
+        self.assertEqual("body", material.metadata["logicalName"])
         self.assertEqual(
             {
                 "path": "$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture",

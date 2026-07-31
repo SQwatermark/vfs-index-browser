@@ -114,7 +114,7 @@ def _attach_material_references(
     if not names:
         return
     objects_by_name = {
-        material.name.casefold(): material
+        str(material.metadata.get("logicalName") or material.name).casefold(): material
         for material in material_objects.values()
     }
     references = []
@@ -147,6 +147,7 @@ def build_static_avatar_mesh_document(
     avatar: Mapping[str, Any] | None = None,
     material_payloads: Mapping[str, Mapping[str, Any]] | None = None,
     texture_uris: Mapping[str, str] | None = None,
+    buffer_uri: str = "geometry.bin",
 ) -> tuple[dict[str, Any], bytes]:
     """将指定 LOD 的所有 Mesh 以绑定姿态放入同一模型文档。"""
     slots = avatar_mesh.get("slots")
@@ -301,7 +302,7 @@ def build_static_avatar_mesh_document(
         rendered = ", ".join(missing)
         raise ValueError(f"缺少 AvatarMesh 引用的 Mesh JSON：{rendered}")
 
-    geometry = attach_mesh_geometry(document, objects)
+    geometry = attach_mesh_geometry(document, objects, buffer_uri=buffer_uri)
     if texture_uris is not None:
         textures = collect_material_textures(document, objects)
         normalized_uris = {name.casefold(): uri for name, uri in texture_uris.items()}
@@ -395,13 +396,21 @@ def _attach_bind_skeleton(
             raise ValueError(f"Mesh 骨骼哈希不在 Avatar 骨架中：{path_hash}")
         world_matrices[index] = _invert_matrix(_bind_pose_matrix(matrix))
         authoritative_indices.add(index)
-    _complete_skeleton_world_matrices(
+    ambiguous_bones = _complete_skeleton_world_matrices(
         world_matrices,
         skeleton_nodes,
         local_defaults,
         skeleton_ids,
-        authoritative_indices,
     )
+    if ambiguous_bones:
+        document["diagnostics"].append(
+            {
+                "severity": "warning",
+                "code": "NPC_SKELETON_BIND_AMBIGUOUS",
+                "message": "部分非蒙皮骨骼无法从子骨骼唯一反推，已回退到 Avatar 默认姿态。",
+                "details": {"bonePathHashes": ambiguous_bones},
+            }
+        )
 
     bone_node_ids = {}
     bones = []
@@ -512,28 +521,38 @@ def _complete_skeleton_world_matrices(
     nodes: list[Mapping[str, Any]],
     local_defaults: list[list[list[float]]],
     skeleton_ids: list[int],
-    authoritative_indices: set[int],
-) -> None:
-    """以 bind pose 为锚点，向上和向下补齐未参与蒙皮的 Avatar 节点。"""
+) -> list[int]:
+    """以 bind pose 为锚点补齐 Avatar 骨骼，并报告无法唯一反推的节点。"""
+    ambiguous_indices = set()
     changed = True
     while changed:
         changed = False
+        candidates: dict[int, list[list[list[float]]]] = {}
         for index, node in enumerate(nodes):
             parent = node.get("m_ParentId")
-            if not isinstance(parent, int) or parent < 0:
+            if (
+                not isinstance(parent, int)
+                or parent < 0
+                or worlds[index] is None
+                or worlds[parent] is not None
+                or parent in ambiguous_indices
+            ):
                 continue
-            if worlds[index] is not None:
-                candidate = _matrix_multiply(worlds[index], _invert_matrix(local_defaults[index]))
-                if worlds[parent] is None:
-                    worlds[parent] = candidate
-                    changed = True
-                elif (
-                    parent not in authoritative_indices
-                    and not _matrix_values_close(worlds[parent], candidate, tolerance=1e-4)
-                ):
-                    raise ValueError(
-                        f"Avatar 骨骼 {skeleton_ids[parent]} 的补齐候选不一致"
-                    )
+            candidate = _matrix_multiply(
+                worlds[index],
+                _invert_matrix(local_defaults[index]),
+            )
+            candidates.setdefault(parent, []).append(candidate)
+        for parent, values in candidates.items():
+            reference = values[0]
+            if all(
+                _matrix_values_close(reference, value, tolerance=1e-4)
+                for value in values[1:]
+            ):
+                worlds[parent] = reference
+                changed = True
+            else:
+                ambiguous_indices.add(parent)
 
     for index, node in enumerate(nodes):
         parent = node.get("m_ParentId")
@@ -554,6 +573,7 @@ def _complete_skeleton_world_matrices(
     unresolved = [skeleton_ids[index] for index, world in enumerate(worlds) if world is None]
     if unresolved:
         raise ValueError(f"Avatar 骨架存在无法连接的节点：{unresolved}")
+    return [skeleton_ids[index] for index in sorted(ambiguous_indices)]
 
 
 def _pose_matrix(pose: Any) -> list[list[float]]:

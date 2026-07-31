@@ -1042,6 +1042,23 @@ tbody tr[data-file-key].selected {
   white-space: nowrap;
 }
 
+.wwise-media-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: #101317;
+  border: 1px solid #272d35;
+  border-radius: 4px;
+}
+
+.wwise-media-card + .wwise-media-card {
+  margin-top: 8px;
+}
+
+.wwise-media-card .link-button {
+  justify-self: start;
+}
+
 .internal-preview {
   position: sticky;
   top: 0;

@@ -26,10 +26,29 @@ from typing import Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
+from wwise_store import (
+    get_wwise_bank,
+    get_wwise_event,
+    get_wwise_media,
+    list_wwise_banks,
+    list_wwise_events,
+    list_wwise_media,
+    list_wwise_media_prefixes,
+    wwise_summary,
+)
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
 from npc_avatar_resources import build_avatar_mesh_resource_plan
+from avatar_mesh_snapshot import (
+    build_cab_map_command,
+    build_object_export_command,
+    build_texture_export_command,
+    load_exported_objects,
+    load_texture_paths,
+    material_texture_names,
+)
+from npc_avatar_model import build_static_avatar_mesh_document
 from string_path_hash import StringPathHashIndex
 from npc_avatar_config import (
     attach_resolved_paths,
@@ -80,6 +99,12 @@ AUDIO_DIALOG_DB = Path(
         PROJECT_ROOT / "data" / "audio-dialog-index.sqlite",
     )
 )
+WWISE_DB = Path(
+    os.environ.get(
+        "VFS_BROWSER_WWISE_DB",
+        PROJECT_ROOT / "data" / "wwise-index.sqlite",
+    )
+)
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
 BUNDLED_ANIMESTUDIO_CLI = (
@@ -120,6 +145,7 @@ ASSETBUNDLE_META_VERSION = 2
 MONOBEHAVIOUR_DUMP_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 27
+AVATAR_MODEL_SNAPSHOT_VERSION = 1
 ANIMATION_CLIP_EXPORT_VERSION = 1
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
@@ -1104,6 +1130,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
         return sqlite3.connect(AUDIO_DIALOG_DB)
 
+    def connect_wwise(self) -> sqlite3.Connection:
+        if not WWISE_DB.is_file():
+            raise FileNotFoundError(f"Wwise index not built: {WWISE_DB}")
+        return sqlite3.connect(WWISE_DB)
+
     @classmethod
     def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:
         if cls.memorypack_load_error:
@@ -1168,6 +1199,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/audio-dialog/raw":
             self.handle_audio_dialog_raw(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/wwise/list":
+            self.handle_wwise_list(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/wwise/preview":
+            self.handle_wwise_preview(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/wwise/raw":
+            self.handle_wwise_raw(parse_qs(parsed.query))
             return
         if parsed.path == "/api/file":
             self.handle_file(parse_qs(parsed.query))
@@ -1428,6 +1468,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 files[-1]["avatarPlanUrl"] = (
                     f"/api/manifest-asset/avatar-plan?{params}"
                 )
+                files[-1]["modelUrl"] = (
+                    f"/api/manifest-asset/model?{params}&lod=0"
+                )
         directory = listing["directory"]
         self.send_json(
             {
@@ -1662,6 +1705,258 @@ class BrowserHandler(BaseHTTPRequestHandler):
             while data := file.read(STREAM_CHUNK_SIZE):
                 self.wfile.write(data)
 
+    def handle_wwise_list(self, query: dict[str, list[str]]) -> None:
+        path = unquote(query.get("path", [""])[0]).replace("\\", "/").strip("/")
+        try:
+            page = max(int(query.get("page", ["1"])[0]), 1)
+            page_size = min(max(int(query.get("pageSize", ["100"])[0]), 1), PAGE_SIZE_MAX)
+            offset = (page - 1) * page_size
+            with closing(self.connect_wwise()) as conn:
+                summary = wwise_summary(conn)
+                dirs: list[dict] = []
+                files: list[dict] = []
+                total = 0
+                if not path:
+                    dirs = [
+                        {"name": "Events", "path": "Events", "file_count": summary["eventCount"], "total_bytes": 0},
+                        {"name": "Banks", "path": "Banks", "file_count": summary["bankCount"], "total_bytes": 0},
+                        {"name": "Media", "path": "Media", "file_count": summary["mediaCount"], "total_bytes": summary["mediaBytes"]},
+                    ]
+                elif path == "Events":
+                    total, rows = list_wwise_events(conn, limit=page_size, offset=offset)
+                    files = [self.wwise_event_file(row) for row in rows]
+                elif path == "Banks":
+                    total, rows = list_wwise_banks(conn, limit=page_size, offset=offset)
+                    files = [self.wwise_bank_file(row) for row in rows]
+                elif path == "Media":
+                    prefixes = list_wwise_media_prefixes(conn)
+                    dirs = [
+                        {
+                            "name": row["prefix"],
+                            "path": f"Media/{row['prefix']}",
+                            "file_count": row["file_count"],
+                            "total_bytes": row["total_bytes"],
+                        }
+                        for row in prefixes
+                    ]
+                elif path.startswith("Media/") and path.count("/") == 1:
+                    prefix = path.split("/", 1)[1].casefold()
+                    total, rows = list_wwise_media(
+                        conn,
+                        prefix,
+                        limit=page_size,
+                        offset=offset,
+                    )
+                    files = [self.wwise_media_file(row) for row in rows]
+                else:
+                    raise FileNotFoundError("Wwise virtual directory not found")
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except (sqlite3.DatabaseError, RuntimeError) as error:
+            self.send_error_json(500, f"Wwise index error: {error}")
+            return
+
+        self.send_json({
+            "path": path,
+            "summary": summary,
+            "directory": {
+                "path": path,
+                "file_count": total if path else sum(item["file_count"] for item in dirs),
+                "total_bytes": sum(item["total_bytes"] for item in dirs),
+                "encrypted_count": 0,
+                "missing_chunk_count": 0,
+            },
+            "dirs": dirs,
+            "files": files,
+            "page": {
+                "page": page,
+                "pageSize": page_size,
+                "total": total,
+                "pages": max((total + page_size - 1) // page_size, 1),
+            },
+        })
+
+    @staticmethod
+    def wwise_event_file(row: dict) -> dict:
+        params = (
+            f"kind=event&pckFileId={row['pck_file_id']}&bankId={row['bank_id']}"
+            f"&eventId={row['event_id']}"
+        )
+        return {
+            "name": f"{row['event_id']}.event",
+            "path": f"Events/{row['event_id']}.event",
+            "file_name": row["logical_path"],
+            "source": "Wwise Event",
+            "block_name": str(row["bank_id"]),
+            "chunk_file": f"{row['direct_relation_count']} direct relations",
+            "offset": row["payload_offset"],
+            "length": row["payload_size"],
+            "encrypted": False,
+            "chunk_exists": True,
+            "virtualKind": "wwiseEvent",
+            "previewUrl": f"/api/wwise/preview?{params}",
+        }
+
+    @staticmethod
+    def wwise_bank_file(row: dict) -> dict:
+        params = f"kind=bank&pckFileId={row['pck_file_id']}&bankId={row['bank_id']}"
+        return {
+            "name": f"{row['bank_id']}.bnk",
+            "path": f"Banks/{row['bank_id']}.bnk",
+            "file_name": row["logical_path"],
+            "source": "Wwise Bank",
+            "block_name": str(row["pck_file_id"]),
+            "chunk_file": (
+                f"{row['object_count']} objects / {row['relation_count']} relations"
+                f" / {row['diagnostic_count']} diagnostics"
+            ),
+            "offset": row["offset"],
+            "length": row["size"],
+            "encrypted": bool(row["encrypted"]),
+            "chunk_exists": True,
+            "virtualKind": "wwiseBank",
+            "previewUrl": f"/api/wwise/preview?{params}",
+        }
+
+    @staticmethod
+    def wwise_media_file(row: dict) -> dict:
+        params = f"kind=media&pckFileId={row['pck_file_id']}&ordinal={row['ordinal']}"
+        return {
+            "name": f"{row['media_id']}.wem",
+            "path": f"Media/{row['media_id'][-2:]}/{row['media_id']}.wem",
+            "file_name": row["logical_path"],
+            "source": row["source"],
+            "block_name": row["language"] or "sfx",
+            "chunk_file": str(row["pck_file_id"]),
+            "offset": row["offset"],
+            "length": row["size"],
+            "encrypted": bool(row["bank_encrypted"]),
+            "chunk_exists": True,
+            "virtualKind": "wwiseMedia",
+            "previewUrl": f"/api/wwise/preview?{params}",
+        }
+
+    def handle_wwise_preview(self, query: dict[str, list[str]]) -> None:
+        kind = query.get("kind", [""])[0]
+        try:
+            pck_file_id = int(query.get("pckFileId", [""])[0])
+            with closing(self.connect_wwise()) as conn:
+                if kind == "event":
+                    bank_id = int(query.get("bankId", [""])[0])
+                    event_id = int(query.get("eventId", [""])[0])
+                    event = get_wwise_event(conn, pck_file_id, bank_id, event_id)
+                    if event is None:
+                        raise FileNotFoundError("Wwise event not found")
+                    for media in event["media"]:
+                        media["rawUrl"] = self.wwise_media_raw_url(media, "wav")
+                        media["wemDownloadUrl"] = self.wwise_media_raw_url(media, "wem", download=True)
+                    self.send_json({"kind": "wwiseEvent", "event": event})
+                    return
+                if kind == "bank":
+                    bank_id = int(query.get("bankId", [""])[0])
+                    bank = get_wwise_bank(conn, pck_file_id, bank_id)
+                    if bank is None:
+                        raise FileNotFoundError("Wwise bank not found")
+                    self.send_json({"kind": "wwiseBank", "bank": bank})
+                    return
+                if kind == "media":
+                    ordinal = int(query.get("ordinal", [""])[0])
+                    media = get_wwise_media(conn, pck_file_id, ordinal)
+                    if media is None:
+                        raise FileNotFoundError("Wwise media not found")
+                    self.send_json({
+                        "kind": "wwiseMedia",
+                        "media": media,
+                        "rawUrl": self.wwise_media_raw_url(media, "wav"),
+                        "wemDownloadUrl": self.wwise_media_raw_url(media, "wem", download=True),
+                        "wavDownloadUrl": self.wwise_media_raw_url(media, "wav", download=True),
+                    })
+                    return
+                raise ValueError("Wwise preview kind must be event, bank or media")
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+        except (sqlite3.DatabaseError, RuntimeError) as error:
+            self.send_error_json(500, f"Wwise index error: {error}")
+
+    @staticmethod
+    def wwise_media_raw_url(media: dict, mode: str, *, download: bool = False) -> str:
+        url = (
+            f"/api/wwise/raw?pckFileId={media['pck_file_id']}"
+            f"&ordinal={media['ordinal']}&format={mode}"
+        )
+        return f"{url}&download=1" if download else url
+
+    def handle_wwise_raw(self, query: dict[str, list[str]]) -> None:
+        try:
+            pck_file_id = int(query.get("pckFileId", [""])[0])
+            ordinal = int(query.get("ordinal", [""])[0])
+            mode = query.get("format", ["wav"])[0].lower()
+            if mode not in {"wem", "wav"}:
+                raise ValueError("Wwise media format must be wem or wav")
+            with closing(self.connect_wwise()) as conn:
+                media = get_wwise_media(conn, pck_file_id, ordinal)
+            if media is None:
+                raise FileNotFoundError("Wwise media not found")
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except (sqlite3.DatabaseError, RuntimeError) as error:
+            self.send_error_json(500, f"Wwise index error: {error}")
+            return
+
+        entry = AudioEntry(
+            wem_id=int(media["media_id"], 16),
+            offset=int(media["offset"]),
+            size=int(media["size"]),
+            source=str(media["source"]),
+            language=media["language"],
+            bank_id=media["bank_id"],
+            bank_offset=media["bank_offset"],
+            bank_size=media["bank_size"],
+            bank_wem_offset=media["bank_media_offset"],
+            bank_encrypted=bool(media["bank_encrypted"]),
+        )
+        with closing(self.connect()) as conn:
+            record = self.original_file_record(conn, pck_file_id)
+            physical = self.resolve_file_record_quiet(conn, record) if record else None
+        if physical is None:
+            self.send_error_json(404, "Wwise PCK source is unavailable")
+            return
+        resolved_record, chunk_path = physical
+        try:
+            target = self.ensure_indexed_audio_media_file(
+                resolved_record,
+                chunk_path,
+                entry,
+                mode,
+                "wwise",
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+            self.send_error_json(500, str(error))
+            return
+        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
+        disposition = "attachment" if download else "inline"
+        self.send_response(200)
+        self.send_header("Content-Type", guess_content_type(target.name))
+        self.send_header("Content-Length", str(target.stat().st_size))
+        self.send_header(
+            "Content-Disposition",
+            f"{disposition}; filename={entry.wem_id}.{mode}",
+        )
+        self.end_headers()
+        with target.open("rb") as file:
+            while data := file.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
+
     def handle_file(self, query: dict[str, list[str]]) -> None:
         try:
             file_id = int(query.get("id", [""])[0])
@@ -1867,6 +2162,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def model_snapshot_paths(self, record: dict, asset_index: int) -> tuple[Path, Path, Path, Path]:
         root = INTERNAL_CACHE_DIR / str(record["id"]) / "models" / str(asset_index)
         return root / "source.ab", root / "objects", root / "model.json", root / "run.json"
+
+    def avatar_model_snapshot_paths(
+        self,
+        record: dict,
+        asset_index: int,
+        lod: int,
+    ) -> tuple[Path, Path, Path, Path]:
+        root = (
+            INTERNAL_CACHE_DIR
+            / str(record["id"])
+            / "models"
+            / str(asset_index)
+            / f"avatar-lod-{lod}"
+        )
+        return root / "inputs", root / "objects", root / "model.json", root / "run.json"
 
     def animation_clip_export_paths(
         self,
@@ -2240,6 +2550,257 @@ class BrowserHandler(BaseHTTPRequestHandler):
         elif geometry_path.exists():
             geometry_path.unlink()
         return document, run_meta
+
+    def load_avatar_mesh_plan(
+        self,
+        index: ManifestIndex,
+        asset: dict,
+        bundle_record: dict,
+        bundle_chunk: Path,
+        lod: int,
+    ) -> tuple[dict, dict, dict]:
+        exported = self.ensure_manifest_monobehaviour_dump(
+            bundle_record,
+            bundle_chunk,
+            asset,
+        )
+        if exported is None:
+            raise RuntimeError("AnimeStudio produced no AvatarMesh TypeTree dump")
+        dump_path, dump_meta = exported
+        avatar_mesh = parse_avatar_mesh(
+            dump_path.read_text(encoding="utf-8", errors="replace")
+        )
+        path_hash_file, path_hash_meta = self.ensure_string_path_hash_file()
+        attach_resolved_paths(avatar_mesh, StringPathHashIndex(path_hash_file))
+        plan = build_avatar_mesh_resource_plan(index, avatar_mesh, lod=lod)
+        return avatar_mesh, plan, {
+            "dump": dump_meta,
+            "stringPathHash": path_hash_meta,
+        }
+
+    def avatar_mesh_bundle_closure(
+        self,
+        index: ManifestIndex,
+        plan: dict,
+    ) -> list[dict]:
+        bundles: dict[int, dict] = {}
+        for direct in plan.get("bundles", []):
+            bundle_index = int(direct["bundleIndex"])
+            bundles[bundle_index] = {
+                "bundleIndex": bundle_index,
+                "name": str(direct["bundleName"]),
+            }
+            for dependency in index.bundle_dependencies(bundle_index):
+                bundles[int(dependency["bundleIndex"])] = dependency
+        return [bundles[key] for key in sorted(bundles)]
+
+    def ensure_avatar_mesh_model(
+        self,
+        index: ManifestIndex,
+        asset: dict,
+        bundle_record: dict,
+        bundle_chunk: Path,
+        lod: int,
+    ) -> tuple[dict, dict, Path]:
+        if not ANIMESTUDIO_CLI.exists():
+            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
+        if lod not in range(4):
+            raise ValueError(f"LOD must be in 0..3, got {lod}")
+
+        avatar_mesh, plan, plan_meta = self.load_avatar_mesh_plan(
+            index,
+            asset,
+            bundle_record,
+            bundle_chunk,
+            lod,
+        )
+        bundles = self.avatar_mesh_bundle_closure(index, plan)
+        bundle_sources, missing_bundles = self.resolve_bundle_sources(bundles)
+        if missing_bundles:
+            names = ", ".join(str(bundle["name"]) for bundle in missing_bundles)
+            raise FileNotFoundError(f"AvatarMesh dependency bundles are missing: {names}")
+
+        input_root, object_root, model_path, run_path = self.avatar_model_snapshot_paths(
+            bundle_record,
+            int(asset["asset_index"]),
+            lod,
+        )
+        geometry_path = model_path.with_name("geometry.bin")
+        texture_root = model_path.parent / "textures"
+        tool_manifest = load_animestudio_tool_manifest(ANIMESTUDIO_CLI)
+        builder_paths = [
+            Path(build_static_avatar_mesh_document.__code__.co_filename),
+            Path(build_object_export_command.__code__.co_filename),
+            Path(__file__).with_name("animestudio_model.py"),
+        ]
+        source_identity = {
+            "entry": {
+                "recordId": int(bundle_record["id"]),
+                "length": int(bundle_record["length"]),
+                "offset": int(bundle_record["offset"]),
+                "chunkPath": str(bundle_record["chunk_path"]),
+                "chunkMtimeNs": bundle_chunk.stat().st_mtime_ns,
+                "assetIndex": int(asset["asset_index"]),
+                "assetPath": str(asset["path"]),
+            },
+            "lod": lod,
+            "avatarMesh": avatar_mesh,
+            "resourcePlan": plan,
+            "bundles": [
+                {
+                    "recordId": int(record["id"]),
+                    "length": int(record["length"]),
+                    "offset": int(record["offset"]),
+                    "chunkPath": str(record["chunk_path"]),
+                    "chunkMtimeNs": chunk.stat().st_mtime_ns,
+                }
+                for record, chunk in bundle_sources
+            ],
+            "builders": {
+                path.name: path.stat().st_mtime_ns for path in builder_paths
+            },
+            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CLI),
+            "toolManifest": tool_manifest,
+        }
+        if model_path.is_file() and run_path.is_file():
+            try:
+                run_meta = json.loads(run_path.read_text(encoding="utf-8"))
+                document = json.loads(model_path.read_text(encoding="utf-8"))
+                if (
+                    run_meta.get("version") == AVATAR_MODEL_SNAPSHOT_VERSION
+                    and run_meta.get("source") == source_identity
+                    and geometry_path.is_file()
+                    and not validate_model_document(document)
+                ):
+                    return document, run_meta, model_path
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        shutil.rmtree(input_root, ignore_errors=True)
+        shutil.rmtree(object_root, ignore_errors=True)
+        shutil.rmtree(texture_root, ignore_errors=True)
+        input_root.mkdir(parents=True, exist_ok=True)
+        object_root.mkdir(parents=True, exist_ok=True)
+        for record, chunk in bundle_sources:
+            self.write_file_slice(
+                record,
+                chunk,
+                input_root / f"bundle-{int(record['id'])}.ab",
+            )
+
+        map_name = (
+            f"vfs-avatar-{int(bundle_record['id'])}-"
+            f"{int(asset['asset_index'])}-lod{lod}"
+        )
+        commands = [
+            ("buildCABMap", build_cab_map_command(
+                ANIMESTUDIO_CLI,
+                input_root,
+                object_root,
+                map_name,
+            )),
+            ("exportObjects", build_object_export_command(
+                ANIMESTUDIO_CLI,
+                input_root,
+                object_root,
+                map_name,
+                plan,
+            )),
+        ]
+        completed_steps = []
+        for step_name, command in commands:
+            completed = subprocess.run(
+                command,
+                cwd=str(ANIMESTUDIO_CLI.parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+                check=False,
+            )
+            completed_steps.append({
+                "name": step_name,
+                "command": command,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            })
+            if completed.returncode != 0:
+                raise RuntimeError(f"AnimeStudio AvatarMesh step failed: {step_name}")
+
+        meshes, materials, avatar = load_exported_objects(object_root, plan)
+        texture_names = material_texture_names(materials)
+        texture_uris = {}
+        if texture_names:
+            texture_root.mkdir(parents=True, exist_ok=True)
+            command = build_texture_export_command(
+                ANIMESTUDIO_CLI,
+                input_root,
+                texture_root,
+                map_name,
+                texture_names,
+            )
+            completed = subprocess.run(
+                command,
+                cwd=str(ANIMESTUDIO_CLI.parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+                check=False,
+            )
+            completed_steps.append({
+                "name": "exportTextures",
+                "command": command,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+            })
+            if completed.returncode != 0:
+                raise RuntimeError("AnimeStudio AvatarMesh step failed: exportTextures")
+            texture_paths = load_texture_paths(texture_root, texture_names)
+            for name, path in texture_paths.items():
+                relative = path.relative_to(texture_root).as_posix()
+                texture_uris[name] = (
+                    f"/api/manifest-asset/model-texture?recordId={int(bundle_record['id'])}"
+                    f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
+                    f"&path={quote(relative)}"
+                )
+
+        document, geometry = build_static_avatar_mesh_document(
+            avatar_mesh,
+            meshes,
+            lod=lod,
+            avatar=avatar,
+            material_payloads=materials,
+            texture_uris=texture_uris,
+            buffer_uri=(
+                f"/api/manifest-asset/model-buffer?recordId={int(bundle_record['id'])}"
+                f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
+            ),
+        )
+        run_meta = {
+            "version": AVATAR_MODEL_SNAPSHOT_VERSION,
+            "source": source_identity,
+            "scope": "avatarMeshBundleClosure",
+            "resourcePlan": plan,
+            "planRun": plan_meta,
+            "steps": completed_steps,
+            "builtAtEpoch": int(time.time()),
+        }
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        model_path.write_text(
+            json.dumps(document, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        geometry_path.write_bytes(geometry)
+        run_path.write_text(
+            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        return document, run_meta, model_path
 
     def assetbundle_cache_paths(self, record: dict) -> tuple[Path, Path, Path, Path]:
         cache_root = INTERNAL_CACHE_DIR / str(record["id"])
@@ -3051,6 +3612,22 @@ class BrowserHandler(BaseHTTPRequestHandler):
         entry: AudioEntry,
         mode: str,
     ) -> Path:
+        return self.ensure_indexed_audio_media_file(
+            record,
+            chunk_path,
+            entry,
+            mode,
+            "audio-dialog",
+        )
+
+    def ensure_indexed_audio_media_file(
+        self,
+        record: dict,
+        chunk_path: Path,
+        entry: AudioEntry,
+        mode: str,
+        cache_namespace: str,
+    ) -> Path:
         package_identity = str(
             record.get("file_data_md5")
             or record.get("file_chunk_md5")
@@ -3070,7 +3647,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cache_root = (
             INTERNAL_CACHE_DIR
             / str(record["id"])
-            / "audio-dialog"
+            / cache_namespace
             / media_identity
         )
         return self.ensure_audio_entry_output(
@@ -3833,21 +4410,36 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if query.get("animationAssetIndex") and animation_resolved is None:
             return
         animation_asset = animation_resolved[1] if animation_resolved else None
-        if file_suffix(str(asset["path"])) != ".prefab":
-            self.send_error_json(400, "Model hierarchy snapshots currently require a .prefab asset")
+        is_prefab = file_suffix(str(asset["path"])) == ".prefab"
+        is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
+        if not is_prefab and not is_avatar_mesh:
+            self.send_error_json(400, "resource is not a supported model entry")
+            return
+        if is_avatar_mesh and animation_asset:
+            self.send_error_json(400, "AvatarMesh animation binding is not available yet")
             return
 
         try:
-            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
-            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, run_meta = self.ensure_model_hierarchy(
-                bundle_record,
-                bundle_chunk,
-                asset,
-                dependencies,
-                dependency_sources,
-                missing_dependencies,
-            )
+            lod = int(query.get("lod", ["0"])[0])
+            if is_avatar_mesh:
+                document, run_meta, _ = self.ensure_avatar_mesh_model(
+                    index,
+                    asset,
+                    bundle_record,
+                    bundle_chunk,
+                    lod,
+                )
+            else:
+                dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
+                dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+                document, run_meta = self.ensure_model_hierarchy(
+                    bundle_record,
+                    bundle_chunk,
+                    asset,
+                    dependencies,
+                    dependency_sources,
+                    missing_dependencies,
+                )
         except FileNotFoundError as error:
             self.send_json(
                 {
@@ -3867,6 +4459,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         manifest_id = int(query["manifestId"][0])
         asset_index = int(asset["asset_index"])
+        lod_parameter = f"&lod={lod}" if is_avatar_mesh else ""
         animation_url = (
             f"/api/manifest-asset/model-animation?manifestId={manifest_id}"
             f"&assetIndex={asset_index}"
@@ -3889,12 +4482,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "animationAsset": animation_asset,
                 "glbUrl": (
                     f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}&v={MODEL_GLB_VERSION}"
+                    f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_GLB_VERSION}"
                 ),
                 "blendUrl": (
                     f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
                     f"&assetIndex={asset_index}&v={MODEL_BLEND_VERSION}"
-                    if BLENDER_EXE.is_file() and BLENDER_MODEL_IMPORTER.is_file()
+                    if is_prefab and BLENDER_EXE.is_file() and BLENDER_MODEL_IMPORTER.is_file()
                     else None
                 ),
                 "animationUrl": animation_url,
@@ -3904,6 +4497,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "builtAtEpoch": run_meta.get("builtAtEpoch"),
                     "dependencyBundles": run_meta.get("dependencyBundles", []),
                     "missingDependencyBundles": run_meta.get("missingDependencyBundles", []),
+                    "lod": lod if is_avatar_mesh else None,
                 },
             }
         )
@@ -3921,26 +4515,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         try:
             lod = int(query.get("lod", ["0"])[0])
-            exported = self.ensure_manifest_monobehaviour_dump(
+            avatar_mesh, plan, plan_meta = self.load_avatar_mesh_plan(
+                index,
+                asset,
                 bundle_record,
                 bundle_chunk,
-                asset,
-            )
-            if exported is None:
-                raise RuntimeError("AnimeStudio produced no AvatarMesh TypeTree dump")
-            dump_path, dump_meta = exported
-            avatar_mesh = parse_avatar_mesh(
-                dump_path.read_text(encoding="utf-8", errors="replace")
-            )
-            path_hash_file, path_hash_meta = self.ensure_string_path_hash_file()
-            attach_resolved_paths(
-                avatar_mesh,
-                StringPathHashIndex(path_hash_file),
-            )
-            plan = build_avatar_mesh_resource_plan(
-                index,
-                avatar_mesh,
-                lod=lod,
+                lod,
             )
         except FileNotFoundError as error:
             self.send_error_json(503, str(error))
@@ -3960,12 +4540,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "plan": plan,
                 "run": {
                     "dump": {
-                        "builtAtEpoch": dump_meta.get("builtAtEpoch"),
-                        "toolArtifacts": dump_meta.get("source", {}).get(
+                        "builtAtEpoch": plan_meta["dump"].get("builtAtEpoch"),
+                        "toolArtifacts": plan_meta["dump"].get("source", {}).get(
                             "toolArtifacts", []
                         ),
                     },
-                    "stringPathHash": path_hash_meta,
+                    "stringPathHash": plan_meta["stringPathHash"],
                 },
             },
             compress=True,
@@ -3974,21 +4554,33 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def ensure_manifest_asset_model_glb(
         self,
         resolved: tuple[ManifestIndex, dict, dict, dict],
+        *,
+        lod: int = 0,
     ) -> tuple[dict, Path, Path]:
         index, asset, bundle_record, bundle_chunk = resolved
-        dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
-        dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-        document, _ = self.ensure_model_hierarchy(
-            bundle_record,
-            bundle_chunk,
-            asset,
-            dependencies,
-            dependency_sources,
-            missing_dependencies,
-        )
-        _, _, model_path, _ = self.model_snapshot_paths(
-            bundle_record, int(asset["asset_index"])
-        )
+        is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
+        if is_avatar_mesh:
+            document, _, model_path = self.ensure_avatar_mesh_model(
+                index,
+                asset,
+                bundle_record,
+                bundle_chunk,
+                lod,
+            )
+        else:
+            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
+            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+            document, _ = self.ensure_model_hierarchy(
+                bundle_record,
+                bundle_chunk,
+                asset,
+                dependencies,
+                dependency_sources,
+                missing_dependencies,
+            )
+            _, _, model_path, _ = self.model_snapshot_paths(
+                bundle_record, int(asset["asset_index"])
+            )
         geometry_path = model_path.with_name("geometry.bin")
         if not geometry_path.is_file():
             raise FileNotFoundError("model geometry buffer not found")
@@ -4005,6 +4597,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 raise ValueError("model image recordId does not match the current model")
             if int(image_query.get("assetIndex", ["-1"])[0]) != int(asset["asset_index"]):
                 raise ValueError("model image assetIndex does not match the current model")
+            image_lod = image_query.get("lod")
+            if is_avatar_mesh and (
+                not image_lod or int(image_lod[0]) != lod
+            ):
+                raise ValueError("model image LOD does not match the current AvatarMesh")
             relative = unquote(image_query.get("path", [""])[0]).replace("\\", "/").strip("/")
             target = (texture_root / relative).resolve()
             if not relative or texture_root not in target.parents or not target.is_file():
@@ -4036,12 +4633,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
         resolved = self.resolve_manifest_asset_source(query)
         if resolved is None:
             return
-        if file_suffix(str(resolved[1]["path"])) != ".prefab":
-            self.send_error_json(400, "GLB export currently requires a .prefab asset")
+        path = str(resolved[1]["path"])
+        if file_suffix(path) != ".prefab" and not is_avatar_mesh_asset_path(path):
+            self.send_error_json(400, "resource is not a supported model entry")
             return
 
         try:
-            asset, _, glb_path = self.ensure_manifest_asset_model_glb(resolved)
+            lod = int(query.get("lod", ["0"])[0])
+            asset, _, glb_path = self.ensure_manifest_asset_model_glb(
+                resolved,
+                lod=lod,
+            )
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "AnimeStudio timed out while exporting the model")
             return
@@ -4204,12 +4806,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
         try:
             record_id = int(query.get("recordId", [""])[0])
             asset_index = int(query.get("assetIndex", [""])[0])
+            lod_value = query.get("lod", [None])[0]
+            lod = int(lod_value) if lod_value is not None else None
             if record_id < 0 or asset_index < 0:
                 raise ValueError
+            if lod is not None and lod not in range(4):
+                raise ValueError
         except (ValueError, IndexError):
-            self.send_error_json(400, "recordId and assetIndex must be non-negative integers")
+            self.send_error_json(400, "recordId, assetIndex or lod is invalid")
             return
-        target = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index) / "geometry.bin"
+        root = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index)
+        if lod is not None:
+            root /= f"avatar-lod-{lod}"
+        target = root / "geometry.bin"
         if not target.is_file():
             self.send_error_json(404, "model geometry buffer not found")
             return
@@ -4226,12 +4835,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
         try:
             record_id = int(query.get("recordId", [""])[0])
             asset_index = int(query.get("assetIndex", [""])[0])
+            lod_value = query.get("lod", [None])[0]
+            lod = int(lod_value) if lod_value is not None else None
             if record_id < 0 or asset_index < 0:
                 raise ValueError
+            if lod is not None and lod not in range(4):
+                raise ValueError
         except (ValueError, IndexError):
-            self.send_error_json(400, "recordId and assetIndex must be non-negative integers")
+            self.send_error_json(400, "recordId, assetIndex or lod is invalid")
             return
-        root = (INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index) / "textures").resolve()
+        root = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index)
+        if lod is not None:
+            root /= f"avatar-lod-{lod}"
+        root = (root / "textures").resolve()
         relative = unquote(query.get("path", [""])[0]).replace("\\", "/").strip("/")
         target = (root / relative).resolve()
         if not relative or root not in target.parents or not target.is_file():

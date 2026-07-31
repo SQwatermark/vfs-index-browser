@@ -8,15 +8,62 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from animestudio_model import load_standalone_material_payloads
-from npc_avatar_model import load_mesh_payloads
-
-
 def asset_object_name(asset: Mapping[str, Any]) -> str:
     path = str(asset.get("path") or "")
     if not path:
         raise ValueError("manifest asset has no logical path")
     return path.rsplit("##", 1)[-1] if "##" in path else Path(path).stem
+
+
+def asset_container_path(asset: Mapping[str, Any]) -> str:
+    path = str(asset.get("path") or "")
+    if not path:
+        raise ValueError("manifest asset has no logical path")
+    return path.split("##", 1)[0].replace("\\", "/").casefold()
+
+
+def load_planned_object(
+    root: Path,
+    type_name: str,
+    asset: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Load the exact exported Unity object selected by the manifest plan.
+
+    Unity object names are not identities: an FBX sub-object and a standalone
+    asset can legitimately share ``m_Name``. AnimeStudio's ``container`` field
+    retains the logical asset path and therefore disambiguates them.
+    """
+
+    logical_path = str(asset.get("path") or "")
+    expected_name = asset_object_name(asset)
+    expected_container = asset_container_path(asset)
+    selects_sub_object = "##" in logical_path
+    matches = []
+    for path in sorted((root / type_name).rglob("*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"{type_name} JSON is not an object: {path}")
+        metadata = payload.get("$animestudio")
+        container = metadata.get("container") if isinstance(metadata, Mapping) else None
+        name = payload.get("m_Name")
+        if (
+            isinstance(container, str)
+            and container.replace("\\", "/").casefold() == expected_container
+            and (
+                not selects_sub_object
+                or (
+                    isinstance(name, str)
+                    and name.casefold() == expected_name.casefold()
+                )
+            )
+        ):
+            matches.append(payload)
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected exactly one {type_name} export for {asset.get('path')}, "
+            f"found {len(matches)}"
+        )
+    return matches[0]
 
 
 def selected_object_names(plan: Mapping[str, Any]) -> dict[str, list[str]]:
@@ -48,6 +95,19 @@ def selected_object_names(plan: Mapping[str, Any]) -> dict[str, list[str]]:
     }
 
 
+def selected_container_paths(plan: Mapping[str, Any]) -> list[str]:
+    """Return the logical containers that uniquely identify planned objects."""
+
+    names = selected_object_names(plan)
+    if not any(names.values()):
+        raise ValueError("AvatarMesh resource plan selects no objects")
+    assets = [plan["avatarAsset"]]
+    for part in plan["parts"]:
+        assets.append(part["meshAsset"])
+        assets.extend(part["materialAssets"])
+    return list(dict.fromkeys(asset_container_path(asset) for asset in assets))
+
+
 def build_cab_map_command(
     cli: Path,
     input_root: Path,
@@ -61,7 +121,7 @@ def build_cab_map_command(
         "--game",
         "ArknightsEndfield",
         "--map_op",
-        "CABMap",
+        "BuildCABMap",
         "--map_name",
         map_name,
         "--logger_flags",
@@ -78,9 +138,8 @@ def build_object_export_command(
     map_name: str,
     plan: Mapping[str, Any],
 ) -> list[str]:
-    names = selected_object_names(plan)
-    selected = [name for values in names.values() for name in values]
-    pattern = f"^(?:{'|'.join(re.escape(name) for name in selected)})$"
+    containers = selected_container_paths(plan)
+    pattern = f"^(?:{'|'.join(re.escape(path) for path in containers)})$"
     return [
         str(cli),
         str(input_root),
@@ -88,17 +147,17 @@ def build_object_export_command(
         "--game",
         "ArknightsEndfield",
         "--map_op",
-        "Load,CABMap",
+        "UseCABMap",
         "--map_name",
         map_name,
         "--types",
         "Mesh",
         "Material",
         "Avatar",
-        "--names",
+        "--containers",
         pattern,
         "--export_type",
-        "JSON",
+        "ObjectJSON",
         "--group_assets",
         "ByType",
         "--logger_flags",
@@ -112,35 +171,37 @@ def load_exported_objects(
     root: Path,
     plan: Mapping[str, Any],
 ) -> tuple[dict, dict, dict]:
-    names = selected_object_names(plan)
-    meshes = load_mesh_payloads(root / "Mesh")
-    materials = load_standalone_material_payloads(root / "Material")
-    missing_meshes = [name for name in names["Mesh"] if name.casefold() not in meshes]
-    missing_materials = [
-        name for name in names["Material"] if name.casefold() not in materials
-    ]
-    if missing_meshes or missing_materials:
-        details = []
-        if missing_meshes:
-            details.append(f"Mesh: {', '.join(missing_meshes)}")
-        if missing_materials:
-            details.append(f"Material: {', '.join(missing_materials)}")
-        raise ValueError("AnimeStudio export is missing " + "; ".join(details))
+    parts = plan.get("parts")
+    avatar_asset = plan.get("avatarAsset")
+    if not isinstance(parts, list) or not isinstance(avatar_asset, Mapping):
+        raise ValueError("AvatarMesh resource plan is incomplete")
 
-    avatar_name = names["Avatar"][0]
-    avatars = {}
-    for path in sorted((root / "Avatar").rglob("*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8-sig"))
-        name = payload.get("m_Name") if isinstance(payload, Mapping) else None
-        if not isinstance(name, str) or not name:
-            raise ValueError(f"Avatar JSON has no m_Name: {path}")
-        key = name.casefold()
-        if key in avatars:
-            raise ValueError(f"duplicate Avatar export: {name}")
-        avatars[key] = payload
-    avatar = avatars.get(avatar_name.casefold())
-    if avatar is None:
-        raise ValueError(f"AnimeStudio export is missing Avatar: {avatar_name}")
+    meshes = {}
+    materials = {}
+    for part in parts:
+        if not isinstance(part, Mapping):
+            raise ValueError("AvatarMesh resource part is not an object")
+        mesh_asset = part.get("meshAsset")
+        material_assets = part.get("materialAssets")
+        if not isinstance(mesh_asset, Mapping) or not isinstance(material_assets, list):
+            raise ValueError("AvatarMesh resource part is incomplete")
+        mesh_name = asset_object_name(mesh_asset)
+        mesh = load_planned_object(root, "Mesh", mesh_asset)
+        previous = meshes.setdefault(mesh_name.casefold(), mesh)
+        if previous is not mesh and previous != mesh:
+            raise ValueError(f"resource plan selects distinct Mesh objects named {mesh_name}")
+        for material_asset in material_assets:
+            if not isinstance(material_asset, Mapping):
+                raise ValueError("AvatarMesh material asset is not an object")
+            material_name = asset_object_name(material_asset)
+            material = load_planned_object(root, "Material", material_asset)
+            previous = materials.setdefault(material_name.casefold(), material)
+            if previous is not material and previous != material:
+                raise ValueError(
+                    f"resource plan selects distinct Material objects named {material_name}"
+                )
+
+    avatar = load_planned_object(root, "Avatar", avatar_asset)
     return meshes, materials, avatar
 
 
@@ -176,7 +237,7 @@ def build_texture_export_command(
         "--game",
         "ArknightsEndfield",
         "--map_op",
-        "Load,CABMap",
+        "UseCABMap",
         "--map_name",
         map_name,
         "--types",
@@ -184,7 +245,7 @@ def build_texture_export_command(
         "--names",
         pattern,
         "--export_type",
-        "Convert",
+        "IdentifiedTexture",
         "--group_assets",
         "ByType",
         "--logger_flags",
@@ -195,11 +256,22 @@ def build_texture_export_command(
 
 
 def load_texture_paths(root: Path, expected_names: list[str]) -> dict[str, Path]:
+    """Load IdentifiedTexture outputs by their Unity object name.
+
+    IdentifiedTexture appends ``_p<path-id>`` to prevent silent overwrites. The
+    AvatarMesh material adapter currently identifies textures by name, so names
+    must remain unique within one assembled model.
+    """
+
+    expected = {name.casefold(): name for name in expected_names}
     paths = {}
     for path in sorted(root.rglob("*.png")):
-        key = path.stem.casefold()
+        stem = re.sub(r"_p[0-9a-f]{16}$", "", path.stem, flags=re.IGNORECASE)
+        key = stem.casefold()
+        if key not in expected:
+            continue
         if key in paths:
-            raise ValueError(f"duplicate Texture2D preview image: {path.stem}")
+            raise ValueError(f"duplicate Texture2D preview image: {stem}")
         paths[key] = path
     missing = [name for name in expected_names if name.casefold() not in paths]
     if missing:

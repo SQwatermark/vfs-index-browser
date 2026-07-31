@@ -4,6 +4,21 @@
 
 ## 结论
 
+### 资源身份不能由 `m_Name` 单独决定
+
+- 独立 `.asset`、`.mat` 以 AssetBundle container 逻辑路径作为身份。
+- `fbx##子对象` 先以 FBX container 定位，再以子对象名消歧。
+- Unity 对象的 `m_Name` 只是内部对象名，可能与逻辑文件名不同。例如
+  `m_actor_bounda_body_01.mat` 内部仍可名为 `M_actor_chen_body_01`。
+- 模型装配使用逻辑名称维持稳定引用，同时保留 `m_Name` 作为显示名。
+
+### 非蒙皮父骨骼可能没有唯一 bind pose
+
+多个实际蒙皮子骨骼可以反推出同一个未蒙皮父骨骼，但候选矩阵并不总是一致。
+装配器会先汇总全部候选：一致时使用反推结果；不一致时以 Avatar 默认姿态补齐
+该父节点，并写入 `NPC_SKELETON_BIND_AMBIGUOUS` 诊断。直接参与蒙皮的骨骼仍以
+Mesh bind pose 为权威值，因此歧义不会阻止静态模型预览，也不会被静默掩盖。
+
 `assets/beyond/dynamicassets/gameplay/actors/postmodels/npc/` 主要保存 `chr_*` 可玩干员在 NPC 场景中的 postmodel，并不是普通 NPC 的统一入口。
 
 Deathgirl 的入口是：
@@ -171,6 +186,20 @@ http://HOST:8765/?avatarPlanManifestId=451359&avatarPlanAssetIndex=157272&lod=0
 
 人工验证时应检查：页面状态是否为“引用完整”，部件数是否与目标 LOD 一致，每个部件是否都有 Mesh、材质和根骨，以及直接 Bundle 数是否合理。未解析 Mesh 或 Avatar 会以错误状态显示；停用部件与 `mainPrefabHash` 未还原则作为独立提示，不会伪装成完整模型导出失败。
 
+AvatarMesh 已进一步接入统一网页模型预览。资产行同时显示“3D”和“资源”：前者按指定
+LOD 展开 Bundle 传递依赖，导出精确 Mesh、Material、Avatar 和 Texture2D，再生成现有
+`ModelDocument` 与 GLB；后者继续用于检查装配计划。Andrew LOD0 真实样本已验证为
+247 个节点、7 个网格、7 个蒙皮、6 个材质和 17 张纹理，浏览器 Three.js 视口能够正常
+显示完整着色模型。直接打开方式为：
+
+```text
+http://HOST:8765/?modelManifestId=451359&modelAssetIndex=157272&lod=0
+```
+
+对象选择不能依赖 `m_Name`。Andrew 的独立 `.asset` Mesh 与 FBX 子对象存在同名项；
+在线提取会使用资源计划中的逻辑路径与 AnimeStudio 的 `container` 身份进行精确匹配，
+避免从依赖 Bundle 中误选同名对象。
+
 资源计划列出的 Bundle 只表示 Mesh、Material 与 Avatar 的直接存储位置。实际对象导出还必须加入这些 Bundle 的传递依赖闭包，材质引用的 Texture2D、Shader 等资源可能位于依赖 Bundle；不能把“直接资源已唯一定位”误解为“模型所需输入已经全部闭合”。
 
 ```powershell
@@ -197,9 +226,9 @@ Avatar 默认姿态与 Mesh 绑定姿态的大部分局部变换相同，但手�
 
 ## 下一步
 
-几何、骨架和引用关系已经闭合。后续工作集中在：
+几何、骨架、引用关系和 LOD0 在线预览已经闭合。后续工作集中在：
 
-1. 将 AvatarMesh 资源计划和装配器接入服务器的 Manifest 资产预览流程；
-2. 按解析出的 Material 路径加载材质和纹理；
-3. 验证现有 AnimationClip 能否直接按骨骼路径映射到 NPC 完整层级；
-4. 将 NPC 材质参数映射到现有近似 Shader。
+1. 为网页增加 AvatarMesh LOD 和外观部件选择；
+2. 验证现有 AnimationClip 能否直接按骨骼路径映射到 NPC 完整层级；
+3. 将 NPC 材质参数映射到现有近似 Shader；
+4. 用更多通用 NPC、可操控角色与同名资源样本扩展回归测试。

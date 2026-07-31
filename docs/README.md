@@ -7,6 +7,7 @@
 3. [组合模型恢复](design/model-recovery.md)：ModelDocument、GLB、动画和 Blender 的详细链路。
 4. [角色材质管线](design/material-pipeline.md)：Prefab 与 AvatarMesh 共享的材质恢复流程。
 5. [音频语义索引](design/audio-index.md)：AudioDialog 虚拟目录和其他 Wwise 音频的组织方式。
+6. [Wwise 关系索引](design/wwise-index.md)：PCK/HIRC 数据结构、网页虚拟目录和构建方式。
 
 ## 文档分工
 
@@ -38,6 +39,9 @@ schema、测试或生产代码后，才算正式进入实现路线。
 | `character_lighting.py` | 版本化角色光照输入 |
 | `model_animation.py` | 独立动画文档和节点绑定 |
 | `public/` | 资源浏览和模型/媒体预览前端 |
+| `audio_package.py` | PCK 中 Bank 与 Media 的物理边界解析 |
+| `wwise_hirc.py` | SoundBank HIRC 对象与关系解析 |
+| `wwise_store.py` | Wwise SQLite 索引和虚拟目录查询 |
 | `schemas/` | 稳定领域文档和已知二进制配置 schema |
 
 ## 常用工具
@@ -50,6 +54,8 @@ schema、测试或生产代码后，才算正式进入实现路线。
 - `tools/probe_binary_json.py`：探测单个二进制 JSON。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP 信息提取 MemoryPack schema。
 - `tools/decode_memorypack_json.py`：按已知 schema 解码 MemoryPack。
+- `tools/build_wwise_index.py`：直接从本地 VFS 索引构建全部可用 PCK 的 Wwise 索引。
+- `tools/index_wwise_pck.py`：索引一个已提取的 PCK。
 
 ### 模型与材质
 

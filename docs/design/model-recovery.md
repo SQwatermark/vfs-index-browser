@@ -82,6 +82,9 @@ GET /api/manifest-asset/model-buffer?recordId=<VFS记录ID>&assetIndex=<资源�
 GET /api/manifest-asset/model-texture?recordId=<VFS记录ID>&assetIndex=<资源索引>&path=<纹理路径>
 ```
 
+Prefab 使用默认参数；AvatarMesh 使用相同接口并增加 `lod=0..3`。AvatarMesh 的
+buffer、texture 与 GLB URL 都携带同一 LOD，防止不同装配结果共用缓存文件。
+
 模型 JSON 返回固定的 `glbUrl`；指定 `animationAssetIndex` 时另行返回
 `animationUrl`。GLB 缓存同时观察 `model.json`、`geometry.bin`、引用纹理和
 导出器源码的修改时间，避免只改导出规则却继续命中旧文件。
@@ -98,6 +101,7 @@ GET /api/manifest-asset/model-texture?recordId=<VFS记录ID>&assetIndex=<资源�
 ```text
 /?modelManifestId=<manifest文件ID>&modelAssetIndex=<资源索引>
 /?modelManifestId=<manifest文件ID>&modelAssetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
+/?modelManifestId=<AvatarMesh manifest文件ID>&modelAssetIndex=<资源索引>&lod=0
 ```
 
 ## 佩丽卡验证结果

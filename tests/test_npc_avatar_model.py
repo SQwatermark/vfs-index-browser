@@ -1,7 +1,10 @@
 import unittest
 
 from model_document import validate_model_document
-from npc_avatar_model import build_static_avatar_mesh_document
+from npc_avatar_model import (
+    _complete_skeleton_world_matrices,
+    build_static_avatar_mesh_document,
+)
 
 
 def triangle(name):
@@ -18,6 +21,35 @@ def triangle(name):
 
 
 class NpcAvatarModelTests(unittest.TestCase):
+    def test_ambiguous_parent_bind_pose_falls_back_to_avatar_pose(self):
+        identity = [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]
+        child_a = [row[:] for row in identity]
+        child_b = [row[:] for row in identity]
+        child_a[0][3] = 1.0
+        child_b[0][3] = 2.0
+        worlds = [None, child_a, child_b]
+
+        ambiguous = _complete_skeleton_world_matrices(
+            worlds,
+            [
+                {"m_ParentId": -1},
+                {"m_ParentId": 0},
+                {"m_ParentId": 0},
+            ],
+            [identity, identity, identity],
+            [100, 101, 102],
+        )
+
+        self.assertEqual([100], ambiguous)
+        self.assertEqual(identity, worlds[0])
+        self.assertEqual(child_a, worlds[1])
+        self.assertEqual(child_b, worlds[2])
+
     def test_builds_static_document_from_selected_lod(self):
         avatar_mesh = {
             "name": "sample-avatar",
@@ -41,10 +73,12 @@ class NpcAvatarModelTests(unittest.TestCase):
         document, geometry = build_static_avatar_mesh_document(
             avatar_mesh,
             {"samplebody": triangle("SampleBody")},
+            buffer_uri="/api/model-buffer?lod=0",
         )
 
         self.assertEqual([], validate_model_document(document))
         self.assertGreater(len(geometry), 0)
+        self.assertEqual("/api/model-buffer?lod=0", document["buffers"][0]["uri"])
         self.assertEqual(1, len(document["meshes"]))
         self.assertEqual(2, len(document["nodes"]))
         root, mesh = document["nodes"]
@@ -167,6 +201,42 @@ class NpcAvatarModelTests(unittest.TestCase):
         self.assertEqual(
             "MATERIAL_SHADER_UNRESOLVED",
             document["diagnostics"][0]["code"],
+        )
+
+    def test_material_logical_name_may_differ_from_unity_object_name(self):
+        avatar_mesh = {
+            "name": "sample-avatar",
+            "mainPrefabPath": "Assets/Npcs/sample.prefab",
+            "slots": [
+                {
+                    "lods": {
+                        "0": [
+                            {
+                                "meshName": "SampleBody",
+                                "materialPaths": [
+                                    {"paths": ["Assets/Npcs/Materials/SampleBody.mat"]}
+                                ],
+                            }
+                        ]
+                    }
+                }
+            ],
+        }
+        material = {
+            "m_Name": "ReusedInternalName",
+            "m_SavedProperties": {"m_TexEnvs": {}, "m_Floats": {}, "m_Colors": {}},
+        }
+
+        document, _geometry = build_static_avatar_mesh_document(
+            avatar_mesh,
+            {"samplebody": triangle("SampleBody")},
+            material_payloads={"samplebody": material},
+        )
+
+        self.assertEqual("ReusedInternalName", document["materials"][0]["name"])
+        self.assertEqual(
+            document["materials"][0]["id"],
+            document["meshes"][0]["primitives"][0]["materialId"],
         )
 
     def test_attaches_flat_bind_skeleton_without_changing_mesh_contract(self):

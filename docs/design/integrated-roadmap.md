@@ -39,8 +39,8 @@
 | TableCfg | 可读取 SparkBuffer 配置 | 未知类型仍应显式报错 |
 | JsonData | 已分类文本 JSON、MemoryPack 等格式 | MemoryPack 仍依赖版本对应的 schema |
 | Prefab 角色 | 可恢复层级、网格、骨架、蒙皮、材质和纹理 | 已进入 ModelDocument、GLB 和 Blender |
-| 通用 NPC | 已验证 AvatarMesh 部件、路径哈希、材质和骨架拼装 | Deathgirl 已生成模型；Andrew 已验证资源计划 |
-| 可操控角色 AvatarMesh | Pelica、Deepfin 的资源计划均完整命中 | 尚未接入统一在线导出 |
+| 通用 NPC | AvatarMesh 已接入统一 ModelDocument、GLB 与网页预览 | Andrew LOD0 已验证完整着色模型；仍需更多外观样本 |
+| 可操控角色 AvatarMesh | Pelica、Deepfin 的资源计划均完整命中 | 与 NPC 共用在线导出管线，尚需逐个验证外观和材质 |
 | 动画 | ACL Transform 曲线可独立导出并绑定稳定节点 ID | 浮点曲线、Root Motion、面部运行时驱动未完成 |
 | 材质 | 原始 TexEnv/Int/Float/Color 已保存在 ModelDocument | `previewPbr` 仍混有部分过早近似 |
 | Shader | 已定位面部、身体和丝袜关键变体及公式边界 | 完整 CharacterVolume 和运行时光照尚未恢复 |
@@ -90,10 +90,11 @@ ModelDocument 校验和派生导出。
 4. **装配验证**：检查材质槽数量、骨骼名、BindPose、根变换和 LOD 是否兼容，再生成
    `ResolvedModelAssembly`。
 
-引用解析已由 `npc_avatar_resources.py` 建立第一版严格资源计划：它不打开 Bundle，先用
-manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和直接 Bundle。Andrew、Deepfin
-与 Pelica 的 LOD0 均已通过真实本地游戏验证。下一步是展开直接 Bundle 的传递依赖闭包，
-按对象名导出所需 Unity 对象，并送入统一模型构建器。
+引用解析已由 `npc_avatar_resources.py` 建立严格资源计划：它不打开 Bundle，先用 manifest
+唯一确定 Mesh、按槽位排序的 Material、Avatar 和直接 Bundle。在线适配器随后展开传递
+依赖闭包，并以逻辑资源路径和 AnimeStudio `container` 精确选择对象，再送入统一模型
+构建器。Andrew LOD0 已完成 ModelDocument、GLB、纹理和 Three.js 真实验证；Deepfin 与
+Pelica 仍需在同一管线上完成外观核对。
 
 未知选择规则不得静默取第一个候选。工具可以允许显式指定部件以便研究，但必须把该选择
 标记为调用方输入，而非游戏默认值。
