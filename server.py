@@ -45,6 +45,7 @@ from animestudio_model import (
     find_container_root_game_object,
     load_animestudio_objects,
 )
+from animestudio_tool import load_animestudio_tool_manifest
 from model_document import validate_model_document
 from gltf_export import build_glb
 from animestudio_animation import (
@@ -81,13 +82,18 @@ AUDIO_DIALOG_DB = Path(
 )
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
-BUNDLED_ANIMESTUDIO_CLI = PROJECT_ROOT / "tools" / "AnimeStudio.CLI" / "AnimeStudio.CLI.exe"
+BUNDLED_ANIMESTUDIO_CLI = (
+    PROJECT_ROOT / "tools" / "AnimeStudio.CLI-d46ac9c" / "AnimeStudio.CLI.exe"
+)
 ANIMESTUDIO_CLI = Path(
     os.environ.get(
-        "ANIMESTUDIO_CLI",
+        "VFS_BROWSER_ANIMESTUDIO_CLI",
         BUNDLED_ANIMESTUDIO_CLI
         if BUNDLED_ANIMESTUDIO_CLI.exists()
-        else r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
+        else os.environ.get(
+            "ANIMESTUDIO_CLI",
+            r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
+        ),
     )
 )
 # 模型快照使用的定制构建可能不保留完整 TypeTree Dump，因此允许单独指定标准 CLI。
@@ -124,7 +130,7 @@ VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
 MONOBEHAVIOUR_DUMP_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
-MODEL_SNAPSHOT_VERSION = 25
+MODEL_SNAPSHOT_VERSION = 26
 ANIMATION_CLIP_EXPORT_VERSION = 1
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 3
@@ -1991,6 +1997,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         geometry_path = model_path.with_name("geometry.bin")
         texture_root = model_path.parent / "textures"
         model_builder_path = Path(build_hierarchy_document.__code__.co_filename)
+        if not ANIMESTUDIO_CLI.exists():
+            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
+        tool_manifest = load_animestudio_tool_manifest(ANIMESTUDIO_CLI)
         source_identity = {
             "recordId": int(record["id"]),
             "length": int(record["length"]),
@@ -2014,6 +2023,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 for dependency, dependency_chunk in dependency_sources
             ],
             "missingDependencyBundles": missing_dependency_bundles,
+            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CLI),
+            "toolManifest": tool_manifest,
         }
         if model_path.exists() and run_path.exists():
             try:
@@ -2029,9 +2040,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     return document, run_meta
             except (OSError, json.JSONDecodeError):
                 pass
-
-        if not ANIMESTUDIO_CLI.exists():
-            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
 
         source_path.parent.mkdir(parents=True, exist_ok=True)
         input_root = source_path.parent / "inputs"
@@ -2052,7 +2060,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "--game",
             "ArknightsEndfield",
             "--map_op",
-            "CABMap",
+            "BuildCABMap",
             "--map_name",
             map_name,
             "--logger_flags",
@@ -2067,13 +2075,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "--game",
             "ArknightsEndfield",
             "--map_op",
-            "Load,CABMap",
+            "UseCABMap",
             "--map_name",
             map_name,
             "--types",
             *MODEL_SNAPSHOT_TYPES,
             "--export_type",
-            "JSON",
+            "ObjectJSON",
             "--group_assets",
             "ByType",
             "--logger_flags",

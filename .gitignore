@@ -8,3 +8,4 @@ __pycache__/
 experiments/**/*.blend
 experiments/**/*.blend1
 experiments/**/*.png
+tools/AnimeStudio.CLI*/

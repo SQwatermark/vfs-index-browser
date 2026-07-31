@@ -29,6 +29,8 @@ MODEL_COMPONENT_TYPES = {
 }
 GEOMETRY_BUFFER_ID = "buffer:geometry"
 LOD_RENDERER_PATH_RE = re.compile(r"^\$\.m_LODs\[(\d+)]\.renderers\[\d+]\.renderer$")
+OBJECT_SNAPSHOT_CONTRACT = "AnimeStudioObjectSnapshot"
+OBJECT_SNAPSHOT_VERSION = "1.0.0"
 
 
 def infer_character_material_role(
@@ -80,6 +82,13 @@ class AnimeStudioObject:
         metadata = payload.get("$animestudio")
         if not isinstance(metadata, Mapping):
             raise ValueError("AnimeStudio JSON object has no $animestudio metadata")
+        contract = metadata.get("contract")
+        version = metadata.get("version")
+        if contract != OBJECT_SNAPSHOT_CONTRACT or version != OBJECT_SNAPSHOT_VERSION:
+            raise ValueError(
+                "unsupported AnimeStudio object snapshot contract: "
+                f"{contract!r} {version!r}"
+            )
         source_file = metadata.get("sourceFile")
         path_id = metadata.get("pathId")
         if not isinstance(source_file, str) or not source_file:

@@ -30,7 +30,7 @@ manifest.hgmmap
 5. `gltf_export.py` 从 ModelDocument 选择预览资源并生成自包含 GLB，不重新解释 Unity 对象。
 6. 前端通过 Three.js 加载 GLB，普通文件浏览行为不受模型预览入口影响。
 
-当前 Prefab 快照适配器要求 AnimeStudio JSON 携带 `$animestudio` 身份与 PPtr 元数据。标准 JSON 导出只写对象载荷，不能满足这项契约。旧模型缓存曾掩盖该差异；ModelDocument schema 升级触发重建后会明确失败。后续修复必须使用 AssetMap 或导出器元数据定向补齐 `sourceFile + pathId` 与跨 Bundle 引用，不能退回按导出文件名猜测，也不能通过全量导出依赖闭包规避问题；佩丽卡样本的全量目录导出超过六分钟，不适合交互式网页链路。
+当前 Prefab 快照适配器要求 AnimeStudio `ObjectJSON` 携带 `$animestudio` 身份与 PPtr 元数据，并严格接受 `AnimeStudioObjectSnapshot/1.0.0`。标准 `JSON` 只写对象载荷，不属于模型恢复协议。旧模型缓存曾掩盖该差异；快照缓存版本 26 会强制重新生成。`sourceFile + pathId` 是对象身份，跨 Bundle 引用由 AnimeStudio 在加载 manifest 依赖闭包的 CAB 映射后解析；消费端不能退回按导出文件名猜测，也不能通过全量导出依赖闭包规避问题。
 
 ## ModelDocument 边界
 
