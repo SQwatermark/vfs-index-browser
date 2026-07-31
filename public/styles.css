@@ -463,6 +463,10 @@ tbody tr[data-file-key].selected {
   word-break: break-all;
 }
 
+.model-export-actions {
+  margin-bottom: 10px;
+}
+
 .model-viewport {
   position: relative;
   width: 100%;

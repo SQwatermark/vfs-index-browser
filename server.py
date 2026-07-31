@@ -92,6 +92,14 @@ VGMSTREAM_CLI = Path(
 )
 USM_CONVERT = Path(os.environ.get("USM_CONVERT", PROJECT_ROOT / "tools" / "usm-convert.exe"))
 FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
+BLENDER_EXE = Path(
+    os.environ.get(
+        "BLENDER_EXE",
+        shutil.which("blender")
+        or r"C:\Program Files\Blender Foundation\Blender 4.3\blender.exe",
+    )
+)
+BLENDER_MODEL_IMPORTER = PROJECT_ROOT / "tools" / "blender_import_model.py"
 
 CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
@@ -104,10 +112,12 @@ MODEL_SNAPSHOT_VERSION = 24
 ANIMATION_CLIP_EXPORT_VERSION = 1
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 2
+MODEL_BLEND_VERSION = 2
 AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
+MODEL_BLEND_EXPORT_LOCK = threading.Lock()
 MEMORYPACK_SCHEMA = Path(
     os.environ.get("VFS_BROWSER_MEMORYPACK_SCHEMA", PROJECT_ROOT / "schemas" / "memorypack-known-schema.json")
 )
@@ -1153,6 +1163,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/manifest-asset/model-glb":
             self.handle_manifest_asset_model_glb(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/model-blend":
+            self.handle_manifest_asset_model_blend(parse_qs(parsed.query))
             return
         if parsed.path == "/api/manifest-asset/model-animation":
             self.handle_manifest_asset_model_animation(parse_qs(parsed.query))
@@ -3507,6 +3520,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
                     f"&assetIndex={asset_index}&v={MODEL_GLB_VERSION}"
                 ),
+                "blendUrl": (
+                    f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
+                    f"&assetIndex={asset_index}&v={MODEL_BLEND_VERSION}"
+                    if BLENDER_EXE.is_file() and BLENDER_MODEL_IMPORTER.is_file()
+                    else None
+                ),
                 "animationUrl": animation_url,
                 "document": document,
                 "run": {
@@ -3518,70 +3537,77 @@ class BrowserHandler(BaseHTTPRequestHandler):
             }
         )
 
+    def ensure_manifest_asset_model_glb(
+        self,
+        resolved: tuple[ManifestIndex, dict, dict, dict],
+    ) -> tuple[dict, Path, Path]:
+        index, asset, bundle_record, bundle_chunk = resolved
+        dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
+        dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+        document, _ = self.ensure_model_hierarchy(
+            bundle_record,
+            bundle_chunk,
+            asset,
+            dependencies,
+            dependency_sources,
+            missing_dependencies,
+        )
+        _, _, model_path, _ = self.model_snapshot_paths(
+            bundle_record, int(asset["asset_index"])
+        )
+        geometry_path = model_path.with_name("geometry.bin")
+        if not geometry_path.is_file():
+            raise FileNotFoundError("model geometry buffer not found")
+        geometry = geometry_path.read_bytes()
+
+        texture_root = (model_path.parent / "textures").resolve()
+        image_paths: dict[str, Path] = {}
+        for image in document.get("images", []):
+            parsed = urlparse(str(image.get("uri") or ""))
+            image_query = parse_qs(parsed.query)
+            if parsed.path != "/api/manifest-asset/model-texture":
+                raise ValueError(f"unsupported model image URI: {image.get('uri')}")
+            if int(image_query.get("recordId", ["-1"])[0]) != int(bundle_record["id"]):
+                raise ValueError("model image recordId does not match the current model")
+            if int(image_query.get("assetIndex", ["-1"])[0]) != int(asset["asset_index"]):
+                raise ValueError("model image assetIndex does not match the current model")
+            relative = unquote(image_query.get("path", [""])[0]).replace("\\", "/").strip("/")
+            target = (texture_root / relative).resolve()
+            if not relative or texture_root not in target.parents or not target.is_file():
+                raise FileNotFoundError(f"model texture not found: {relative}")
+            image_paths[str(image["id"])] = target
+
+        glb_path = model_path.with_name("model.glb")
+        # Exporter changes can alter the GLB without rebuilding ModelDocument.
+        exporter_path = Path(build_glb.__code__.co_filename)
+        source_paths = [
+            model_path,
+            geometry_path,
+            exporter_path,
+            *image_paths.values(),
+        ]
+        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
+        if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
+            glb = build_glb(
+                document,
+                geometry,
+                lambda image: image_paths[str(image["id"])].read_bytes(),
+            )
+            temporary = glb_path.with_suffix(".glb.tmp")
+            temporary.write_bytes(glb)
+            os.replace(temporary, glb_path)
+        return asset, model_path, glb_path
+
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_source(query)
         if resolved is None:
             return
-        index, asset, bundle_record, bundle_chunk = resolved
-        if file_suffix(str(asset["path"])) != ".prefab":
+        if file_suffix(str(resolved[1]["path"])) != ".prefab":
             self.send_error_json(400, "GLB export currently requires a .prefab asset")
             return
 
         try:
-            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
-            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, _ = self.ensure_model_hierarchy(
-                bundle_record,
-                bundle_chunk,
-                asset,
-                dependencies,
-                dependency_sources,
-                missing_dependencies,
-            )
-            _, _, model_path, _ = self.model_snapshot_paths(
-                bundle_record, int(asset["asset_index"])
-            )
-            geometry_path = model_path.with_name("geometry.bin")
-            if not geometry_path.is_file():
-                raise FileNotFoundError("model geometry buffer not found")
-            geometry = geometry_path.read_bytes()
-
-            texture_root = (model_path.parent / "textures").resolve()
-            image_paths: dict[str, Path] = {}
-            for image in document.get("images", []):
-                parsed = urlparse(str(image.get("uri") or ""))
-                image_query = parse_qs(parsed.query)
-                if parsed.path != "/api/manifest-asset/model-texture":
-                    raise ValueError(f"unsupported model image URI: {image.get('uri')}")
-                if int(image_query.get("recordId", ["-1"])[0]) != int(bundle_record["id"]):
-                    raise ValueError("model image recordId does not match the current model")
-                if int(image_query.get("assetIndex", ["-1"])[0]) != int(asset["asset_index"]):
-                    raise ValueError("model image assetIndex does not match the current model")
-                relative = unquote(image_query.get("path", [""])[0]).replace("\\", "/").strip("/")
-                target = (texture_root / relative).resolve()
-                if not relative or texture_root not in target.parents or not target.is_file():
-                    raise FileNotFoundError(f"model texture not found: {relative}")
-                image_paths[str(image["id"])] = target
-
-            glb_path = model_path.with_name("model.glb")
-            # Exporter changes can alter the GLB without rebuilding ModelDocument.
-            exporter_path = Path(build_glb.__code__.co_filename)
-            source_paths = [
-                model_path,
-                geometry_path,
-                exporter_path,
-                *image_paths.values(),
-            ]
-            newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-            if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
-                glb = build_glb(
-                    document,
-                    geometry,
-                    lambda image: image_paths[str(image["id"])].read_bytes(),
-                )
-                temporary = glb_path.with_suffix(".glb.tmp")
-                temporary.write_bytes(glb)
-                os.replace(temporary, glb_path)
+            asset, _, glb_path = self.ensure_manifest_asset_model_glb(resolved)
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "AnimeStudio timed out while exporting the model")
             return
@@ -3599,6 +3625,85 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "private, max-age=3600")
         self.end_headers()
         with glb_path.open("rb") as source:
+            while data := source.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
+
+    def handle_manifest_asset_model_blend(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        if file_suffix(str(resolved[1]["path"])) != ".prefab":
+            self.send_error_json(400, "Blender export currently requires a .prefab asset")
+            return
+        if not BLENDER_EXE.is_file():
+            self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
+            return
+
+        try:
+            asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(resolved)
+            blend_path = model_path.with_name("model.blend")
+            material_backend = PROJECT_ROOT / "blender_materials.py"
+            source_paths = [
+                glb_path,
+                BLENDER_MODEL_IMPORTER,
+                material_backend,
+                PROJECT_ROOT / "character_lighting.py",
+            ]
+            newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
+            with MODEL_BLEND_EXPORT_LOCK:
+                if (
+                    not blend_path.is_file()
+                    or blend_path.stat().st_mtime_ns < newest_source_mtime
+                ):
+                    temporary = blend_path.with_name("model.tmp.blend")
+                    temporary.unlink(missing_ok=True)
+                    try:
+                        result = subprocess.run(
+                            [
+                                str(BLENDER_EXE),
+                                "--background",
+                                "--factory-startup",
+                                "--python",
+                                str(BLENDER_MODEL_IMPORTER),
+                                "--",
+                                str(glb_path),
+                                str(temporary),
+                            ],
+                            cwd=PROJECT_ROOT,
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
+                            timeout=300,
+                            check=True,
+                        )
+                        if not temporary.is_file():
+                            raise RuntimeError(
+                                "Blender export completed without producing a file: "
+                                + result.stdout[-2000:]
+                            )
+                        os.replace(temporary, blend_path)
+                    finally:
+                        temporary.unlink(missing_ok=True)
+        except subprocess.TimeoutExpired:
+            self.send_error_json(504, "Blender timed out while exporting the model")
+            return
+        except subprocess.CalledProcessError as error:
+            output = (error.stdout or error.stderr or "").strip()
+            self.send_error_json(500, f"Blender export failed: {output[-4000:]}")
+            return
+        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            self.send_error_json(500, str(error))
+            return
+
+        name = f"{Path(str(asset['path'])).stem}.blend"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-blender")
+        self.send_header("Content-Length", str(blend_path.stat().st_size))
+        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(name)}")
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.end_headers()
+        with blend_path.open("rb") as source:
             while data := source.read(STREAM_CHUNK_SIZE):
                 self.wfile.write(data)
 

@@ -327,6 +327,11 @@ function renderModelPreview(data) {
       <span>${formatInt(modelDocument.images?.length)} 纹理</span>
       ${data.animationAsset ? `<span>${escapeHtml(data.animationAsset.path)} 动画</span>` : ''}
     </div>
+    ${data.blendUrl ? `
+      <div class="preview-actions model-export-actions">
+        <a class="link-button" href="${escapeHtml(data.blendUrl)}" title="首次导出需要等待 Blender 后台生成">下载 Blender</a>
+      </div>
+    ` : ''}
     <div id="modelViewport" class="model-viewport">
       <label class="model-view-option">
         <input id="modelOutlineToggle" type="checkbox" />
