@@ -127,7 +127,7 @@ ModelDocument `2.0.0` 已将源 Material 明确保存为 `materials[].sourceMate
 2. 定义装配契约，让 Prefab 与 AvatarMesh 共享后续流程。（已完成基础结构）
 3. 明确 `sourceMaterial`、`previewPbr` 和 Blender 后端的边界。（已完成基础结构）
 4. 补齐原始纹理采样、颜色空间、Shader 开关和材质诊断。
-5. 将 AudioDialog 逻辑路径、Media ID 和 PCK 物理条目建成独立索引契约。
+5. 将 AudioDialog 逻辑路径、Media ID 和 PCK 物理条目建成独立索引契约。（核心与 SQLite 契约已完成）
 6. 对不兼容的 ModelDocument 或缓存结构提升版本，禁止旧缓存伪装成新产物。（已提升至 `2.0.0`）
 
 验收标准：
@@ -151,7 +151,7 @@ ModelDocument `2.0.0` 已将源 Material 明确保存为 `materials[].sourceMate
 **音频线**
 
 - 从本地 TableCfg 读取 AudioDialog；
-- 按语言和逻辑路径建立虚拟目录；
+- 按语言和逻辑路径建立虚拟目录；（SQLite 查询层已完成）
 - 叶节点映射到 PCK 中的 Media ID、offset 和 size；
 - 点击后按需解密 WEM，按需转码并缓存 WAV；
 - 显示路径、语言、Media ID、物理来源和匹配状态。

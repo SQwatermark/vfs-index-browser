@@ -22,7 +22,9 @@
 
 ## 索引模型
 
-建议建立三组 SQLite 表或等价持久化结构。
+当前由 `audio_dialog_index.py` 负责严格解析、路径哈希和匹配，由
+`audio_dialog_store.py` 负责 SQLite 持久化与逻辑目录查询。索引使用以下三组核心表；
+后续 Wwise 关系图再单独扩展。
 
 ### `audio_media`
 
@@ -66,6 +68,12 @@ match_status
 - `collision`：不同逻辑路径产生同一哈希且无法证明等价。
 
 同一 Media ID 被多个逻辑路径引用是允许的，不能用唯一文件名覆盖关系。
+
+`audio_dialog_media` 保存逻辑条目与全部物理候选之间的有序多对多关系。不能只在
+`audio_dialog` 上保存一个 PCK 位置，否则 `ambiguous` 会在持久化时丢失证据。
+
+`audio_dialog_directories` 是由逻辑路径派生的目录统计表，保存直接父目录以及各匹配状态
+数量。分页查询只读取当前目录；目录内容不需要在请求时扫描全部逻辑路径。
 
 ### `wwise_relation`
 
@@ -155,11 +163,15 @@ Wwise/
 ### 阶段一：AudioDialog
 
 1. 读取本地 TableCfg 的 AudioDialog。
-2. 计算语言前缀和路径哈希。
-3. 与现有 PCK 索引连接并写入 SQLite。
+2. 计算语言前缀和路径哈希。（已完成）
+3. 与现有 PCK 索引连接并写入 SQLite。（SQLite 契约已完成，PCK 适配待接入）
 4. 实现目录分页、预览和下载 API。
 5. 增加空目录、重复引用、缺失媒体和哈希冲突测试。
 6. 在页面上使用左右分栏或固定预览区，避免长目录把预览推到页面底部。
+
+当前实现会严格区分 `matched`、`missing`、`ambiguous` 和 `collision`，无符号 64 位
+Media ID 使用固定 16 位十六进制文本保存，避免 SQLite 有符号整数溢出。索引 schema
+不做隐式迁移；遇到未知版本会明确要求重建。
 
 ### 阶段二：Wwise 关系图
 
