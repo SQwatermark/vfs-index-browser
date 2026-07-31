@@ -88,6 +88,11 @@ def material_preview_metadata(material: bpy.types.Material) -> dict:
     return id_property_to_dict(value) if value is not None else {}
 
 
+def material_source_metadata(material: bpy.types.Material) -> dict:
+    value = material.get("endfieldSourceMaterial")
+    return id_property_to_dict(value) if value is not None else {}
+
+
 def find_base_color_socket(nodes: bpy.types.Nodes):
     for node in nodes:
         if node.bl_idname != "ShaderNodeEmission":
@@ -970,6 +975,7 @@ def build_character_npr_nodes(
 
 def configure_silk_stockings_nodes(material: bpy.types.Material) -> bool:
     metadata = material_preview_metadata(material)
+    source_material = material_source_metadata(material)
     silk = metadata.get("silkStockings")
     if not isinstance(silk, dict) or not material.node_tree:
         return False
@@ -989,8 +995,8 @@ def configure_silk_stockings_nodes(material: bpy.types.Material) -> bool:
         material["endfieldPreviewDiagnostic"] = "silk stockings missing imported Principled/output"
         return False
 
-    # GLB preview factors already contain SilkStockingsMaxAffect. The dedicated
-    # material starts from the original BaseMap to avoid applying the tint twice.
+    # The standard glTF preview remains neutral. This specialized preview applies
+    # the original Endfield parameters once, directly from endfieldSourceMaterial.
     base_color = image_color_source(
         nodes,
         find_imported_image(metadata.get("baseColorTextureId")),
@@ -1015,10 +1021,15 @@ def configure_silk_stockings_nodes(material: bpy.types.Material) -> bool:
     tangent.location = (group.location.x - 220, group.location.y - 460)
     links.new(tangent.outputs["Tangent"], group.inputs["Tangent"])
 
-    color = silk.get("color")
-    if isinstance(color, list) and len(color) == 3:
-        group.inputs["Edge Color"].default_value = (*map(float, color), 1.0)
-    max_affect = silk.get("maxAffect")
+    source_colors = source_material.get("colors", {})
+    source_floats = source_material.get("floats", {})
+    color = source_colors.get("_SilkStockingsColor", silk.get("color"))
+    if isinstance(color, list) and len(color) in {3, 4}:
+        group.inputs["Edge Color"].default_value = (*map(float, color[:3]), 1.0)
+    min_affect = source_floats.get("_SilkStockingsMinAffect")
+    if isinstance(min_affect, (int, float)):
+        group.inputs["Min Affect"].default_value = max(0.0, min(0.49, float(min_affect)))
+    max_affect = source_floats.get("_SilkStockingsMaxAffect", silk.get("maxAffect"))
     if isinstance(max_affect, (int, float)):
         group.inputs["Max Affect"].default_value = max(0.5, min(1.0, float(max_affect)))
 

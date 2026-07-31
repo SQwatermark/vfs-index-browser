@@ -54,6 +54,22 @@ class GltfExportTests(unittest.TestCase):
                 {
                     "id": "material",
                     "name": "Material",
+                    "sourceMaterial": {
+                        "shader": "Character/Body",
+                        "textureEnvironments": {
+                            "_BaseMap": {
+                                "textureId": "texture",
+                                "scale": [1.0, 1.0],
+                                "offset": [0.0, 0.0],
+                            }
+                        },
+                        "ints": {"_Cull": 2},
+                        "floats": {"_SilkStockingsMaxAffect": 0.9},
+                        "colors": {
+                            "_BaseColor": [1.0, 1.0, 1.0, 1.0],
+                            "_SilkStockingsColor": [0.0, 0.0, 0.0, 1.0],
+                        },
+                    },
                     "previewPbr": {
                         "alphaMode": "BLEND",
                         "baseColorTextureId": "texture",
@@ -154,6 +170,25 @@ class GltfExportTests(unittest.TestCase):
                 "overlayShadow": {"color": [0.3, 0.4, 0.5]},
             },
             payload["materials"][0]["extras"]["endfieldPreview"],
+        )
+        self.assertEqual(
+            {
+                "shader": "Character/Body",
+                "textureEnvironments": {
+                    "_BaseMap": {
+                        "textureId": "texture",
+                        "scale": [1.0, 1.0],
+                        "offset": [0.0, 0.0],
+                    }
+                },
+                "ints": {"_Cull": 2},
+                "floats": {"_SilkStockingsMaxAffect": 0.9},
+                "colors": {
+                    "_BaseColor": [1.0, 1.0, 1.0, 1.0],
+                    "_SilkStockingsColor": [0.0, 0.0, 0.0, 1.0],
+                },
+            },
+            payload["materials"][0]["extras"]["endfieldSourceMaterial"],
         )
         self.assertEqual(
             ["KHR_materials_unlit", "KHR_texture_transform"],

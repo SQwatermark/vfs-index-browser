@@ -44,8 +44,9 @@ AvatarMesh + standalone materials ─┘
     -> GLB / Blender / other backends
 ```
 
-`attach_mesh_geometry()` 是当前共享的 Mesh 与 Material 发射阶段。它将原始属性写入
-`materials[].properties`，将可移植的近似结果写入 `materials[].previewPbr`。
+`attach_mesh_geometry()` 是当前共享的 Mesh 与 Material 发射阶段。它将原始 Shader、
+TexEnv、Int、Float 和 Color 写入 `materials[].sourceMaterial`，将可移植的近似结果写入
+`materials[].previewPbr`。
 原始值和预览值不得相互覆盖。
 
 角色材质类别根据 Shader 属性签名判断，而不是依赖不稳定的资源名称。当前优先级为：

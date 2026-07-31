@@ -1,5 +1,6 @@
 import unittest
 
+from model_assembly import create_avatar_mesh_assembly, create_prefab_assembly
 from model_document import create_model_document, validate_model_document
 
 
@@ -8,8 +9,56 @@ SOURCE = {"logicalPath": "assets/characters/sample.prefab", "bundle": "sample.ab
 
 class ModelDocumentTests(unittest.TestCase):
     def test_empty_document_is_valid(self):
-        document = create_model_document("asset:sample", "sample", SOURCE)
+        document = create_model_document(
+            "asset:sample",
+            "sample",
+            SOURCE,
+            assembly=create_prefab_assembly(SOURCE),
+        )
+        self.assertEqual("2.0.0", document["version"])
         self.assertEqual([], validate_model_document(document))
+
+    def test_schema_rejects_assembly_metadata_in_source_locator(self):
+        document = create_model_document(
+            "asset:sample",
+            "sample",
+            {**SOURCE, "kind": "prefab"},
+        )
+        errors = validate_model_document(document)
+        self.assertTrue(
+            any(
+                item["code"] == "SCHEMA_VALIDATION_ERROR"
+                and "kind" in item["message"]
+                for item in errors
+            )
+        )
+
+    def test_reports_assembly_part_without_a_document_node(self):
+        part = {
+            "id": "part:body",
+            "nodeId": "node:missing",
+            "slotIndex": 0,
+            "meshIndex": 0,
+            "lod": 0,
+            "active": True,
+            "meshName": "Body",
+            "meshPathHash": 1,
+            "meshPaths": ["assets/body.mesh"],
+            "materialPaths": ["assets/body.mat"],
+        }
+        document = create_model_document(
+            "asset:sample",
+            "sample",
+            SOURCE,
+            assembly=create_avatar_mesh_assembly(
+                entry_source=SOURCE,
+                lod=0,
+                parts=[part],
+            ),
+        )
+
+        codes = {item["code"] for item in validate_model_document(document)}
+        self.assertIn("UNRESOLVED_ASSEMBLY_NODE", codes)
 
     def test_valid_geometry_references_and_buffer_range(self):
         document = create_model_document("asset:sample", "sample", SOURCE, root_node_ids=["node:root"])

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from model_assembly import create_prefab_assembly
 from model_document import add_diagnostic, create_model_document
 
 
@@ -256,7 +257,12 @@ def build_hierarchy_document(
         raise ValueError(f"entry must be GameObject, got {entry_object.type_name}")
 
     source = _source(entry_object, logical_path=logical_path, bundle=bundle)
-    document = create_model_document(entry.document_id, entry_object.name, source)
+    document = create_model_document(
+        entry.document_id,
+        entry_object.name,
+        source,
+        assembly=create_prefab_assembly(source),
+    )
     visited_game_objects: set[UnityObjectId] = set()
     visited_dependencies: set[tuple[UnityObjectId, UnityObjectId, str]] = set()
 
@@ -457,8 +463,10 @@ def attach_mesh_geometry(
         material_record = {
             "id": material_id.document_id,
             "name": material.name,
-            "shader": str(shader_name or (shader_target.document_id if shader_target else "Unknown")),
-            "properties": {
+            "sourceMaterial": {
+                "shader": str(
+                    shader_name or (shader_target.document_id if shader_target else "Unknown")
+                ),
                 "textureEnvironments": texture_environments,
                 "ints": _plain_mapping(saved.get("m_Ints")),
                 "floats": floats,
@@ -473,14 +481,8 @@ def attach_mesh_geometry(
         if floats.get("_SilkStockings") == 1.0 and isinstance(
             colors.get("_SilkStockingsColor"), Mapping
         ):
-            base_color = preview.get("baseColorFactor", [1.0, 1.0, 1.0, 1.0])
             stocking_color = colors["_SilkStockingsColor"]
             affect = _clamp_number(floats.get("_SilkStockingsMaxAffect"), 0.0, 1.0)
-            preview["baseColorFactor"] = [
-                base_color[index] * (1.0 - affect)
-                + float(stocking_color.get(channel, 0.0)) * affect
-                for index, channel in enumerate(("r", "g", "b"))
-            ] + [base_color[3]]
             preview["silkStockings"] = {
                 "color": [
                     float(stocking_color.get(channel, 0.0))

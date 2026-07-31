@@ -311,8 +311,14 @@ def build_glb(
             )
             if key in preview
         }
+        source_material = material.get("sourceMaterial")
+        extras = {}
+        if isinstance(source_material, Mapping):
+            extras["endfieldSourceMaterial"] = source_material
         if preview_metadata:
-            value["extras"] = {"endfieldPreview": preview_metadata}
+            extras["endfieldPreview"] = preview_metadata
+        if extras:
+            value["extras"] = extras
         if preview.get("alphaMode") in {"MASK", "BLEND"}:
             value["alphaMode"] = preview["alphaMode"]
         if preview.get("alphaMode") == "MASK":

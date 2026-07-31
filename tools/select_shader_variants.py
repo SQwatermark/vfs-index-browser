@@ -36,7 +36,7 @@ def main() -> int:
     if material is None:
         raise SystemExit(f"material not found: {args.material}")
 
-    floats = material.get("properties", {}).get("floats", {})
+    floats = material.get("sourceMaterial", {}).get("floats", {})
     active, local = active_material_keywords(shader_text, floats)
     variants = fragment_variants(shader_text, active, local)
     print(

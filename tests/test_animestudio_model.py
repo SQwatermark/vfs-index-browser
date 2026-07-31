@@ -441,10 +441,17 @@ class AnimeStudioModelTests(unittest.TestCase):
         self.assertEqual(texture_id.document_id, document["materials"][0]["previewPbr"]["sdfMaskTextureId"])
         self.assertEqual(texture_id.document_id, document["materials"][0]["previewPbr"]["shadowLutTextureId"])
         for expected, actual in zip(
-            [0.1, 0.1, 0.1, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
             document["materials"][0]["previewPbr"]["baseColorFactor"],
         ):
             self.assertAlmostEqual(expected, actual)
+        self.assertEqual(
+            [1.0, 1.0, 1.0, 1.0],
+            [
+                document["materials"][0]["sourceMaterial"]["colors"]["_BaseColor"][key]
+                for key in ("r", "g", "b", "a")
+            ],
+        )
         self.assertEqual(0.2, document["materials"][0]["previewPbr"]["metallicFactor"])
         self.assertEqual(0.75, document["materials"][0]["previewPbr"]["roughnessFactor"])
         self.assertEqual("characterNpr", document["materials"][0]["previewPbr"]["materialFamily"])

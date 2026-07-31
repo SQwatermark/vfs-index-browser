@@ -19,6 +19,7 @@ from animestudio_model import (
     build_standalone_material_objects,
     collect_material_textures,
 )
+from model_assembly import create_avatar_mesh_assembly
 from model_document import create_model_document, validate_model_document
 
 
@@ -80,12 +81,16 @@ def _build_material_objects(
 
 
 def _material_names(definition: Mapping[str, Any]) -> list[str]:
+    return [Path(path).stem for path in _material_paths(definition)]
+
+
+def _material_paths(definition: Mapping[str, Any]) -> list[str]:
     values = definition.get("materialPaths")
     if values is None:
         return []
     if not isinstance(values, list):
         raise ValueError("AvatarMesh materialPaths is not an array")
-    names = []
+    result = []
     for index, value in enumerate(values):
         if not isinstance(value, Mapping):
             raise ValueError(f"AvatarMesh materialPaths[{index}] is not an object")
@@ -94,11 +99,10 @@ def _material_names(definition: Mapping[str, Any]) -> list[str]:
             raise ValueError(
                 f"AvatarMesh materialPaths[{index}] must contain exactly one path"
             )
-        name = Path(paths[0]).stem
-        if not name:
+        if not paths[0]:
             raise ValueError(f"AvatarMesh materialPaths[{index}] has no material name")
-        names.append(name)
-    return names
+        result.append(paths[0])
+    return result
 
 
 def _attach_material_references(
@@ -176,14 +180,34 @@ def build_static_avatar_mesh_document(
     if not selected:
         raise ValueError(f"AvatarMesh 的 LOD{lod} 没有 Mesh")
 
+    assembly_parts = []
+    for slot_index, mesh_index, name, definition in selected:
+        node_id = f"npc-avatar-node:{slot_index}:{mesh_index}:{name}"
+        assembly_parts.append(
+            {
+                "id": f"npc-avatar-part:{slot_index}:{mesh_index}:{name}",
+                "nodeId": node_id,
+                "slotIndex": slot_index,
+                "meshIndex": mesh_index,
+                "lod": lod,
+                "active": not bool(definition.get("isRendererDisabled")),
+                "meshName": name,
+                "meshPathHash": definition.get("meshPathHash"),
+                "meshPaths": list(definition.get("meshPaths") or []),
+                "materialPaths": _material_paths(definition),
+                "rootBoneName": definition.get("rootBoneName"),
+            }
+        )
+    entry_source = {"logicalPath": prefab_path}
     document = create_model_document(
         f"npc-avatar:{asset_name}:lod{lod}",
         asset_name,
-        {
-            "logicalPath": prefab_path,
-            "kind": "NPCAvatarMesh",
-            "lod": lod,
-        },
+        entry_source,
+        assembly=create_avatar_mesh_assembly(
+            entry_source=entry_source,
+            lod=lod,
+            parts=assembly_parts,
+        ),
     )
     root_node_id = f"npc-avatar-root:{asset_name}:lod{lod}"
     document["nodes"].append(
@@ -198,10 +222,7 @@ def build_static_avatar_mesh_document(
                 "rotation": list(NPC_ROOT_ROTATION),
                 "scale": [1.0, 1.0, 1.0],
             },
-            "source": {
-                "logicalPath": prefab_path,
-                "kind": "NPCAvatarMeshRoot",
-            },
+            "source": entry_source,
         }
     )
     document["asset"]["rootNodeIds"] = [root_node_id]
@@ -229,6 +250,7 @@ def build_static_avatar_mesh_document(
             payload=payload,
         )
         node_id = f"npc-avatar-node:{slot_index}:{mesh_index}:{name}"
+        mesh_paths = list(definition.get("meshPaths") or [])
         document["nodes"].append(
             {
                 "id": node_id,
@@ -241,14 +263,11 @@ def build_static_avatar_mesh_document(
                     "rotation": [0.0, 0.0, 0.0, 1.0],
                     "scale": [1.0, 1.0, 1.0],
                 },
-                "source": {
-                    "meshPathHash": definition.get("meshPathHash"),
-                    "meshPaths": list(definition.get("meshPaths") or []),
-                    "rootBoneName": definition.get("rootBoneName"),
-                },
+                **({"source": {"logicalPath": mesh_paths[0]}} if mesh_paths else {}),
                 "extras": {
                     "lodLevel": lod,
                     "avatarSlotIndex": slot_index,
+                    "assemblyPartId": f"npc-avatar-part:{slot_index}:{mesh_index}:{name}",
                     "unityComponents": [
                         {
                             "type": "MeshFilter",
@@ -420,10 +439,12 @@ def _attach_bind_skeleton(
             "children": [],
             "parentId": parent_id,
             "transform": transform,
-            "source": {
-                "bonePathHash": path_hash,
-                "bonePath": path,
-                "kind": "AvatarBindPose",
+            "extras": {
+                "avatarBone": {
+                    "pathHash": path_hash,
+                    "path": path,
+                    "bindPoseAuthoritative": index in authoritative_indices,
+                }
             },
         }
         document["nodes"].append(node)
@@ -432,7 +453,7 @@ def _attach_bind_skeleton(
             "id": node_id,
             "name": node["name"],
             "transform": transform,
-            "source": dict(node["source"]),
+            "extras": dict(node["extras"]),
         }
         if parent_index >= 0:
             bone["parentId"] = parent_id
@@ -463,15 +484,15 @@ def _attach_bind_skeleton(
             matrices,
         )
         skin_id = f"{node['id']}:skin"
-        document["skins"].append(
-            {
-                "id": skin_id,
-                "skeletonId": skeleton_id,
-                "jointIds": [bone_node_ids[path_hash] for path_hash in hashes],
-                "inverseBindMatricesAccessorId": accessor_id,
-                "source": dict(node["source"]),
-            }
-        )
+        skin = {
+            "id": skin_id,
+            "skeletonId": skeleton_id,
+            "jointIds": [bone_node_ids[path_hash] for path_hash in hashes],
+            "inverseBindMatricesAccessorId": accessor_id,
+        }
+        if isinstance(node.get("source"), Mapping):
+            skin["source"] = dict(node["source"])
+        document["skins"].append(skin)
         node["skinId"] = skin_id
         node["skeletonId"] = skeleton_id
 

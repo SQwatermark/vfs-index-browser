@@ -16,7 +16,7 @@ assets/beyond/dynamicassets/gameplay/actors/postmodels/characters/chr_0004_pelic
 manifest.hgmmap
   -> 逻辑路径、入口 Bundle 和传递依赖闭包
   -> AnimeStudio CABMap 与 Unity 对象快照
-  -> ModelDocument v16 + geometry.bin + textures/
+  -> ModelDocument 2.0.0 + geometry.bin + textures/
   -> 自包含 GLB
   -> Three.js 网页预览 / 下载
 ```
@@ -42,6 +42,11 @@ ModelDocument 保存完整恢复结果，而不是某个预览格式的镜像：
 - `textures`、`images`：实际引用纹理和导出图片；
 - `dependencies`、`source`、`diagnostics`：来源追踪、依赖状态和不能静默丢失的问题。
 
+`asset.source` 只描述入口资源的稳定定位信息；Prefab 或 AvatarMesh 的组装方式记录在
+`asset.assembly`。Prefab 的部件关系来自 Unity 引用图，AvatarMesh 则显式记录最终选中的
+槽位、Mesh、材质路径、LOD、节点 ID 和坐标系。二者进入后续几何、材质和导出阶段后使用
+同一 ModelDocument 契约。
+
 几何数据使用 `buffers -> bufferViews -> accessors` 引用 `geometry.bin`。该结构借鉴 glTF，但内部 ID、原始 Shader 参数和诊断不受 glTF 表达能力限制。
 
 ## GLB 导出策略
@@ -54,13 +59,13 @@ GLB 用于浏览器预览和通用工具下载，不取代 ModelDocument：
 - 二进制 Buffer 在导出时重新紧凑排列，不携带未使用的低 LOD 几何；
 - 根节点增加 `scale: [-1, 1, 1]` 的 Unity 到 glTF 坐标系包装节点；
 - CharacterNPR 按属性签名划分 `skin`、`hair`、`eye`、`cloth` 和 `overlayShadow`；衣物保留标准 PBR 受光，皮肤、头发、眼睛和覆盖阴影暂以 `KHR_materials_unlit` 保住原始色彩关系；游戏特有 Shader 字段仍完整保存在 ModelDocument 中；
-- GLB 材质通过 `extras.endfieldPreview` 携带预览扩展元数据；标准查看器会安全忽略，本站预览器可据此选择 CharacterNPR、丝袜等专用处理，不再依赖材质名猜测；
+- GLB 材质通过 `extras.endfieldSourceMaterial` 携带完整源 Material，通过 `extras.endfieldPreview` 携带有损预览元数据；标准查看器会安全忽略，专用后端可按用途选择事实数据或预览映射；
 - 已启用的 Diff Ramp、Spec Ramp、SDF Lightmap、SDF Mask、Shadow LUT、面部高光和丝袜 Mask 会随 GLB 携带，并以稳定纹理 ID 写入 `extras.endfieldPreview`；宿主可以渐进实现专用材质而无需重新解析 Unity 对象；
 - 网页预览可选用沿顶点法线外扩、仅绘制背面的轮廓副本；透明覆盖层不参与描边，下载的 GLB 本身仍保持标准且不包含重复轮廓网格；
 - `_UseGrayAsAlpha` 覆盖材质在打包时转换为白色 RGB、原 R 通道写入 Alpha 的标准 PNG；
 - `_MetallicGlossMap` 的 `R=Metal`、`A=Smoothness` 在打包时转换为 glTF 金属粗糙贴图的 `B=Metallic`、`G=1-Smoothness`；原 `G=Spec`、`B=Shadow` 不强行映射为标准 PBR 语义，仍保留在 ModelDocument；
 - HGRP 导出的双通道 DirectX 切线空间法线在打包时翻转 G，并由 RG 重建 Z；不能把 `B=0` 的源图直接交给 glTF Normal Texture；
-- `_SilkStockings` 当前只近似基础色压暗，尚未复刻专用 Mask、各向异性高光和干湿响应。
+- 标准 glTF 基础色不再预烘 `_SilkStockings` 染色；网页仍使用通用近似，Blender 后端已有专用 Mask、视角染色、各向异性高光和干湿响应的近似节点组。
 
 逆绑定矩阵是一个已验证的关键约束：AnimeStudio 的 `Matrix4x4` JSON 采用行向量表示，平移位于 `M30/M31/M32`。写入 glTF 的列主序数组时必须保持 JSON 的行顺序，等价于完成约定转换。测试必须使用非对称矩阵；单位矩阵无法发现行列颠倒。
 
@@ -121,7 +126,10 @@ LOD0 GLB 经过依赖裁剪后的结果：
 
 ## Blender 预览后端
 
-Blender 4.3 的 glTF 导入器会把材质 `extras.endfieldPreview` 保留为 `Material["endfieldPreview"]` 自定义属性，因此 Blender 后端可以直接消费 GLB，不需要再次读取 ModelDocument。`tools/blender_import_model.py` 当前负责：
+Blender 4.3 的 glTF 导入器会把材质 extras 保留为自定义属性。Blender 后端从
+`Material["endfieldSourceMaterial"]` 读取原始 Shader 参数，从
+`Material["endfieldPreview"]` 读取后端选择和纹理 ID，因此可以直接消费 GLB，不需要再次
+读取 ModelDocument。`tools/blender_import_model.py` 当前负责：
 
 - 导入 GLB 并保留骨架、蒙皮、材质分区和纹理；
 - 只转换 `materialFamily == "characterNpr"` 的材质，其他材质保持 glTF 导入结果；

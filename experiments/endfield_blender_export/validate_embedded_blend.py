@@ -26,6 +26,11 @@ unpacked_images = sorted(
 metadata_materials = [
     material for material in materials if material.get("endfieldPreview") is not None
 ]
+source_materials = [
+    material
+    for material in materials
+    if material.get("endfieldSourceMaterial") is not None
+]
 converted_materials = [
     material for material in materials if material.get("endfieldShaderBackend")
 ]
@@ -79,6 +84,9 @@ disconnected_materials = [
 assert meshes, "Generated file contains no mesh objects"
 assert armatures, "Generated character contains no armature"
 assert materials, "Generated file contains no assigned materials"
+assert len(source_materials) == len(materials), (
+    "Some materials lost endfieldSourceMaterial during GLB import"
+)
 assert metadata_materials, "No Endfield material metadata survived GLB import"
 assert converted_materials, "No Endfield material was converted by the Blender backend"
 assert face_materials, "No Skin material selected the recovered face-SDF backend"
@@ -145,6 +153,7 @@ print(
             "meshes": len(meshes),
             "armatures": len(armatures),
             "materials": len(materials),
+            "endfieldSourceMaterials": len(source_materials),
             "endfieldMetadataMaterials": len(metadata_materials),
             "convertedMaterials": len(converted_materials),
             "faceSdfMaterials": len(face_materials),

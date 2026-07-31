@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
+
+from jsonschema import Draft202012Validator
+
+from model_assembly import validate_model_assembly
 
 
 MODEL_DOCUMENT_FORMAT = "EndfieldModelDocument"
-MODEL_DOCUMENT_VERSION = "1.0.0"
+MODEL_DOCUMENT_VERSION = "2.0.0"
+MODEL_DOCUMENT_SCHEMA = Path(__file__).with_name("schemas") / "model-document.schema.json"
 
 COLLECTIONS = (
     "buffers", "bufferViews", "accessors", "nodes", "meshes", "skeletons",
@@ -26,18 +34,22 @@ def create_model_document(
     source: Mapping[str, Any],
     *,
     root_node_ids: Iterable[str] = (),
+    assembly: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create an empty document with all collections present."""
 
+    asset = {
+        "id": asset_id,
+        "name": name,
+        "source": deepcopy(dict(source)),
+        "rootNodeIds": list(root_node_ids),
+    }
+    if assembly is not None:
+        asset["assembly"] = deepcopy(dict(assembly))
     return {
         "format": MODEL_DOCUMENT_FORMAT,
         "version": MODEL_DOCUMENT_VERSION,
-        "asset": {
-            "id": asset_id,
-            "name": name,
-            "source": deepcopy(dict(source)),
-            "rootNodeIds": list(root_node_ids),
-        },
+        "asset": asset,
         **{collection: [] for collection in COLLECTIONS},
         "dependencies": [],
         "diagnostics": [],
@@ -78,10 +90,21 @@ def validate_model_document(document: Mapping[str, Any]) -> list[dict[str, Any]]
             value["objectId"] = object_id
         errors.append(value)
 
+    for schema_error in _model_document_validator().iter_errors(document):
+        path = ".".join(str(part) for part in schema_error.absolute_path)
+        location = path or "<root>"
+        error("SCHEMA_VALIDATION_ERROR", f"{location}: {schema_error.message}")
+
     if document.get("format") != MODEL_DOCUMENT_FORMAT:
         error("INVALID_FORMAT", f"format must be {MODEL_DOCUMENT_FORMAT!r}")
     if document.get("version") != MODEL_DOCUMENT_VERSION:
         error("UNSUPPORTED_VERSION", f"version must be {MODEL_DOCUMENT_VERSION!r}")
+
+    asset = document.get("asset")
+    if isinstance(asset, Mapping):
+        assembly = asset.get("assembly")
+        if isinstance(assembly, Mapping):
+            errors.extend(validate_model_assembly(assembly))
 
     indexes: dict[str, dict[str, Mapping[str, Any]]] = {}
     global_ids: dict[str, str] = {}
@@ -116,6 +139,7 @@ def validate_model_document(document: Mapping[str, Any]) -> list[dict[str, Any]]
 
     _validate_buffers(indexes, error)
     _validate_nodes(document, indexes, error)
+    _validate_assembly_references(document, indexes, error)
 
     for node in indexes["nodes"].values():
         _optional_ref(node, "meshId", "meshes", indexes, error)
@@ -161,6 +185,28 @@ def validate_model_document(document: Mapping[str, Any]) -> list[dict[str, Any]]
                 _optional_ref(channel, field, "accessors", indexes, error, owner=animation, optional=False)
 
     return errors
+
+
+@lru_cache(maxsize=1)
+def _model_document_validator() -> Draft202012Validator:
+    schema = json.loads(MODEL_DOCUMENT_SCHEMA.read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)
+    return Draft202012Validator(schema)
+
+
+def _validate_assembly_references(document, indexes, error) -> None:
+    asset = document.get("asset")
+    assembly = asset.get("assembly") if isinstance(asset, Mapping) else None
+    if not isinstance(assembly, Mapping):
+        return
+    for part in _object_list(assembly.get("parts")):
+        node_id = part.get("nodeId")
+        if node_id not in indexes["nodes"]:
+            error(
+                "UNRESOLVED_ASSEMBLY_NODE",
+                f"assembly node {node_id!r} is missing",
+                part.get("id"),
+            )
 
 
 def _validate_buffers(indexes, error) -> None:

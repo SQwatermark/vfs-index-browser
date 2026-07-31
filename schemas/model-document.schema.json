@@ -7,7 +7,7 @@
   "required": ["format", "version", "asset", "buffers", "bufferViews", "accessors", "nodes", "meshes", "skeletons", "skins", "materials", "textures", "images", "animations", "animatorControllers", "dependencies", "diagnostics"],
   "properties": {
     "format": { "const": "EndfieldModelDocument" },
-    "version": { "const": "1.0.0" },
+    "version": { "const": "2.0.0" },
     "asset": { "$ref": "#/$defs/asset" },
     "buffers": { "type": "array", "items": { "$ref": "#/$defs/buffer" } },
     "bufferViews": { "type": "array", "items": { "$ref": "#/$defs/bufferView" } },
@@ -49,7 +49,45 @@
         "id": { "$ref": "#/$defs/id" },
         "name": { "type": "string" },
         "source": { "$ref": "#/$defs/source" },
-        "rootNodeIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true }
+        "rootNodeIds": { "type": "array", "items": { "$ref": "#/$defs/id" }, "uniqueItems": true },
+        "assembly": { "$ref": "#/$defs/assembly" }
+      }
+    },
+    "assembly": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sourceBasis", "documentBasis", "entrySource", "parts"],
+      "properties": {
+        "kind": { "enum": ["prefab", "avatarMesh"] },
+        "sourceBasis": { "enum": ["unity-y-up", "avatar-mesh-z-up"] },
+        "documentBasis": { "const": "unity-y-up" },
+        "entrySource": { "$ref": "#/$defs/source" },
+        "lod": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/assemblyPart" }
+        }
+      }
+    },
+    "assemblyPart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "nodeId", "slotIndex", "meshIndex", "lod", "active",
+        "meshName", "meshPathHash", "meshPaths", "materialPaths"
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "nodeId": { "$ref": "#/$defs/id" },
+        "slotIndex": { "type": "integer", "minimum": 0 },
+        "meshIndex": { "type": "integer", "minimum": 0 },
+        "lod": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "active": { "type": "boolean" },
+        "meshName": { "type": "string", "minLength": 1 },
+        "meshPathHash": { "type": ["integer", "null"] },
+        "meshPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "materialPaths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "rootBoneName": { "type": ["string", "null"] }
       }
     },
     "namedObject": {
@@ -170,7 +208,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "name": { "type": "string" },
-        "bones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "transform"], "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "parentId": { "$ref": "#/$defs/id" }, "transform": { "$ref": "#/$defs/transform" }, "source": { "$ref": "#/$defs/source" } }, "additionalProperties": false } }
+        "bones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "transform"], "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "parentId": { "$ref": "#/$defs/id" }, "transform": { "$ref": "#/$defs/transform" }, "source": { "$ref": "#/$defs/source" }, "extras": { "type": "object" } }, "additionalProperties": false } }
       }
     },
     "skin": {
@@ -189,12 +227,22 @@
     "material": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "shader", "properties"],
+      "required": ["id", "name", "sourceMaterial"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "name": { "type": "string" },
-        "shader": { "type": "string" },
-        "properties": { "type": "object" },
+        "sourceMaterial": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["shader", "textureEnvironments", "ints", "floats", "colors"],
+          "properties": {
+            "shader": { "type": "string" },
+            "textureEnvironments": { "type": "object" },
+            "ints": { "type": "object" },
+            "floats": { "type": "object" },
+            "colors": { "type": "object" }
+          }
+        },
         "previewPbr": { "type": "object" },
         "source": { "$ref": "#/$defs/source" }
       }

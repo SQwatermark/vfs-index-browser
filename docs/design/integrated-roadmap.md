@@ -101,10 +101,11 @@ ModelDocument 校验和派生导出。
 3. `blenderMaterialBackend`：选择 `preview`、`formula-validation` 或
    `cycles-reference` 后端所需的显式配置。
 
-当前 `materials[].properties` 已保留大部分源 Material 数据，但命名和 schema 尚未明确
-表达第一层；GLB extras 也只携带部分 `previewPbr` 元数据。丝袜的
-`_SilkStockingsMaxAffect` 不应提前写回 `baseColorFactor` 作为精确后端输入，因为真实
-影响随视角和覆盖度逐片元变化。
+ModelDocument `2.0.0` 已将源 Material 明确保存为 `materials[].sourceMaterial`；
+`materials[].previewPbr` 只保存有损预览映射。GLB 分别以
+`extras.endfieldSourceMaterial` 和 `extras.endfieldPreview` 传递两层数据。丝袜的
+`_SilkStockingsMaxAffect` 不再提前写回 `baseColorFactor`，因为真实影响随视角和覆盖度
+逐片元变化；Blender 专用预览会从源材质读取该参数并只应用一次。
 
 ## 音频管线
 
@@ -122,12 +123,12 @@ ModelDocument 校验和派生导出。
 
 这是所有后续工作的共同前置条件。
 
-1. 明确 ModelDocument 是唯一完整模型格式。
-2. 定义内部 `ResolvedModelAssembly`，让 Prefab 与 AvatarMesh 共享后续流程。
-3. 明确 `sourceMaterial`、`previewPbr` 和 Blender 后端的边界。
+1. 明确 ModelDocument 是唯一完整模型格式。（已完成）
+2. 定义装配契约，让 Prefab 与 AvatarMesh 共享后续流程。（已完成基础结构）
+3. 明确 `sourceMaterial`、`previewPbr` 和 Blender 后端的边界。（已完成基础结构）
 4. 补齐原始纹理采样、颜色空间、Shader 开关和材质诊断。
 5. 将 AudioDialog 逻辑路径、Media ID 和 PCK 物理条目建成独立索引契约。
-6. 对不兼容的 ModelDocument 或缓存结构提升版本，禁止旧缓存伪装成新产物。
+6. 对不兼容的 ModelDocument 或缓存结构提升版本，禁止旧缓存伪装成新产物。（已提升至 `2.0.0`）
 
 验收标准：
 

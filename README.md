@@ -28,7 +28,7 @@
 安装 Python 依赖：
 
 ```powershell
-python -m pip install brotli pillow
+python -m pip install -r requirements.txt
 ```
 
 首次从 JSONL/TGZ 索引构建 SQLite 并启动：
@@ -150,7 +150,9 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema。
 - `tools/decode_memorypack_json.py`：使用已知 schema 解码二进制配置。
-- `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，并根据 `endfieldPreview` 自动建立 Eevee CharacterNPR 预览材质、相机、灯光和可选轮廓。
+- `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，根据
+  `endfieldSourceMaterial` 与 `endfieldPreview` 自动建立 Eevee CharacterNPR
+  预览材质、相机、灯光和可选轮廓。
 
 Blender 脚本必须由 Blender 自带的 Python 执行：
 
