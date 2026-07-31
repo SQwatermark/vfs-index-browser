@@ -72,7 +72,12 @@ class AnimeStudioModelTests(unittest.TestCase):
                     "contract": "AnimeStudioObjectSnapshot",
                     "version": "1.0.0",
                 },
-                "capabilities": ["BuildCABMap", "UseCABMap", "ObjectJSON"],
+                "capabilities": [
+                    "BuildCABMap",
+                    "UseCABMap",
+                    "ObjectJSON",
+                    "IdentifiedTexture",
+                ],
             }), encoding="utf-8")
 
             manifest = load_animestudio_tool_manifest(executable)

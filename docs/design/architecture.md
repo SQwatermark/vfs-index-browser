@@ -32,9 +32,10 @@ Prefab 模型恢复使用 AnimeStudio 的版本化 `ObjectJSON` 协议。AnimeSt
 文件名猜测对象引用。CAB 映射通过 `BuildCABMap` 和 `UseCABMap` 两个显式步骤建立与
 使用，避免索引构建和对象导出产生隐式副作用。
 
-服务优先使用 `tools/AnimeStudio.CLI-<commit>` 下附带能力清单的版本化构建。仅在调试
-时通过 `VFS_BROWSER_ANIMESTUDIO_CLI` 显式覆盖；历史变量 `ANIMESTUDIO_CLI` 只作为
-不存在打包构建时的兼容回退，不能覆盖已经部署并验证过的版本。
+服务只使用 `tools/AnimeStudio.CLI-<commit>` 下附带能力清单的版本化构建。仅在调试
+时通过 `VFS_BROWSER_ANIMESTUDIO_CLI` 显式覆盖，不回退到源码目录或未声明当前协议
+能力的旧构建。纹理使用 `IdentifiedTexture` 导出并以 `pathId` 匹配，不能按可能重复
+的资源名称猜测。
 
 Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
 

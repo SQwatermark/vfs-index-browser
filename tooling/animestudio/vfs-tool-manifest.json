@@ -1,7 +1,7 @@
 {
   "tool": "AnimeStudio.CLI",
   "sourceRepository": "Escartem/AnimeStudio",
-  "sourceCommit": "d46ac9c",
+  "sourceCommit": "5169b95",
   "objectSnapshot": {
     "contract": "AnimeStudioObjectSnapshot",
     "version": "1.0.0"
@@ -9,6 +9,7 @@
   "capabilities": [
     "BuildCABMap",
     "UseCABMap",
-    "ObjectJSON"
+    "ObjectJSON",
+    "IdentifiedTexture"
   ]
 }

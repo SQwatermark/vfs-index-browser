@@ -83,28 +83,17 @@ AUDIO_DIALOG_DB = Path(
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
 BUNDLED_ANIMESTUDIO_CLI = (
-    PROJECT_ROOT / "tools" / "AnimeStudio.CLI-d46ac9c" / "AnimeStudio.CLI.exe"
+    PROJECT_ROOT / "tools" / "AnimeStudio.CLI-5169b95" / "AnimeStudio.CLI.exe"
 )
 ANIMESTUDIO_CLI = Path(
-    os.environ.get(
-        "VFS_BROWSER_ANIMESTUDIO_CLI",
-        BUNDLED_ANIMESTUDIO_CLI
-        if BUNDLED_ANIMESTUDIO_CLI.exists()
-        else os.environ.get(
-            "ANIMESTUDIO_CLI",
-            r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
-        ),
-    )
+    os.environ.get("VFS_BROWSER_ANIMESTUDIO_CLI", BUNDLED_ANIMESTUDIO_CLI)
 )
-# 模型快照使用的定制构建可能不保留完整 TypeTree Dump，因此允许单独指定标准 CLI。
+# 调试时可以分别覆盖特定导出链路，生产环境统一使用已验证的打包构建。
 ANIMESTUDIO_MONOBEHAVIOUR_CLI = Path(
-    os.environ.get("ANIMESTUDIO_MONOBEHAVIOUR_CLI", ANIMESTUDIO_CLI)
+    os.environ.get("VFS_BROWSER_ANIMESTUDIO_MONOBEHAVIOUR_CLI", ANIMESTUDIO_CLI)
 )
 ANIMESTUDIO_CUBEMAP_CLI = Path(
-    os.environ.get(
-        "ANIMESTUDIO_CUBEMAP_CLI",
-        r"D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe",
-    )
+    os.environ.get("VFS_BROWSER_ANIMESTUDIO_CUBEMAP_CLI", ANIMESTUDIO_CLI)
 )
 VGMSTREAM_CLI = Path(
     os.environ.get(
@@ -130,7 +119,7 @@ VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
 MONOBEHAVIOUR_DUMP_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
-MODEL_SNAPSHOT_VERSION = 26
+MODEL_SNAPSHOT_VERSION = 27
 ANIMATION_CLIP_EXPORT_VERSION = 1
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 3
@@ -2169,7 +2158,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "--game",
                 "ArknightsEndfield",
                 "--map_op",
-                "Load,CABMap",
+                "UseCABMap",
                 "--map_name",
                 map_name,
                 "--types",
@@ -2177,7 +2166,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "--names",
                 f"^(?:{'|'.join(re.escape(name) for name in texture_names)})$",
                 "--export_type",
-                "Convert",
+                "IdentifiedTexture",
                 "--group_assets",
                 "ByType",
                 "--logger_flags",

@@ -8,7 +8,9 @@ from pathlib import Path
 from animestudio_model import OBJECT_SNAPSHOT_CONTRACT, OBJECT_SNAPSHOT_VERSION
 
 
-REQUIRED_CAPABILITIES = frozenset({"BuildCABMap", "UseCABMap", "ObjectJSON"})
+REQUIRED_CAPABILITIES = frozenset(
+    {"BuildCABMap", "UseCABMap", "ObjectJSON", "IdentifiedTexture"}
+)
 
 
 def load_animestudio_tool_manifest(executable: Path) -> dict:
