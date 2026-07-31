@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import copy
 import gzip
 import io
 import json
@@ -38,7 +37,11 @@ from animestudio_model import (
 )
 from model_document import validate_model_document
 from gltf_export import build_glb
-from animestudio_animation import attach_animation_clip, load_unique_animation_clip
+from animestudio_animation import (
+    MODEL_ANIMATION_VERSION,
+    bind_animation_clip,
+    load_unique_animation_clip,
+)
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -99,6 +102,8 @@ MONOBEHAVIOUR_DUMP_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 24
 ANIMATION_CLIP_EXPORT_VERSION = 1
+# Increment when the GLB representation changes without changing ModelDocument.
+MODEL_GLB_VERSION = 2
 AUDIO_PACKAGE_META_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
@@ -1037,11 +1042,27 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt: str, *args) -> None:
         print(f"{self.address_string()} - {fmt % args}")
 
-    def send_json(self, payload: object, status: int = 200) -> None:
+    def send_json(
+        self,
+        payload: object,
+        status: int = 200,
+        *,
+        cache_control: str | None = None,
+        compress: bool = False,
+    ) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        accepted_encodings = self.headers.get("Accept-Encoding", "").casefold()
+        is_compressed = compress and "gzip" in accepted_encodings
+        if is_compressed:
+            data = gzip.compress(data)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
+        if is_compressed:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+        if cache_control:
+            self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(data)
 
@@ -1132,6 +1153,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/manifest-asset/model-glb":
             self.handle_manifest_asset_model_glb(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/model-animation":
+            self.handle_manifest_asset_model_animation(parse_qs(parsed.query))
             return
         if parsed.path == "/api/tablecfg/json":
             self.handle_tablecfg_json(parse_qs(parsed.query))
@@ -3459,10 +3483,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         manifest_id = int(query["manifestId"][0])
         asset_index = int(asset["asset_index"])
-        animation_parameter = (
+        animation_url = (
+            f"/api/manifest-asset/model-animation?manifestId={manifest_id}"
+            f"&assetIndex={asset_index}"
             f"&animationAssetIndex={int(animation_asset['asset_index'])}"
+            f"&v={MODEL_ANIMATION_VERSION}"
             if animation_asset
-            else ""
+            else None
         )
         self.send_json(
             {
@@ -3478,8 +3505,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "animationAsset": animation_asset,
                 "glbUrl": (
                     f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}{animation_parameter}"
+                    f"&assetIndex={asset_index}&v={MODEL_GLB_VERSION}"
                 ),
+                "animationUrl": animation_url,
                 "document": document,
                 "run": {
                     "scope": run_meta.get("scope"),
@@ -3495,9 +3523,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if resolved is None:
             return
         index, asset, bundle_record, bundle_chunk = resolved
-        animation_resolved = self.resolve_optional_animation_source(query)
-        if query.get("animationAssetIndex") and animation_resolved is None:
-            return
         if file_suffix(str(asset["path"])) != ".prefab":
             self.send_error_json(400, "GLB export currently requires a .prefab asset")
             return
@@ -3505,7 +3530,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         try:
             dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
             dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            base_document, _ = self.ensure_model_hierarchy(
+            document, _ = self.ensure_model_hierarchy(
                 bundle_record,
                 bundle_chunk,
                 asset,
@@ -3519,34 +3544,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             geometry_path = model_path.with_name("geometry.bin")
             if not geometry_path.is_file():
                 raise FileNotFoundError("model geometry buffer not found")
-            document = copy.deepcopy(base_document)
             geometry = geometry_path.read_bytes()
-            animation_path = None
-            animation_asset_index = None
-            if animation_resolved:
-                _, animation_asset, animation_record, animation_chunk = animation_resolved
-                clip, animation_path, _ = self.ensure_animation_clip_export(
-                    animation_record,
-                    animation_chunk,
-                    animation_asset,
-                )
-                animation_asset_index = int(animation_asset["asset_index"])
-                geometry = attach_animation_clip(
-                    document,
-                    geometry,
-                    clip,
-                    animation_id=f"animation:{animation_asset_index}",
-                    source={
-                        "logicalPath": str(animation_asset["path"]),
-                        "bundle": str(animation_asset["bundle_name"]),
-                    },
-                )
-                validation_errors = validate_model_document(document)
-                if validation_errors:
-                    raise RuntimeError(
-                        "animated ModelDocument failed semantic validation: "
-                        + "; ".join(validation_errors)
-                    )
 
             texture_root = (model_path.parent / "textures").resolve()
             image_paths: dict[str, Path] = {}
@@ -3565,23 +3563,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     raise FileNotFoundError(f"model texture not found: {relative}")
                 image_paths[str(image["id"])] = target
 
-            glb_path = model_path.with_name(
-                f"model-animation-{animation_asset_index}.glb"
-                if animation_asset_index is not None
-                else "model.glb"
-            )
+            glb_path = model_path.with_name("model.glb")
             # Exporter changes can alter the GLB without rebuilding ModelDocument.
             exporter_path = Path(build_glb.__code__.co_filename)
-            animation_adapter_path = Path(attach_animation_clip.__code__.co_filename)
             source_paths = [
                 model_path,
                 geometry_path,
                 exporter_path,
-                animation_adapter_path,
                 *image_paths.values(),
             ]
-            if animation_path is not None:
-                source_paths.append(animation_path)
             newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
             if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
                 glb = build_glb(
@@ -3611,6 +3601,65 @@ class BrowserHandler(BaseHTTPRequestHandler):
         with glb_path.open("rb") as source:
             while data := source.read(STREAM_CHUNK_SIZE):
                 self.wfile.write(data)
+
+    def handle_manifest_asset_model_animation(
+        self,
+        query: dict[str, list[str]],
+    ) -> None:
+        model_resolved = self.resolve_manifest_asset_source(query)
+        if model_resolved is None:
+            return
+        if not query.get("animationAssetIndex"):
+            self.send_error_json(400, "animationAssetIndex is required")
+            return
+        animation_resolved = self.resolve_optional_animation_source(query)
+        if animation_resolved is None:
+            return
+
+        index, model_asset, model_record, model_chunk = model_resolved
+        _, animation_asset, animation_record, animation_chunk = animation_resolved
+        if file_suffix(str(model_asset["path"])) != ".prefab":
+            self.send_error_json(400, "Animation binding currently requires a .prefab model asset")
+            return
+
+        try:
+            dependencies = index.bundle_dependencies(int(model_asset["bundle_index"]))
+            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+            document, _ = self.ensure_model_hierarchy(
+                model_record,
+                model_chunk,
+                model_asset,
+                dependencies,
+                dependency_sources,
+                missing_dependencies,
+            )
+            clip, _, _ = self.ensure_animation_clip_export(
+                animation_record,
+                animation_chunk,
+                animation_asset,
+            )
+            animation_asset_index = int(animation_asset["asset_index"])
+            animation = bind_animation_clip(
+                document,
+                clip,
+                animation_id=f"animation:{animation_asset_index}",
+                source={
+                    "logicalPath": str(animation_asset["path"]),
+                    "bundle": str(animation_asset["bundle_name"]),
+                },
+            )
+        except subprocess.TimeoutExpired:
+            self.send_error_json(504, "AnimeStudio timed out while exporting the animation")
+            return
+        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            self.send_error_json(500, str(error))
+            return
+
+        self.send_json(
+            animation,
+            cache_control="private, max-age=3600",
+            compress=True,
+        )
 
     def handle_manifest_asset_model_buffer(self, query: dict[str, list[str]]) -> None:
         try:
@@ -3908,6 +3957,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(data)
 

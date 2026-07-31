@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js'
+import { createModelAnimationClip } from './model-animation.js'
 
 const PAGE_SIZE = 100
 const MANIFEST_VIRTUAL_DIR = '__manifest_assets__'
@@ -305,6 +306,10 @@ function createOutlineModel(source) {
   return outline
 }
 
+function formatAnimationTime(value) {
+  return Number(value || 0).toFixed(2).replace(/\.?0+$/, '')
+}
+
 function renderModelPreview(data) {
   disposeModelViewer()
   const modelDocument = data.document || {}
@@ -324,15 +329,23 @@ function renderModelPreview(data) {
     </div>
     <div id="modelViewport" class="model-viewport">
       <label class="model-view-option">
-        <input id="modelOutlineToggle" type="checkbox" checked />
+        <input id="modelOutlineToggle" type="checkbox" />
         <span>轮廓线</span>
       </label>
+      <div id="modelAnimationControls" class="model-animation-controls" hidden>
+        <button id="modelAnimationToggle" type="button" title="暂停动画">❚❚</button>
+        <strong id="modelAnimationName"></strong>
+        <input id="modelAnimationTime" type="range" min="0" max="0" step="0.001" value="0" aria-label="动画时间" />
+        <output id="modelAnimationTimeLabel">0 / 0</output>
+      </div>
       <div id="modelLoading" class="model-loading">正在加载 GLB...</div>
     </div>
   `
 
   const viewport = $('modelViewport')
   const loading = $('modelLoading')
+  const animationTimeInput = $('modelAnimationTime')
+  const animationTimeLabel = $('modelAnimationTimeLabel')
   const scene = new THREE.Scene()
   scene.background = new THREE.Color(0x101317)
   const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 10000)
@@ -351,8 +364,14 @@ function renderModelPreview(data) {
 
   let model = null
   let mixers = []
+  let animationDuration = 0
+  let isAnimationPlaying = true
   let active = true
   const clock = new THREE.Clock()
+  const renderAnimationTime = (time) => {
+    animationTimeInput.value = String(time)
+    animationTimeLabel.value = `${formatAnimationTime(time)} / ${formatAnimationTime(animationDuration)}`
+  }
   const resize = () => {
     const width = Math.max(viewport.clientWidth, 1)
     const height = Math.max(viewport.clientHeight, 1)
@@ -366,7 +385,7 @@ function renderModelPreview(data) {
 
   new GLTFLoader().load(
     glbUrl,
-    (gltf) => {
+    async (gltf) => {
       if (!active) {
         disposeModelResources(gltf.scene)
         return
@@ -375,14 +394,8 @@ function renderModelPreview(data) {
       model.name = 'EndfieldModelPreview'
       model.add(gltf.scene)
       const outline = createOutlineModel(gltf.scene)
+      outline.visible = false
       model.add(outline)
-      if (gltf.animations.length) {
-        mixers = [gltf.scene, outline].map((root) => {
-          const mixer = new THREE.AnimationMixer(root)
-          mixer.clipAction(gltf.animations[0]).play()
-          return mixer
-        })
-      }
       $('modelOutlineToggle').addEventListener('change', (event) => {
         outline.visible = event.currentTarget.checked
       })
@@ -406,7 +419,49 @@ function renderModelPreview(data) {
       camera.updateProjectionMatrix()
       controls.target.set(0, 0, 0)
       controls.update()
-      loading.remove()
+      if (data.animationUrl) {
+        loading.textContent = '正在加载动画...'
+      } else {
+        loading.remove()
+      }
+
+      if (data.animationUrl) {
+        try {
+          const animation = await getJson(data.animationUrl)
+          if (!active) return
+          const roots = [gltf.scene, outline]
+          const clips = roots.map((root) => createModelAnimationClip(animation, root))
+          mixers = roots.map((root, index) => {
+            const mixer = new THREE.AnimationMixer(root)
+            mixer.clipAction(clips[index]).play()
+            return mixer
+          })
+          const animationControls = $('modelAnimationControls')
+          const animationToggle = $('modelAnimationToggle')
+          animationControls.hidden = false
+          $('modelAnimationName').textContent = animation.name || 'AnimationClip'
+          animationDuration = Number(animation.duration) || clips[0].duration
+          animationTimeInput.max = String(animationDuration)
+
+          const setAnimationTime = (time) => {
+            for (const mixer of mixers) mixer.setTime(time)
+            renderAnimationTime(time)
+          }
+          animationToggle.addEventListener('click', () => {
+            isAnimationPlaying = !isAnimationPlaying
+            animationToggle.textContent = isAnimationPlaying ? '❚❚' : '▶'
+            animationToggle.title = isAnimationPlaying ? '暂停动画' : '播放动画'
+          })
+          animationTimeInput.addEventListener('input', (event) => {
+            setAnimationTime(Number(event.currentTarget.value))
+          })
+          renderAnimationTime(0)
+          loading.remove()
+        } catch (error) {
+          console.error('模型动画加载失败', error)
+          loading.textContent = `动画加载失败：${error.message || error}`
+        }
+      }
     },
     (event) => {
       if (!active || !event.total) return
@@ -420,7 +475,13 @@ function renderModelPreview(data) {
 
   renderer.setAnimationLoop(() => {
     const delta = clock.getDelta()
-    for (const mixer of mixers) mixer.update(delta)
+    if (isAnimationPlaying) {
+      for (const mixer of mixers) mixer.update(delta)
+    }
+    if (mixers.length) {
+      const time = animationDuration > 0 ? mixers[0].time % animationDuration : 0
+      renderAnimationTime(time)
+    }
     controls.update()
     renderer.render(scene, camera)
   })

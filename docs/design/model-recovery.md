@@ -70,14 +70,21 @@ GLB 用于浏览器预览和通用工具下载，不取代 ModelDocument：
 GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model-glb?manifestId=<manifest文件ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
-GET /api/manifest-asset/model-glb?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
+GET /api/manifest-asset/model-animation?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
 GET /api/manifest-asset/model-buffer?recordId=<VFS记录ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model-texture?recordId=<VFS记录ID>&assetIndex=<资源索引>&path=<纹理路径>
 ```
 
-模型 JSON 返回 `glbUrl`。GLB 缓存同时观察 `model.json`、`geometry.bin`、引用纹理和导出器源码的修改时间，避免只改导出规则却继续命中旧文件。
-指定 `animationAssetIndex` 时，服务复制基础文档并追加动画，不修改模型快照；
-派生 GLB 按动画资源索引单独缓存，并观察动画 JSON 与适配器源码的修改时间。
+模型 JSON 返回固定的 `glbUrl`；指定 `animationAssetIndex` 时另行返回
+`animationUrl`。GLB 缓存同时观察 `model.json`、`geometry.bin`、引用纹理和
+导出器源码的修改时间，避免只改导出规则却继续命中旧文件。
+
+基础 GLB 的每个节点通过 `extras.endfieldNodeId` 保留稳定的 ModelDocument
+节点身份。动画接口负责将原始 Unity `pathHash` 绑定到这些节点 ID，并返回
+共享时间轴和 Transform 轨道；浏览器再为当前模型实例构造 Three.js
+`AnimationClip`。因此一个模型只生成一份 GLB，切换片段仅加载动画数据。
+独立动画文档的协议由 `schemas/model-animation.schema.json` 固定。
+`attach_animation_clip()` 仍保留为离线打包工具，但不属于网页预览的默认路径。
 
 前端支持直接链接：
 
@@ -151,8 +158,8 @@ python tools/select_shader_variants.py `
 - 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye、OverlayShadow 和 SilkStockings 仍无完整专用节点组。
 - manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并按唯一子资源名和 PathID
   解析 AnimeStudio 导出文件；ACL 2.1 压缩曲线可导出为紧凑 JSON，并已进入
-  ModelDocument、GLB 和浏览器播放链路。
-- 当前浏览器只会自动循环第一个动画。播放控制、采样检查、Root Motion、浮点曲线、
+  独立模型动画文档和浏览器播放链路。
+- 当前浏览器可播放、暂停和拖动指定的单个动画。采样检查、Root Motion、浮点曲线、
   BlendShape、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
 - 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。
 - GLB 当前保留完整节点层级，因此低 LOD Renderer 节点仍存在，但不会引用被裁剪的 Mesh 和 Skin。
@@ -193,17 +200,18 @@ Root Motion 映射，避免静默丢失。
 当前已完成第一层消费链路：
 
 1. AnimeStudio 可导出带共享时间轴和原始 `pathHash` 的紧凑动画 JSON。
-2. 动画适配器将 Transform 曲线追加到 `ModelDocument`，GLB 导出器生成标准
-   glTF 动画通道。
-3. 佩丽卡样本的 272 条位移和 272 条旋转通道全部映射成功，零缺失、零歧义；
-   152 条材质或组件浮点曲线暂不进入 GLB，并形成明确诊断。
+2. 动画适配器将 Transform 曲线绑定到稳定的 ModelDocument 节点 ID，形成独立
+   `EndfieldModelAnimation` 文档。
+3. GLB 节点携带同一稳定 ID，浏览器按需获取动画文档并为模型实例创建 Three.js
+   动画轨道；模型 GLB 本身保持不变。
+4. 佩丽卡样本的 272 条位移和 272 条旋转通道全部映射成功，零缺失、零歧义；
+   152 条材质或组件浮点曲线暂不进入浏览器播放轨道，并形成明确诊断。
 
 下一阶段按以下顺序推进：
 
-1. 增加播放、暂停、时间拖动和片段信息，使动画结果可以逐帧检查。
-2. 用身体骨骼位移明显的多个片段验证坐标系、局部变换、采样顺序和循环边界；
+1. 用身体骨骼位移明显的多个片段验证坐标系、局部变换、采样顺序和循环边界；
    遇到声明 Root Motion 的样本时单独验证其语义。
-3. 播放正确性稳定后，收集 Animator Controller、面部控制和附加运行时参数，区分普通骨骼动画与
+2. 播放正确性稳定后，收集 Animator Controller、面部控制和附加运行时参数，区分普通骨骼动画与
    眼球注视、表情等运行时驱动。
-4. 姿态链路稳定后继续还原身体 PBR、面部/头发 NPR、Eye Shader 和丝袜材质，
+3. 姿态链路稳定后继续还原身体 PBR、面部/头发 NPR、Eye Shader 和丝袜材质，
    不用角色专用骨骼偏移掩盖渲染问题。

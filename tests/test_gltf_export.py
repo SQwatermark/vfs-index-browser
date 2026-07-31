@@ -132,6 +132,10 @@ class GltfExportTests(unittest.TestCase):
         self.assertEqual(0x4E4F534A, json_type)
         payload = json.loads(glb[20:20 + json_length].decode("utf-8"))
         self.assertEqual("2.0", payload["asset"]["version"])
+        self.assertEqual(
+            "node:root",
+            payload["nodes"][0]["extras"]["endfieldNodeId"],
+        )
         self.assertEqual([-1.0, 1.0, 1.0], payload["nodes"][-1]["scale"])
         self.assertEqual(3, len(payload["images"]))
         self.assertEqual(1, len(payload["meshes"]))
@@ -151,11 +155,18 @@ class GltfExportTests(unittest.TestCase):
             },
             payload["materials"][0]["extras"]["endfieldPreview"],
         )
-        self.assertEqual(["KHR_materials_unlit"], payload["extensionsUsed"])
+        self.assertEqual(
+            ["KHR_materials_unlit", "KHR_texture_transform"],
+            payload["extensionsUsed"],
+        )
         self.assertEqual(
             {}, payload["materials"][0]["extensions"]["KHR_materials_unlit"]
         )
         pbr = payload["materials"][0]["pbrMetallicRoughness"]
+        self.assertEqual(
+            {"offset": [0.0, 1.0], "scale": [1.0, -1.0]},
+            pbr["baseColorTexture"]["extensions"]["KHR_texture_transform"],
+        )
         self.assertEqual(1.0, pbr["metallicFactor"])
         self.assertEqual(1.0, pbr["roughnessFactor"])
         self.assertIn("metallicRoughnessTexture", pbr)

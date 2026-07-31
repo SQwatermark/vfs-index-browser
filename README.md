@@ -115,14 +115,16 @@ GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456&animationAssetIndex=789
-GET /api/manifest-asset/model-glb?manifestId=123&assetIndex=456&animationAssetIndex=789
+GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
 
 manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestId + assetIndex` 稳定定位。`.ab`、`.pck` 和 `.usm` 仍通过 internal API 浏览各自的按需内部视图。
 
 模型接口可选的 `animationAssetIndex` 指向同一 manifest 内的 `AnimationClip`。
-服务按需导出紧凑动画数据并生成独立的“模型 + 动画”GLB 缓存，不修改基础
-`ModelDocument` 和几何缓存。直接预览链接使用：
+服务按需导出紧凑动画数据，并将 Unity 路径哈希绑定到基础模型的稳定节点 ID。
+基础 GLB 不包含动画，切换动画时浏览器只获取独立动画 JSON，不会重复生成或下载模型。
+独立动画数据的格式由 `schemas/model-animation.schema.json` 固定。
+直接预览链接使用：
 
 ```text
 /?modelManifestId=123&modelAssetIndex=456&animationAssetIndex=789
@@ -172,5 +174,5 @@ blender --background --factory-startup `
 - manifest 已能建立完整路径到 Bundle 的映射，但尚未对所有 Unity 类型提供预览。
 - manifest 资源会自动衔接对应 AB；AnimeStudio 未支持的 Unity 类型会明确提示无法导出。
 - MemoryPack 解码仍依赖从当前客户端 IL2CPP 数据提取的 schema，游戏升级后需要重新验证。
-- 组合模型已完成首个角色样本的网页与 Blender 验证；Transform 动画已能按需解码、挂载到 GLB 并在浏览器中播放。当前预览区分衣物 PBR 与面部/头发 CharacterNPR，保留衣物 Spec 通道并近似处理乘算覆盖阴影；完整 Shader、播放与采样检查、Animator、浮点曲线、运行时面部姿态和 BlendShape 尚未恢复。
+- 组合模型已完成首个角色样本的网页与 Blender 验证；Transform 动画已能按需解码为独立数据，并在浏览器中绑定到基础 GLB 播放。当前预览区分衣物 PBR 与面部/头发 CharacterNPR，保留衣物 Spec 通道并近似处理乘算覆盖阴影；完整 Shader、采样检查、Animator、浮点曲线、运行时面部姿态和 BlendShape 尚未恢复。
 - 音频用途、任务台本等聚合视图尚未建立。

@@ -5,7 +5,11 @@ import unittest
 import zlib
 from pathlib import Path
 
-from animestudio_animation import attach_animation_clip, load_unique_animation_clip
+from animestudio_animation import (
+    attach_animation_clip,
+    bind_animation_clip,
+    load_unique_animation_clip,
+)
 from model_document import create_model_document, validate_model_document
 
 
@@ -113,6 +117,29 @@ class AnimeStudioAnimationTests(unittest.TestCase):
                 },
             ],
         }
+
+        animation = bind_animation_clip(
+            document,
+            clip,
+            animation_id="animation:idle",
+            source=SOURCE,
+        )
+        self.assertEqual("EndfieldModelAnimation", animation["format"])
+        self.assertEqual("1.0.0", animation["version"])
+        self.assertEqual("Idle", animation["name"])
+        self.assertEqual([[0.0, 1.0]], animation["timelines"])
+        self.assertEqual(
+            ["translation", "rotation"],
+            [item["property"] for item in animation["tracks"]],
+        )
+        self.assertEqual(
+            {"node:bone"},
+            {item["targetId"] for item in animation["tracks"]},
+        )
+        self.assertEqual(
+            "ANIMATION_FLOAT_CURVES_UNSUPPORTED",
+            animation["diagnostics"][0]["code"],
+        )
 
         geometry = attach_animation_clip(
             document,

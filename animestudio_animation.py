@@ -1,4 +1,4 @@
-"""Attach AnimeStudio's compact animation export to a ModelDocument."""
+"""Bind AnimeStudio's compact animation export to a ModelDocument."""
 
 from __future__ import annotations
 
@@ -10,11 +10,10 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from model_document import add_diagnostic
-
-
 ANIMATION_FORMAT = "AnimeStudioAnimationClip"
 ANIMATION_VERSION = "1.0.0"
+MODEL_ANIMATION_FORMAT = "EndfieldModelAnimation"
+MODEL_ANIMATION_VERSION = "1.0.0"
 GEOMETRY_BUFFER_ID = "buffer:geometry"
 TRANSFORM_PROPERTIES = {
     "translation": ("vec3", 3),
@@ -40,6 +39,134 @@ def load_unique_animation_clip(export_root: Path, expected_name: str) -> tuple[d
     return matching[0]
 
 
+def bind_animation_clip(
+    document: Mapping[str, Any],
+    clip: Mapping[str, Any],
+    *,
+    animation_id: str,
+    source: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Resolve compact Unity animation curves to stable ModelDocument node IDs."""
+
+    if clip.get("format") != ANIMATION_FORMAT:
+        raise ValueError(f"animation format must be {ANIMATION_FORMAT!r}")
+    if clip.get("version") != ANIMATION_VERSION:
+        raise ValueError(f"animation version must be {ANIMATION_VERSION!r}")
+
+    source_timelines = clip.get("timelines")
+    curves = clip.get("curves")
+    if not isinstance(source_timelines, list) or not isinstance(curves, list):
+        raise ValueError("animation timelines and curves must be arrays")
+
+    timelines = []
+    for timeline_index, timeline in enumerate(source_timelines):
+        if not isinstance(timeline, list) or not all(
+            isinstance(value, (int, float)) for value in timeline
+        ):
+            raise ValueError(f"animation timeline {timeline_index} contains a non-number")
+        if any(right < left for left, right in zip(timeline, timeline[1:])):
+            raise ValueError(f"animation timeline {timeline_index} is not sorted")
+        timelines.append([float(value) for value in timeline])
+
+    node_hashes = _index_node_path_hashes(document)
+    tracks = []
+    unresolved_hashes = set()
+    ambiguous_hashes = set()
+    unsupported_float_count = 0
+
+    for curve_index, curve in enumerate(curves):
+        if not isinstance(curve, Mapping):
+            raise ValueError(f"animation curve {curve_index} must be an object")
+        property_name = curve.get("property")
+        if property_name == "float":
+            unsupported_float_count += 1
+            continue
+        layout = TRANSFORM_PROPERTIES.get(property_name)
+        if layout is None:
+            raise ValueError(f"unsupported animation property {property_name!r}")
+
+        path_hash = curve.get("pathHash")
+        if not isinstance(path_hash, int) or not 0 <= path_hash <= 0xFFFFFFFF:
+            raise ValueError(f"animation curve {curve_index} has an invalid pathHash")
+        targets = node_hashes.get(path_hash, set())
+        if not targets:
+            unresolved_hashes.add(path_hash)
+            continue
+        if len(targets) != 1:
+            ambiguous_hashes.add(path_hash)
+            continue
+
+        timeline_index = curve.get("timeline")
+        if not isinstance(timeline_index, int) or not 0 <= timeline_index < len(timelines):
+            raise ValueError(f"animation curve {curve_index} has an invalid timeline")
+        times = timelines[timeline_index]
+        value_type, component_count = layout
+        rows = curve.get("values")
+        if not isinstance(rows, list) or len(rows) != len(times):
+            raise ValueError(f"animation curve {curve_index} value count does not match its timeline")
+        if not all(
+            isinstance(row, list)
+            and len(row) == component_count
+            and all(isinstance(value, (int, float)) for value in row)
+            for row in rows
+        ):
+            raise ValueError(f"animation curve {curve_index} has invalid {value_type} values")
+        tracks.append(
+            {
+                "targetId": next(iter(targets)),
+                "property": property_name,
+                "timeline": timeline_index,
+                "values": [[float(value) for value in row] for row in rows],
+            }
+        )
+
+    diagnostics = []
+    if unresolved_hashes:
+        diagnostics.append(
+            {
+                "severity": "warning",
+                "code": "ANIMATION_PATHS_UNRESOLVED",
+                "message": f"{len(unresolved_hashes)} animation path hashes do not match model nodes.",
+                "objectId": animation_id,
+                "details": {"pathHashes": sorted(unresolved_hashes)},
+            }
+        )
+    if ambiguous_hashes:
+        diagnostics.append(
+            {
+                "severity": "warning",
+                "code": "ANIMATION_PATHS_AMBIGUOUS",
+                "message": f"{len(ambiguous_hashes)} animation path hashes match multiple model nodes.",
+                "objectId": animation_id,
+                "details": {"pathHashes": sorted(ambiguous_hashes)},
+            }
+        )
+    if unsupported_float_count:
+        diagnostics.append(
+            {
+                "severity": "info",
+                "code": "ANIMATION_FLOAT_CURVES_UNSUPPORTED",
+                "message": (
+                    f"{unsupported_float_count} float curves remain available only "
+                    "in the source animation."
+                ),
+                "objectId": animation_id,
+            }
+        )
+    return {
+        "format": MODEL_ANIMATION_FORMAT,
+        "version": MODEL_ANIMATION_VERSION,
+        "id": animation_id,
+        "name": str(clip.get("name") or ""),
+        "duration": float(clip.get("duration") or 0.0),
+        "sampleRate": float(clip.get("sampleRate") or 0.0),
+        "timelines": timelines,
+        "tracks": tracks,
+        "source": dict(source),
+        "diagnostics": diagnostics,
+    }
+
+
 def attach_animation_clip(
     document: dict[str, Any],
     geometry: bytes,
@@ -56,23 +183,16 @@ def attach_animation_clip(
     ancestor-relative node path is indexed and only unique matches are used.
     """
 
-    if clip.get("format") != ANIMATION_FORMAT:
-        raise ValueError(f"animation format must be {ANIMATION_FORMAT!r}")
-    if clip.get("version") != ANIMATION_VERSION:
-        raise ValueError(f"animation version must be {ANIMATION_VERSION!r}")
-
-    timelines = clip.get("timelines")
-    curves = clip.get("curves")
-    if not isinstance(timelines, list) or not isinstance(curves, list):
-        raise ValueError("animation timelines and curves must be arrays")
-
-    node_hashes = _index_node_path_hashes(document)
+    animation = bind_animation_clip(
+        document,
+        clip,
+        animation_id=animation_id,
+        source=source,
+    )
+    timelines = animation["timelines"]
     binary = bytearray(geometry)
     timeline_accessors: dict[int, str] = {}
     channels = []
-    unresolved_hashes = set()
-    ambiguous_hashes = set()
-    unsupported_float_count = 0
 
     def add_accessor(
         suffix: str,
@@ -109,41 +229,10 @@ def attach_animation_clip(
         document["accessors"].append(accessor)
         return accessor_id
 
-    for curve_index, curve in enumerate(curves):
-        if not isinstance(curve, Mapping):
-            raise ValueError(f"animation curve {curve_index} must be an object")
-        property_name = curve.get("property")
-        if property_name == "float":
-            unsupported_float_count += 1
-            continue
-        layout = TRANSFORM_PROPERTIES.get(property_name)
-        if layout is None:
-            raise ValueError(f"unsupported animation property {property_name!r}")
-
-        path_hash = curve.get("pathHash")
-        if not isinstance(path_hash, int) or not 0 <= path_hash <= 0xFFFFFFFF:
-            raise ValueError(f"animation curve {curve_index} has an invalid pathHash")
-        targets = node_hashes.get(path_hash, set())
-        if not targets:
-            unresolved_hashes.add(path_hash)
-            continue
-        if len(targets) != 1:
-            ambiguous_hashes.add(path_hash)
-            continue
-        target_id = next(iter(targets))
-
-        timeline_index = curve.get("timeline")
-        if (
-            not isinstance(timeline_index, int)
-            or not 0 <= timeline_index < len(timelines)
-            or not isinstance(timelines[timeline_index], list)
-        ):
-            raise ValueError(f"animation curve {curve_index} has an invalid timeline")
+    for curve_index, curve in enumerate(animation["tracks"]):
+        property_name = curve["property"]
+        timeline_index = curve["timeline"]
         times = timelines[timeline_index]
-        if not all(isinstance(value, (int, float)) for value in times):
-            raise ValueError(f"animation timeline {timeline_index} contains a non-number")
-        if any(right < left for left, right in zip(times, times[1:])):
-            raise ValueError(f"animation timeline {timeline_index} is not sorted")
         if timeline_index not in timeline_accessors:
             timeline_accessors[timeline_index] = add_accessor(
                 f"timeline:{timeline_index}",
@@ -153,17 +242,8 @@ def attach_animation_clip(
                 bounds=True,
             )
 
-        value_type, component_count = layout
-        rows = curve.get("values")
-        if not isinstance(rows, list) or len(rows) != len(times):
-            raise ValueError(f"animation curve {curve_index} value count does not match its timeline")
-        if not all(
-            isinstance(row, list)
-            and len(row) == component_count
-            and all(isinstance(value, (int, float)) for value in row)
-            for row in rows
-        ):
-            raise ValueError(f"animation curve {curve_index} has invalid {value_type} values")
+        value_type, _ = TRANSFORM_PROPERTIES[property_name]
+        rows = curve["values"]
         output_accessor = add_accessor(
             f"curve:{curve_index}",
             [float(value) for row in rows for value in row],
@@ -172,7 +252,7 @@ def attach_animation_clip(
         )
         channels.append(
             {
-                "targetId": target_id,
+                "targetId": curve["targetId"],
                 "property": property_name,
                 "inputAccessorId": timeline_accessors[timeline_index],
                 "outputAccessorId": output_accessor,
@@ -180,40 +260,15 @@ def attach_animation_clip(
             }
         )
 
-    if unresolved_hashes:
-        add_diagnostic(
-            document,
-            "warning",
-            "ANIMATION_PATHS_UNRESOLVED",
-            f"{len(unresolved_hashes)} animation path hashes do not match model nodes.",
-            object_id=animation_id,
-            details={"pathHashes": sorted(unresolved_hashes)},
-        )
-    if ambiguous_hashes:
-        add_diagnostic(
-            document,
-            "warning",
-            "ANIMATION_PATHS_AMBIGUOUS",
-            f"{len(ambiguous_hashes)} animation path hashes match multiple model nodes.",
-            object_id=animation_id,
-            details={"pathHashes": sorted(ambiguous_hashes)},
-        )
-    if unsupported_float_count:
-        add_diagnostic(
-            document,
-            "info",
-            "ANIMATION_FLOAT_CURVES_UNSUPPORTED",
-            f"{unsupported_float_count} float curves remain available only in the source animation.",
-            object_id=animation_id,
-        )
+    document.setdefault("diagnostics", []).extend(animation["diagnostics"])
     if channels:
         document["animations"].append(
             {
                 "id": animation_id,
-                "name": str(clip.get("name") or ""),
-                "duration": float(clip.get("duration") or 0.0),
+                "name": animation["name"],
+                "duration": animation["duration"],
                 "channels": channels,
-                "source": dict(source),
+                "source": animation["source"],
             }
         )
         _update_geometry_buffer(document, binary, buffer_uri)

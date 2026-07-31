@@ -15,6 +15,20 @@ from PIL import Image
 COMPONENT_TYPES = {"i8": 5120, "u8": 5121, "i16": 5122, "u16": 5123, "u32": 5125, "f32": 5126}
 
 
+def _unity_texture_info(texture_index: int) -> dict[str, Any]:
+    """Reference a flipped PNG using Unity's bottom-left texture coordinates."""
+
+    return {
+        "index": texture_index,
+        "extensions": {
+            "KHR_texture_transform": {
+                "offset": [0.0, 1.0],
+                "scale": [1.0, -1.0],
+            }
+        },
+    }
+
+
 def _is_preview_node(node: Mapping[str, Any]) -> bool:
     if not node.get("meshId") or not node.get("active", True):
         return False
@@ -251,6 +265,7 @@ def build_glb(
 
     material_indexes = {}
     uses_unlit = False
+    uses_texture_transform = False
     for material in selected_materials:
         preview = material.get("previewPbr", {})
         pbr = {
@@ -261,7 +276,8 @@ def build_glb(
             pbr["baseColorFactor"] = preview["baseColorFactor"]
         base_texture = texture_indexes.get(preview.get("baseColorTextureId"))
         if base_texture is not None:
-            pbr["baseColorTexture"] = {"index": base_texture}
+            pbr["baseColorTexture"] = _unity_texture_info(base_texture)
+            uses_texture_transform = True
         metallic_gloss_texture = texture_indexes.get(preview.get("metallicGlossTextureId"))
         if metallic_gloss_texture is not None:
             # HGRP packs metal/spec/shadow/smoothness in RGBA. Core glTF can
@@ -269,7 +285,8 @@ def build_glb(
             # available in ModelDocument for a future game-specific material.
             pbr["metallicFactor"] = 1.0
             pbr["roughnessFactor"] = 1.0
-            pbr["metallicRoughnessTexture"] = {"index": metallic_gloss_texture}
+            pbr["metallicRoughnessTexture"] = _unity_texture_info(metallic_gloss_texture)
+            uses_texture_transform = True
         value = {
             "name": material["name"],
             "pbrMetallicRoughness": pbr,
@@ -305,11 +322,17 @@ def build_glb(
             uses_unlit = True
         normal_texture = texture_indexes.get(preview.get("normalTextureId"))
         if normal_texture is not None:
-            value["normalTexture"] = {"index": normal_texture}
+            value["normalTexture"] = _unity_texture_info(normal_texture)
+            uses_texture_transform = True
         material_indexes[material["id"]] = len(gltf["materials"])
         gltf["materials"].append(value)
+    extensions_used = []
     if uses_unlit:
-        gltf["extensionsUsed"] = ["KHR_materials_unlit"]
+        extensions_used.append("KHR_materials_unlit")
+    if uses_texture_transform:
+        extensions_used.append("KHR_texture_transform")
+    if extensions_used:
+        gltf["extensionsUsed"] = extensions_used
 
     mesh_indexes = {}
     for mesh in selected_meshes:
@@ -334,7 +357,10 @@ def build_glb(
 
     node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
     for node in nodes:
-        value = {"name": node["name"]}
+        value = {
+            "name": node["name"],
+            "extras": {"endfieldNodeId": node["id"]},
+        }
         transform = node.get("transform", {})
         for source_field, target_field in (
             ("translation", "translation"),

@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://endfield.local/schemas/model-animation.schema.json",
+  "title": "EndfieldModelAnimation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "version",
+    "id",
+    "name",
+    "duration",
+    "sampleRate",
+    "timelines",
+    "tracks",
+    "source",
+    "diagnostics"
+  ],
+  "properties": {
+    "format": {
+      "const": "EndfieldModelAnimation"
+    },
+    "version": {
+      "const": "1.0.0"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string"
+    },
+    "duration": {
+      "type": "number",
+      "minimum": 0
+    },
+    "sampleRate": {
+      "type": "number",
+      "minimum": 0
+    },
+    "timelines": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "targetId",
+          "property",
+          "timeline",
+          "values"
+        ],
+        "properties": {
+          "targetId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "property": {
+            "enum": [
+              "translation",
+              "rotation",
+              "scale"
+            ]
+          },
+          "timeline": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "property": {
+                  "const": "rotation"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "values": {
+                  "items": {
+                    "minItems": 4,
+                    "maxItems": 4
+                  }
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "values": {
+                  "items": {
+                    "minItems": 3,
+                    "maxItems": 3
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "source": {
+      "type": "object"
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    }
+  }
+}
