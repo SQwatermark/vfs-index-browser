@@ -26,6 +26,10 @@
 `audio_dialog_store.py` 负责 SQLite 持久化与逻辑目录查询。索引使用以下三组核心表；
 后续 Wwise 关系图再单独扩展。
 
+现有 PCK 解析器生成的 `audio_meta.json` 不需要重复解析：
+`media_entries_from_audio_package_meta()` 会校验元数据版本、条目数和必需字段，再转换为
+统一物理媒体记录。PCK 文件 ID 保留在每条记录中，供后续预览 API 回到原 VFS 文件。
+
 ### `audio_media`
 
 记录可读取的物理媒体：

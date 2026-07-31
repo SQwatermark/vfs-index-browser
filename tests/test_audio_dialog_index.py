@@ -5,10 +5,12 @@ from audio_dialog_index import (
     AudioDialogRecord,
     AudioMediaEntry,
     build_audio_dialog_index,
+    build_audio_dialog_index_from_packages,
     build_audio_dialog_records,
     endfield_fnv1_64,
     hash_audio_dialog_path,
     map_audio_dialog_records,
+    media_entries_from_audio_package_meta,
     parse_audio_dialog,
 )
 
@@ -171,6 +173,46 @@ class AudioDialogMappingTests(unittest.TestCase):
         media = AudioMediaEntry(0xFEDCBA9876543210, 1, 0, 10, "sound")
 
         self.assertEqual("fedcba9876543210", media.sqlite_record()["media_id"])
+
+    def test_adapts_existing_audio_package_metadata(self):
+        record = build_audio_dialog_records(
+            {"1": {"path": "v1d0/story/line.wav"}},
+            "chinese",
+        )[0]
+        package = {
+            "version": 1,
+            "entryCount": 1,
+            "entries": [{
+                "id": record.media_id,
+                "offset": 128,
+                "size": 64,
+                "source": "bank",
+                "language": "Chinese",
+                "bankId": 10,
+                "bankOffset": 100,
+                "bankSize": 200,
+                "bankWemOffset": 28,
+                "bankEncrypted": True,
+            }],
+        }
+
+        entries = media_entries_from_audio_package_meta(45, package)
+        matches = build_audio_dialog_index_from_packages(
+            {"1": {"path": "v1d0/story/line.wav"}},
+            "cn",
+            [(45, package)],
+        )
+
+        self.assertEqual("chinese", entries[0].language)
+        self.assertEqual(45, entries[0].pck_file_id)
+        self.assertEqual("matched", matches[0].status)
+
+    def test_rejects_inconsistent_audio_package_metadata(self):
+        with self.assertRaisesRegex(AudioDialogFormatError, "entryCount"):
+            media_entries_from_audio_package_meta(
+                1,
+                {"version": 1, "entryCount": 2, "entries": []},
+            )
 
 
 if __name__ == "__main__":

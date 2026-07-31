@@ -271,6 +271,71 @@ def build_audio_dialog_index(
     return map_audio_dialog_records(build_audio_dialog_records(payload, language), media_entries)
 
 
+def media_entries_from_audio_package_meta(
+    pck_file_id: int,
+    payload: object,
+) -> tuple[AudioMediaEntry, ...]:
+    _validate_nonnegative_int64(pck_file_id, "pck_file_id")
+    if not isinstance(payload, dict):
+        raise AudioDialogFormatError("audio package metadata must be an object")
+    if payload.get("version") != 1:
+        raise AudioDialogFormatError(
+            f"unsupported audio package metadata version: {payload.get('version')!r}"
+        )
+    entries = payload.get("entries")
+    if not isinstance(entries, list):
+        raise AudioDialogFormatError("audio package metadata entries must be an array")
+    if payload.get("entryCount") != len(entries):
+        raise AudioDialogFormatError("audio package metadata entryCount is inconsistent")
+
+    result = []
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            raise AudioDialogFormatError(
+                f"audio package metadata entry {index} must be an object"
+            )
+        try:
+            result.append(
+                AudioMediaEntry(
+                    media_id=entry["id"],
+                    pck_file_id=pck_file_id,
+                    offset=entry["offset"],
+                    size=entry["size"],
+                    source=entry["source"],
+                    language=entry.get("language"),
+                    bank_id=entry.get("bankId"),
+                    bank_offset=entry.get("bankOffset"),
+                    bank_size=entry.get("bankSize"),
+                    bank_wem_offset=entry.get("bankWemOffset"),
+                    bank_encrypted=entry.get("bankEncrypted", False),
+                )
+            )
+        except KeyError as error:
+            raise AudioDialogFormatError(
+                f"audio package metadata entry {index} is missing {error.args[0]}"
+            ) from error
+    return tuple(result)
+
+
+def build_audio_dialog_index_from_packages(
+    payload: object,
+    language: object,
+    packages: Iterable[tuple[int, object]],
+) -> tuple[AudioDialogMatch, ...]:
+    media_entries = []
+    seen_pck_ids = set()
+    for pck_file_id, package_meta in packages:
+        if pck_file_id in seen_pck_ids:
+            raise AudioDialogFormatError(
+                f"audio package file {pck_file_id!r} was supplied more than once"
+            )
+        seen_pck_ids.add(pck_file_id)
+        media_entries.extend(
+            media_entries_from_audio_package_meta(pck_file_id, package_meta)
+        )
+    return build_audio_dialog_index(payload, language, media_entries)
+
+
 def _validate_record(record: AudioDialogRecord) -> None:
     if not isinstance(record, AudioDialogRecord):
         raise TypeError("records must contain AudioDialogRecord values")
