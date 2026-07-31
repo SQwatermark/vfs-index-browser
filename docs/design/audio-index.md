@@ -168,14 +168,33 @@ Wwise/
 
 1. 读取本地 TableCfg 的 AudioDialog。
 2. 计算语言前缀和路径哈希。（已完成）
-3. 与现有 PCK 索引连接并写入 SQLite。（SQLite 契约已完成，PCK 适配待接入）
-4. 实现目录分页、预览和下载 API。
+3. 与现有 PCK 索引连接并写入 SQLite。（已完成显式 PCK 元数据适配与构建 CLI）
+4. 实现目录分页、预览和下载 API。（后端已完成，前端待接入）
 5. 增加空目录、重复引用、缺失媒体和哈希冲突测试。
 6. 在页面上使用左右分栏或固定预览区，避免长目录把预览推到页面底部。
 
 当前实现会严格区分 `matched`、`missing`、`ambiguous` 和 `collision`，无符号 64 位
 Media ID 使用固定 16 位十六进制文本保存，避免 SQLite 有符号整数溢出。索引 schema
 不做隐式迁移；遇到未知版本会明确要求重建。
+
+已有导出数据可以直接构建索引：
+
+```powershell
+python tools/build_audio_dialog_index.py `
+  path/to/AudioDialog.json `
+  data/audio-dialog-index.sqlite `
+  --language chinese `
+  --package 832795=path/to/chinese-banks/audio_meta.json `
+  --package 832796=path/to/chinese-stream/audio_meta.json
+```
+
+重复运行会只替换指定语言，保留数据库中的其他语言；`--reset` 才会删除整个旧库。当前
+CLI 接受显式输入，下一步由本地游戏发现层自动定位 AudioDialog TableCfg 和对应语言 PCK，
+但不会改变哈希、匹配、SQLite 或 HTTP 接口。
+
+预览和下载不会重新按 Media ID 选择第一个条目，而是使用索引中保存的 PCK 文件 ID、
+offset、size 和 Bank 位置读取唯一候选。同一 Media ID 在不同物理位置出现时使用不同缓存
+身份；缓存键同时包含 PCK 内容指纹、解析实现版本和 vgmstream 文件身份。
 
 ### 阶段二：Wwise 关系图
 

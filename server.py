@@ -18,12 +18,14 @@ import sys
 import tarfile
 import threading
 import time
+from contextlib import closing
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
+from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
@@ -63,6 +65,12 @@ DEFAULT_INDEX = (
     / "endfield-vfs-index-20260727-234026.jsonl.tgz"
 )
 DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"
+AUDIO_DIALOG_DB = Path(
+    os.environ.get(
+        "VFS_BROWSER_AUDIO_DIALOG_DB",
+        PROJECT_ROOT / "data" / "audio-dialog-index.sqlite",
+    )
+)
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
 BUNDLED_ANIMESTUDIO_CLI = PROJECT_ROOT / "tools" / "AnimeStudio.CLI" / "AnimeStudio.CLI.exe"
@@ -1084,6 +1092,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         conn.row_factory = sqlite3.Row
         return conn
 
+    def connect_audio_dialog(self) -> sqlite3.Connection:
+        if not AUDIO_DIALOG_DB.is_file():
+            raise FileNotFoundError(
+                f"AudioDialog index not built: {AUDIO_DIALOG_DB}"
+            )
+        return sqlite3.connect(AUDIO_DIALOG_DB)
+
     @classmethod
     def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:
         if cls.memorypack_load_error:
@@ -1136,6 +1151,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/search":
             self.handle_search(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/audio-dialog/list":
+            self.handle_audio_dialog_list(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/audio-dialog/entry":
+            self.handle_audio_dialog_entry(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/audio-dialog/preview":
+            self.handle_audio_dialog_preview(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/audio-dialog/raw":
+            self.handle_audio_dialog_raw(parse_qs(parsed.query))
             return
         if parsed.path == "/api/file":
             self.handle_file(parse_qs(parsed.query))
@@ -1441,6 +1468,187 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 )
             ]
         self.send_json({"items": rows, "limit": limit})
+
+    def handle_audio_dialog_list(self, query: dict[str, list[str]]) -> None:
+        language = query.get("language", ["chinese"])[0]
+        path = unquote(query.get("path", [""])[0])
+        try:
+            page = max(int(query.get("page", ["1"])[0]), 1)
+            page_size = min(
+                max(int(query.get("pageSize", ["100"])[0]), 1),
+                PAGE_SIZE_MAX,
+            )
+            with closing(self.connect_audio_dialog()) as conn:
+                payload = list_audio_dialog_directory(
+                    conn,
+                    language,
+                    path,
+                    limit=page_size,
+                    offset=(page - 1) * page_size,
+                )
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except sqlite3.DatabaseError as error:
+            self.send_error_json(500, f"AudioDialog index error: {error}")
+            return
+        payload["page"]["page"] = page
+        payload["page"]["pageSize"] = page_size
+        self.send_json(payload)
+
+    def handle_audio_dialog_entry(self, query: dict[str, list[str]]) -> None:
+        language = query.get("language", ["chinese"])[0]
+        path = unquote(query.get("path", [""])[0])
+        if not path:
+            self.send_error_json(400, "AudioDialog path is required")
+            return
+        try:
+            with closing(self.connect_audio_dialog()) as conn:
+                entries = get_audio_dialog_entry(conn, language, path)
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except sqlite3.DatabaseError as error:
+            self.send_error_json(500, f"AudioDialog index error: {error}")
+            return
+        if not entries:
+            self.send_error_json(404, "AudioDialog entry not found")
+            return
+        self.send_json({"language": language, "path": path, "entries": entries})
+
+    def resolve_audio_dialog_selection(
+        self,
+        query: dict[str, list[str]],
+    ) -> tuple[str, str, dict] | None:
+        language = query.get("language", ["chinese"])[0]
+        path = unquote(query.get("path", [""])[0])
+        if not path:
+            self.send_error_json(400, "AudioDialog path is required")
+            return None
+        try:
+            dialog_key_value = query.get("dialogKey", [None])[0]
+            dialog_key = int(dialog_key_value) if dialog_key_value is not None else None
+            with closing(self.connect_audio_dialog()) as conn:
+                entries = get_audio_dialog_entry(conn, language, path)
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return None
+        except FileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return None
+        except sqlite3.DatabaseError as error:
+            self.send_error_json(500, f"AudioDialog index error: {error}")
+            return None
+        if dialog_key is not None:
+            entries = [entry for entry in entries if entry["dialog_key"] == dialog_key]
+        if not entries:
+            self.send_error_json(404, "AudioDialog entry not found")
+            return None
+        if len(entries) != 1:
+            self.send_error_json(
+                409,
+                "AudioDialog path has multiple records; specify dialogKey",
+            )
+            return None
+        return language, path, entries[0]
+
+    def handle_audio_dialog_preview(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_audio_dialog_selection(query)
+        if resolved is None:
+            return
+        language, path, entry = resolved
+        playable = entry["match_status"] == "matched" and len(entry["media"]) == 1
+        urls = {}
+        if playable:
+            base = (
+                "/api/audio-dialog/raw"
+                f"?language={quote(language, safe='')}"
+                f"&path={quote(path, safe='')}"
+                f"&dialogKey={entry['dialog_key']}"
+            )
+            urls = {
+                "rawUrl": f"{base}&format=wav",
+                "wemDownloadUrl": f"{base}&format=wem&download=1",
+                "wavDownloadUrl": f"{base}&format=wav&download=1",
+            }
+        self.send_json({
+            "kind": "audioDialog",
+            "status": "ready" if playable else entry["match_status"],
+            "language": language,
+            "path": path,
+            "entry": entry,
+            **urls,
+        })
+
+    def handle_audio_dialog_raw(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_audio_dialog_selection(query)
+        if resolved is None:
+            return
+        _language, logical_path, dialog = resolved
+        if dialog["match_status"] != "matched" or len(dialog["media"]) != 1:
+            self.send_error_json(
+                409,
+                f"AudioDialog entry is not uniquely playable: {dialog['match_status']}",
+            )
+            return
+        mode = query.get("format", ["wav"])[0].lower()
+        if mode not in {"wem", "wav"}:
+            self.send_error_json(400, "AudioDialog format must be wem or wav")
+            return
+
+        media = dialog["media"][0]
+        entry = AudioEntry(
+            wem_id=int(media["media_id"], 16),
+            offset=int(media["offset"]),
+            size=int(media["size"]),
+            source=str(media["source"]),
+            language=media["language"],
+            bank_id=media["bank_id"],
+            bank_offset=media["bank_offset"],
+            bank_size=media["bank_size"],
+            bank_wem_offset=media["bank_wem_offset"],
+            bank_encrypted=bool(media["bank_encrypted"]),
+        )
+        with closing(self.connect()) as conn:
+            record = self.original_file_record(conn, int(media["pck_file_id"]))
+            if record is None:
+                return
+            physical = self.resolve_file_record_quiet(conn, record)
+        if physical is None:
+            self.send_error_json(404, "AudioDialog PCK source is unavailable")
+            return
+        resolved_record, chunk_path = physical
+        try:
+            target = self.ensure_audio_dialog_media_file(
+                resolved_record,
+                chunk_path,
+                entry,
+                mode,
+            )
+        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+            self.send_error_json(500, str(error))
+            return
+
+        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
+        disposition = "attachment" if download else "inline"
+        self.send_response(200)
+        self.send_header("Content-Type", guess_content_type(target.name))
+        self.send_header("Content-Length", str(target.stat().st_size))
+        download_name = Path(logical_path).with_suffix(f".{mode}").name or target.name
+        self.send_header(
+            "Content-Disposition",
+            f"{disposition}; filename*=UTF-8''{quote(download_name)}",
+        )
+        self.end_headers()
+        with target.open("rb") as file:
+            while data := file.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
 
     def handle_file(self, query: dict[str, list[str]]) -> None:
         try:
@@ -2722,17 +2930,76 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError("audio entry not found")
 
         _, wem_root, wav_root = self.audio_cache_paths(record)
-        prefix = audio_entry_prefix(wem_id)
-        wem_path = wem_root / prefix / f"{wem_id}.wem"
+        target = self.ensure_audio_entry_output(
+            record,
+            chunk_path,
+            entry,
+            mode,
+            wem_root,
+            wav_root,
+        )
+        return target, entry
+
+    def ensure_audio_dialog_media_file(
+        self,
+        record: dict,
+        chunk_path: Path,
+        entry: AudioEntry,
+        mode: str,
+    ) -> Path:
+        package_identity = str(
+            record.get("file_data_md5")
+            or record.get("file_chunk_md5")
+            or record.get("length")
+            or "unknown"
+        ).casefold()
+        converter_identity = "unavailable"
+        if VGMSTREAM_CLI.is_file():
+            stat = VGMSTREAM_CLI.stat()
+            converter_identity = f"{stat.st_size:x}-{stat.st_mtime_ns:x}"
+        media_identity = (
+            f"v{AUDIO_PACKAGE_META_VERSION}-{package_identity}-"
+            f"{entry.offset:x}-{entry.size:x}-"
+            f"{entry.bank_id if entry.bank_id is not None else 0:x}-"
+            f"{entry.bank_wem_offset if entry.bank_wem_offset is not None else 0:x}"
+        )
+        cache_root = (
+            INTERNAL_CACHE_DIR
+            / str(record["id"])
+            / "audio-dialog"
+            / media_identity
+        )
+        return self.ensure_audio_entry_output(
+            record,
+            chunk_path,
+            entry,
+            mode,
+            cache_root / "wem",
+            cache_root / "wav" / converter_identity,
+        )
+
+    def ensure_audio_entry_output(
+        self,
+        record: dict,
+        chunk_path: Path,
+        entry: AudioEntry,
+        mode: str,
+        wem_root: Path,
+        wav_root: Path,
+    ) -> Path:
+        if mode not in {"wem", "wav"}:
+            raise ValueError("audio output mode must be wem or wav")
+        prefix = audio_entry_prefix(entry.wem_id)
+        wem_path = wem_root / prefix / f"{entry.wem_id}.wem"
         if not wem_path.exists() or wem_path.stat().st_size != entry.size:
             wem_path.parent.mkdir(parents=True, exist_ok=True)
             wem_path.write_bytes(self.extract_wem_entry(record, chunk_path, entry))
         if mode == "wem":
-            return wem_path, entry
+            return wem_path
 
-        wav_path = wav_root / prefix / f"{wem_id}.wav"
+        wav_path = wav_root / prefix / f"{entry.wem_id}.wav"
         if wav_path.exists() and wav_path.stat().st_size > 0:
-            return wav_path, entry
+            return wav_path
         if not VGMSTREAM_CLI.exists():
             raise FileNotFoundError(f"vgmstream-cli.exe not found: {VGMSTREAM_CLI}")
         wav_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2755,7 +3022,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         finally:
             if tmp.exists():
                 tmp.unlink()
-        return wav_path, entry
+        return wav_path
 
     def usm_cache_paths(self, record: dict) -> tuple[Path, Path]:
         cache_root = INTERNAL_CACHE_DIR / str(record["id"]) / "video"

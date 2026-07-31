@@ -115,6 +115,10 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 GET /api/manifest
 GET /api/list?scope=effective&path=&page=1&pageSize=100
 GET /api/search?scope=effective&q=SkillConditionTable&limit=100
+GET /api/audio-dialog/list?language=chinese&path=&page=1&pageSize=100
+GET /api/audio-dialog/entry?language=chinese&path=v1d0/story/example.wav
+GET /api/audio-dialog/preview?language=chinese&path=v1d0/story/example.wav
+GET /api/audio-dialog/raw?language=chinese&path=v1d0/story/example.wav&format=wav
 GET /api/preview?id=123
 GET /api/raw?id=123&download=1
 GET /api/internal/list?id=123&path=assets&page=1&pageSize=100
@@ -129,6 +133,10 @@ GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456&animationAssetIndex=789
 GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
+
+AudioDialog API 默认读取 `data/audio-dialog-index.sqlite`。可通过
+`VFS_BROWSER_AUDIO_DIALOG_DB` 指定其他位置；索引不存在时，普通 VFS 浏览不受影响，
+AudioDialog API 会明确返回未构建状态。
 
 manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestId + assetIndex` 稳定定位。`.ab`、`.pck` 和 `.usm` 仍通过 internal API 浏览各自的按需内部视图。
 
@@ -146,6 +154,7 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 
 - `tools/parse_hgmmap.py`：离线验证 BundleManifest 结构。
 - `tools/extract_indexed_file.py`：按 VFS 文件 ID 提取并解密文件。
+- `tools/build_audio_dialog_index.py`：从 AudioDialog JSON 和现有 PCK 元数据构建逻辑语音 SQLite 索引。
 - `tools/scan_jsondata_formats.py`：批量统计 JsonData 的真实编码格式。
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema。
