@@ -23,7 +23,17 @@
           <select id="scopeSelect"></select>
         </label>
 
-        <label class="field">
+        <label id="audioLanguageField" class="field hidden">
+          <span>语音语言</span>
+          <select id="audioLanguageSelect">
+            <option value="chinese">中文</option>
+            <option value="english">英语</option>
+            <option value="japanese">日语</option>
+            <option value="korean">韩语</option>
+          </select>
+        </label>
+
+        <label id="searchField" class="field">
           <span>搜索文件</span>
           <div class="search-row">
             <input id="searchInput" placeholder="SkillConditionTable / .pck / TableCfg" />

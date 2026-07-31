@@ -6,12 +6,14 @@ import { createModelAnimationClip } from './model-animation.js'
 
 const PAGE_SIZE = 100
 const MANIFEST_VIRTUAL_DIR = '__manifest_assets__'
+const AUDIO_DIALOG_SCOPE = 'audioDialog'
 
 const state = {
   scope: 'effective',
   path: '',
   page: 1,
   pageInfo: { page: 1, pages: 1, total: 0 },
+  audioLanguage: 'chinese',
   selectedFileId: null,
   selectedFileKey: null,
   disposeModelViewer: null,
@@ -22,6 +24,7 @@ const scopeNames = {
   Persistent: 'Persistent',
   StreamingAssets: 'StreamingAssets',
   all: 'All Sources',
+  audioDialog: 'AudioDialog',
 }
 
 const $ = (id) => document.getElementById(id)
@@ -39,6 +42,16 @@ function formatBytes(value) {
 
 function formatInt(value) {
   return Number(value || 0).toLocaleString('zh-CN')
+}
+
+function audioMatchStatusText(status) {
+  return {
+    matched: '唯一匹配',
+    missing: '缺失媒体',
+    ambiguous: '匹配歧义',
+    collision: '哈希冲突',
+    ready: '可播放',
+  }[status] || status
 }
 
 function escapeHtml(value) {
@@ -82,7 +95,10 @@ async function getJson(url) {
 
 function renderScopes(scopes) {
   const select = $('scopeSelect')
-  select.innerHTML = scopes
+  const options = scopes.some((scope) => scope.scope === AUDIO_DIALOG_SCOPE)
+    ? scopes
+    : [...scopes, { scope: AUDIO_DIALOG_SCOPE }]
+  select.innerHTML = options
     .map((scope) => `<option value="${escapeHtml(scope.scope)}">${scopeNames[scope.scope] || scope.scope}</option>`)
     .join('')
   select.value = state.scope
@@ -104,6 +120,8 @@ function renderSummary(scopes) {
       state.path = ''
       state.page = 1
       $('scopeSelect').value = state.scope
+      syncScopeControls()
+      clearPreviewSelection()
       loadDirectory()
     })
   })
@@ -111,7 +129,10 @@ function renderSummary(scopes) {
 
 function renderBreadcrumbs() {
   const parts = state.path ? state.path.split('/') : []
-  const crumbs = [{ label: scopeNames[state.scope] || state.scope, path: '' }]
+  const rootLabel = state.scope === AUDIO_DIALOG_SCOPE
+    ? `${scopeNames[state.scope]} · ${$('audioLanguageSelect').selectedOptions[0].textContent}`
+    : scopeNames[state.scope] || state.scope
+  const crumbs = [{ label: rootLabel, path: '' }]
   let current = ''
   for (const part of parts) {
     current = current ? `${current}/${part}` : part
@@ -149,15 +170,32 @@ function renderStats(directory) {
     .join('')
 }
 
+function renderAudioStats(summary) {
+  const cards = [
+    ['语音条目', formatInt(summary.file_count)],
+    ['唯一匹配', formatInt(summary.matched_count)],
+    ['缺失媒体', formatInt(summary.missing_count)],
+    ['歧义 / 冲突', formatInt(summary.ambiguous_count + summary.collision_count)],
+  ]
+  $('dirStats').innerHTML = cards
+    .map(([label, value]) => `
+      <div class="stat-card">
+        <span>${label}</span>
+        <strong>${value}</strong>
+      </div>
+    `)
+    .join('')
+}
+
 function renderDirs(dirs) {
-  $('dirCount').textContent = '?? ' + dirs.length
+  $('dirCount').textContent = `${formatInt(dirs.length)} 个子目录`
   $('dirList').innerHTML = dirs.length
     ? dirs
         .map((dir) => `
           <button class="dir-card ${dir.virtualKind ? 'virtual' : ''}" data-path="${escapeHtml(dir.path)}">
             <strong>${escapeHtml(dir.name)}</strong>
             <span>${formatInt(dir.file_count)} files · ${dir.virtualKind ? '虚拟目录' : formatBytes(dir.total_bytes)}</span>
-            ${dir.virtualKind ? '<span class="tag">manifest</span>' : ''}
+            ${dir.virtualKind ? `<span class="tag">${escapeHtml(dir.virtualKind)}</span>` : ''}
             ${dir.missing_chunk_count ? `<em>${formatInt(dir.missing_chunk_count)} missing chunks</em>` : ''}
           </button>
         `)
@@ -181,6 +219,27 @@ function renderFiles(files, filePage) {
     ? files
         .map((file) => {
           const rowKey = file.previewUrl ? `virtual:${file.previewUrl}` : `id:${file.id}`
+          const isAudioDialog = file.virtualKind === AUDIO_DIALOG_SCOPE
+          const range = isAudioDialog
+            ? `
+              <div class="mono">dialog ${escapeHtml(file.dialogKey)}</div>
+              <div class="mono">${formatInt(file.mediaMatchCount)} 个物理媒体</div>
+            `
+            : `
+              <div class="mono">offset ${formatInt(file.offset)}</div>
+              <div class="mono">len ${formatInt(file.length)}</div>
+            `
+          const status = isAudioDialog
+            ? `
+              <span class="tag ${file.audioStatus === 'matched' ? '' : file.audioStatus === 'ambiguous' ? 'warn' : 'danger'}">
+                ${escapeHtml(audioMatchStatusText(file.audioStatus))}
+              </span>
+            `
+            : `
+              <span class="tag ${file.encrypted ? 'warn' : ''}">${file.virtualKind ? escapeHtml(file.virtualKind) : file.encrypted ? 'encrypted' : 'plain'}</span>
+              <span class="tag ${file.chunk_exists ? '' : 'danger'}">${file.chunk_exists ? 'chunk ok' : 'missing chunk'}</span>
+              ${file.encrypted ? `<div class="mono muted">iv ${file.iv_seed}</div>` : ''}
+            `
           return `
           <tr
             class="${state.selectedFileKey === rowKey ? 'selected' : ''}"
@@ -201,13 +260,10 @@ function renderFiles(files, filePage) {
               <div class="mono">${escapeHtml(file.chunk_file || '')}</div>
             </td>
             <td>
-              <div class="mono">offset ${formatInt(file.offset)}</div>
-              <div class="mono">len ${formatInt(file.length)}</div>
+              ${range}
             </td>
             <td>
-              <span class="tag ${file.encrypted ? 'warn' : ''}">${file.virtualKind ? 'manifest' : file.encrypted ? 'encrypted' : 'plain'}</span>
-              <span class="tag ${file.chunk_exists ? '' : 'danger'}">${file.chunk_exists ? 'chunk ok' : 'missing chunk'}</span>
-              ${file.encrypted ? `<div class="mono muted">iv ${file.iv_seed}</div>` : ''}
+              ${status}
             </td>
           </tr>
         `
@@ -234,6 +290,10 @@ function renderFiles(files, filePage) {
 
 async function loadDirectory() {
   renderBreadcrumbs()
+  if (state.scope === AUDIO_DIALOG_SCOPE) {
+    await loadAudioDialogDirectory()
+    return
+  }
   const params = new URLSearchParams({
     scope: state.scope,
     path: state.path,
@@ -246,11 +306,82 @@ async function loadDirectory() {
   renderFiles(data.files, data.filePage)
 }
 
+async function loadAudioDialogDirectory() {
+  const params = new URLSearchParams({
+    language: state.audioLanguage,
+    path: state.path,
+    page: state.page,
+    pageSize: PAGE_SIZE,
+  })
+  try {
+    const data = await getJson(`/api/audio-dialog/list?${params}`)
+    const directories = data.directories.map((directory) => ({
+      ...directory,
+      total_bytes: 0,
+      virtualKind: AUDIO_DIALOG_SCOPE,
+    }))
+    const files = data.files.map((file) => {
+      const previewParams = new URLSearchParams({
+        language: data.language,
+        path: file.logical_path,
+        dialogKey: file.dialog_key,
+      })
+      return {
+        name: file.name,
+        path: file.logical_path,
+        file_name: file.logical_path,
+        source: data.language,
+        block_name: 'AudioDialog',
+        chunk_file: file.media_id,
+        dialogKey: file.dialog_key,
+        mediaMatchCount: file.media_match_count,
+        audioStatus: file.match_status,
+        virtualKind: AUDIO_DIALOG_SCOPE,
+        previewUrl: `/api/audio-dialog/preview?${previewParams}`,
+      }
+    })
+    const pages = Math.max(Math.ceil(data.page.total / data.page.pageSize), 1)
+    renderAudioStats(data.summary)
+    renderDirs(directories)
+    renderFiles(files, {
+      page: data.page.page,
+      pages,
+      total: data.page.total,
+    })
+  } catch (error) {
+    renderAudioStats({
+      file_count: 0,
+      matched_count: 0,
+      missing_count: 0,
+      ambiguous_count: 0,
+      collision_count: 0,
+    })
+    renderDirs([])
+    renderFiles([], { page: 1, pages: 1, total: 0 })
+    clearPreviewSelection()
+    $('previewContent').innerHTML = `<div class="notice">AudioDialog 索引读取失败：${escapeHtml(error.message)}</div>`
+  }
+}
+
+function resetPreviewActions() {
+  $('openRawLink').textContent = '打开原始文件'
+  $('downloadLink').textContent = '下载'
+  $('openRawLink').removeAttribute('href')
+  $('downloadLink').removeAttribute('href')
+}
+
+function clearPreviewSelection() {
+  state.selectedFileId = null
+  state.selectedFileKey = null
+  disposeModelViewer()
+  resetPreviewActions()
+  $('previewContent').innerHTML = '<div class="empty">点击文件列表中的文件进行预览</div>'
+}
+
 function renderPreviewLoading() {
   disposeModelViewer()
   $('previewContent').innerHTML = '<div class="empty">正在读取文件...</div>'
-  $('openRawLink').removeAttribute('href')
-  $('downloadLink').removeAttribute('href')
+  resetPreviewActions()
 }
 
 function disposeModelViewer() {
@@ -555,7 +686,58 @@ function renderBinaryJsonProbe(probe) {
   `
 }
 
+function renderAudioDialogPreview(data) {
+  const entry = data.entry
+  const media = entry.media[0]
+  $('openRawLink').removeAttribute('href')
+  $('downloadLink').removeAttribute('href')
+  if (data.rawUrl) {
+    $('openRawLink').textContent = '打开 WAV'
+    $('openRawLink').href = data.rawUrl
+  }
+  if (data.wavDownloadUrl) {
+    $('downloadLink').textContent = '下载 WAV'
+    $('downloadLink').href = data.wavDownloadUrl
+  }
+
+  const statusText = {
+    ready: audioMatchStatusText('ready'),
+    missing: '未找到对应物理媒体',
+    ambiguous: '命中多个物理媒体',
+    collision: '逻辑路径哈希冲突',
+  }[data.status] || data.status
+  const mediaDetails = media
+    ? `
+      <span>PCK 文件 ${formatInt(media.pck_file_id)} · offset ${formatInt(media.offset)} · len ${formatInt(media.size)}</span>
+      <span>${escapeHtml(media.source)}${media.bank_id == null ? '' : ` · bank ${escapeHtml(media.bank_id)}`}</span>
+    `
+    : ''
+  const player = data.status === 'ready'
+    ? `
+      <audio class="audio-preview" src="${escapeHtml(data.rawUrl)}" controls></audio>
+      <div class="preview-actions inline-actions">
+        <a class="link-button" href="${escapeHtml(data.wemDownloadUrl)}">下载 WEM</a>
+        <a class="link-button" href="${escapeHtml(data.wavDownloadUrl)}">下载 WAV</a>
+      </div>
+    `
+    : `<div class="notice">${escapeHtml(statusText)}</div>`
+
+  $('previewContent').innerHTML = `
+    <div class="preview-meta">
+      <strong>${escapeHtml(data.path)}</strong>
+      <span>dialog ${escapeHtml(entry.dialog_key)} · ${escapeHtml(statusText)}</span>
+      <span class="mono">media ${escapeHtml(entry.media_id)}</span>
+      ${mediaDetails}
+    </div>
+    ${player}
+  `
+}
+
 function renderPreview(data) {
+  if (data.kind === 'audioDialog') {
+    renderAudioDialogPreview(data)
+    return
+  }
   const file = data.file
   const resolved = data.resolvedFile
   $('openRawLink').href = data.rawUrl
@@ -895,6 +1077,15 @@ function bindEvents() {
     state.scope = event.target.value
     state.path = ''
     state.page = 1
+    syncScopeControls()
+    clearPreviewSelection()
+    loadDirectory()
+  })
+  $('audioLanguageSelect').addEventListener('change', (event) => {
+    state.audioLanguage = event.target.value
+    state.path = ''
+    state.page = 1
+    clearPreviewSelection()
     loadDirectory()
   })
   $('rootButton').addEventListener('click', () => {
@@ -925,11 +1116,18 @@ function bindEvents() {
   })
 }
 
+function syncScopeControls() {
+  const isAudioDialog = state.scope === AUDIO_DIALOG_SCOPE
+  $('audioLanguageField').classList.toggle('hidden', !isAudioDialog)
+  $('searchField').classList.toggle('hidden', isAudioDialog)
+}
+
 async function init() {
   bindEvents()
   const manifest = await getJson('/api/manifest')
   renderScopes(manifest.scopes)
   renderSummary(manifest.scopes)
+  syncScopeControls()
   await loadDirectory()
   const query = new URLSearchParams(window.location.search)
   const manifestId = query.get('modelManifestId')
