@@ -48,6 +48,11 @@ Shader 语义通道和 Unity Material 存储通道，并统一输出四元素值
 `EF_SilkStockings_MaterialState_v1` Blender 参数计划。仍存在的 warning 主要是当前有限
 映射未消费 CharacterNPR 的其他属性，不代表丝袜子图输入无效。
 
+真实材质的 `_SILK_STOCKINGS`、`_METALLICSPECGLOSSMAP`、`_NORMALMAP` 和
+`_SPEC_RAMP_ON` 开关可以从 ShaderLab Toggle 属性自动恢复。普通预览策略会在兼容变体中
+选择关闭 `VFX_CHARACTER_DISSOLVE` 与 `_ALPHABLEND_ON` 的 b391 分支，并把其余运行时
+关键字连同选择依据写入 IR。选择不唯一时会失败，避免 Shader 更新后静默换用错误分支。
+
 ## 当前边界
 
 - Shader 名称和材质实例参数已经来自真实对象引用。

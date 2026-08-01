@@ -1,6 +1,12 @@
 import unittest
 
-from shader_variants import active_material_keywords, fragment_variants
+from shader_variants import (
+    ShaderVariant,
+    ShaderVariantSelectionError,
+    active_material_keywords,
+    fragment_variants,
+    select_preview_fragment_variant,
+)
 
 
 SHADER = """
@@ -54,6 +60,34 @@ class ShaderVariantTests(unittest.TestCase):
             SHADER, {"_UseFeatureA": 0.0, "_UseFeatureB": 0.0}
         )
         self.assertEqual([], fragment_variants(SHADER, active, local))
+
+    def test_selects_non_transient_preview_variant_and_parses_identity(self):
+        variants = [
+            ShaderVariant(
+                "sample/Sub0_Pass0_Fragment_b604.hlsl",
+                ("VFX_CHARACTER_DISSOLVE",),
+                ("_ALPHABLEND_ON",),
+            ),
+            ShaderVariant(
+                "sample/Sub0_Pass0_Fragment_b391.hlsl",
+                (),
+                ("VFX_CHARACTER_DISSOLVE", "_ALPHABLEND_ON"),
+            ),
+        ]
+
+        selected = select_preview_fragment_variant(variants)
+
+        self.assertEqual("Sub0_Pass0", selected.pass_name)
+        self.assertEqual(391, selected.blob)
+
+    def test_rejects_ambiguous_preview_variants(self):
+        variants = [
+            ShaderVariant("sample/Sub0_Pass0_Fragment_b1.hlsl", (), ()),
+            ShaderVariant("sample/Sub0_Pass1_Fragment_b2.hlsl", (), ()),
+        ]
+
+        with self.assertRaises(ShaderVariantSelectionError):
+            select_preview_fragment_variant(variants)
 
 
 if __name__ == "__main__":

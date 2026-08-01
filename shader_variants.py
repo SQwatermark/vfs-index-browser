@@ -9,6 +9,15 @@ from dataclasses import dataclass
 TOGGLE_PATTERN = re.compile(r"\[Toggle\(([^)]+)\)\]\s+([A-Za-z_][A-Za-z0-9_]*)")
 CONDITION_PATTERN = re.compile(r"(!?)defined\(([^)]+)\)")
 INCLUDE_PATTERN = re.compile(r'#include\s+"([^"]+)"')
+FRAGMENT_INCLUDE_PATTERN = re.compile(
+    r"(?:^|/)(Sub\d+_Pass\d+)_Fragment_b(\d+)\.hlsl$"
+)
+TRANSIENT_PREVIEW_KEYWORDS = frozenset(
+    {
+        "VFX_CHARACTER_DISSOLVE",
+        "_ALPHABLEND_ON",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -16,6 +25,18 @@ class ShaderVariant:
     include: str
     enabled_runtime_keywords: tuple[str, ...]
     disabled_runtime_keywords: tuple[str, ...]
+
+    @property
+    def pass_name(self) -> str:
+        return _fragment_include_identity(self.include)[0]
+
+    @property
+    def blob(self) -> int:
+        return _fragment_include_identity(self.include)[1]
+
+
+class ShaderVariantSelectionError(ValueError):
+    """Raised when a stable preview variant cannot be selected."""
 
 
 def shader_toggle_properties(shader_text: str) -> dict[str, str]:
@@ -102,3 +123,43 @@ def fragment_variants(
             )
         current_requirements = None
     return variants
+
+
+def select_preview_fragment_variant(
+    variants: list[ShaderVariant],
+) -> ShaderVariant:
+    """Select the ordinary opaque preview variant.
+
+    Runtime-only branches such as dissolve are not material identity. Prefer a
+    branch where those transient effects are disabled, then require the result
+    to be unique so a new shader layout cannot silently change the preview.
+    """
+
+    if not variants:
+        raise ShaderVariantSelectionError("no compatible fragment variant found")
+
+    def score(variant: ShaderVariant) -> tuple[int, int]:
+        enabled = set(variant.enabled_runtime_keywords)
+        disabled = set(variant.disabled_runtime_keywords)
+        return (
+            len(enabled & TRANSIENT_PREVIEW_KEYWORDS),
+            -len(disabled & TRANSIENT_PREVIEW_KEYWORDS),
+        )
+
+    best_score = min(score(variant) for variant in variants)
+    best = [variant for variant in variants if score(variant) == best_score]
+    if len(best) != 1:
+        includes = ", ".join(variant.include for variant in best)
+        raise ShaderVariantSelectionError(
+            f"preview variant selection is ambiguous: {includes}"
+        )
+    return best[0]
+
+
+def _fragment_include_identity(include: str) -> tuple[str, int]:
+    match = FRAGMENT_INCLUDE_PATTERN.search(include)
+    if not match:
+        raise ShaderVariantSelectionError(
+            f"unexpected generated fragment include path: {include}"
+        )
+    return match.group(1), int(match.group(2))

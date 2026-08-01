@@ -53,15 +53,15 @@ python tools/research/build_material_semantic_plan.py `
   experiments/material_binding_resolver/examples/stockings-material.json `
   --archive-version 1.4.4 `
   --material-id sample:pelica:stockings `
-  --pass-name Sub0_Pass0 --blob 391 `
-  --hlsl-uri shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl `
-  --material-keyword _SILK_STOCKINGS `
-  --material-keyword _METALLICSPECGLOSSMAP `
-  --material-keyword _NORMALMAP `
   --texture-metadata experiments/material_binding_resolver/examples/texture-metadata.json `
   --texture-rules experiments/material_binding_resolver/examples/texture-rules.json `
   --output material-plan.json
 ```
+
+默认情况下，工具会根据 ShaderLab 的 `[Toggle]` 声明和材质实例值恢复本地关键字，筛选
+兼容的 Fragment 变体，并优先选择关闭溶解、透明混合等瞬态效果的普通预览分支。若筛选
+结果仍不唯一则直接报错，不会依靠文件顺序猜测。调试特定变体时仍可成组传入
+`--pass-name`、`--blob`、`--hlsl-uri`，并按需显式覆盖三类关键字。
 
 输出文件同时包含 `bindingResolution`、`semanticIr` 与 `blenderParameterPlan`，便于逐层
 检查信息在哪一步丢失。该工具不会打开 Blender，也不会写入生产缓存。
