@@ -561,6 +561,7 @@ function formatAnimationTime(value) {
 }
 
 function renderModelPreview(data) {
+  const maxSelectedAnimations = 100
   disposeModelViewer()
   const modelDocument = data.document || {}
   const glbUrl = data.glbUrl
@@ -588,10 +589,13 @@ function renderModelPreview(data) {
         <input id="modelAnimationQuery" type="search" placeholder="搜索动画名称或路径" autocomplete="off" />
         <button type="submit">搜索</button>
         <span id="modelAnimationSearchStatus">正在查找动画...</span>
-        <select id="modelAnimationCandidates" size="5" aria-label="动画候选" disabled>
-          <option value="">基础姿势</option>
-        </select>
+        <div id="modelAnimationCandidates" class="model-animation-candidates" aria-label="动画候选" aria-multiselectable="true"></div>
         <input id="modelAnimationSelectedName" class="model-animation-selected-name" type="text" readonly aria-label="当前动画名称" placeholder="选择动画后可复制名称" />
+        <div class="model-animation-selection-actions">
+          <span id="modelAnimationSelectionStatus">未选择导出动画</span>
+          <button id="modelAnimationClearSelection" type="button" disabled>清空选择</button>
+          <a id="modelAnimationBundleLink" class="link-button" hidden title="将模型与所选动画保存到同一个 Blender 文件">导出所选动画</a>
+        </div>
         <div class="model-animation-pager">
           <button id="modelAnimationPreviousPage" type="button" disabled>上一页</button>
           <span id="modelAnimationPageStatus">1 / 1</span>
@@ -648,6 +652,7 @@ function renderModelPreview(data) {
   let animationCandidateQuery = null
   let animationCandidatePage = 1
   let animationCandidatePages = 1
+  const selectedAnimationCandidates = new Map()
   const clock = new THREE.Clock()
   const renderAnimationTime = (time) => {
     animationTimeInput.value = String(time)
@@ -748,8 +753,11 @@ function renderModelPreview(data) {
 
   const animationSearch = $('modelAnimationSearch')
   const animationQuery = $('modelAnimationQuery')
-  const animationSelect = $('modelAnimationCandidates')
+  const animationCandidateList = $('modelAnimationCandidates')
   const animationSelectedName = $('modelAnimationSelectedName')
+  const animationSelectionStatus = $('modelAnimationSelectionStatus')
+  const animationClearSelection = $('modelAnimationClearSelection')
+  const animationBundleLink = $('modelAnimationBundleLink')
   const animationPreviousPage = $('modelAnimationPreviousPage')
   const animationNextPage = $('modelAnimationNextPage')
   const animationPageStatus = $('modelAnimationPageStatus')
@@ -760,17 +768,85 @@ function renderModelPreview(data) {
     animationSelectedName.value = animationCandidateName(data.animationAsset)
     animationSelectedName.title = data.animationAsset.path || ''
   }
+  const syncAnimationBundleLink = () => {
+    if (!animationSelectionStatus || !animationClearSelection || !animationBundleLink) return
+    const selected = [...selectedAnimationCandidates.values()].sort((left, right) => (
+      Number(left.assetIndex) - Number(right.assetIndex)
+    ))
+    animationSelectionStatus.textContent = selected.length
+      ? `已选择 ${selected.length} 个动画`
+      : '未选择导出动画'
+    animationClearSelection.disabled = selected.length === 0
+    animationBundleLink.hidden = selected.length === 0
+    if (!selected.length || !data.baseBlendUrl) {
+      animationBundleLink.removeAttribute('href')
+      return
+    }
+    const url = new URL(data.baseBlendUrl, window.location.origin)
+    url.searchParams.delete('animationAssetIndex')
+    selected.forEach((candidate) => {
+      url.searchParams.append('animationAssetIndex', String(candidate.assetIndex))
+    })
+    animationBundleLink.href = `${url.pathname}${url.search}`
+    animationBundleLink.textContent = `导出模型与 ${selected.length} 个动画`
+  }
+  const renderAnimationCandidates = () => {
+    if (!animationCandidateList) return
+    animationCandidateList.replaceChildren()
+    animationCandidates.forEach((candidate) => {
+      const assetIndex = String(candidate.assetIndex)
+      const row = document.createElement('div')
+      row.className = 'model-animation-candidate'
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = selectedAnimationCandidates.has(assetIndex)
+      checkbox.title = '加入 Blender 批量导出'
+      checkbox.setAttribute('aria-label', `选择 ${animationCandidateName(candidate)}`)
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          if (selectedAnimationCandidates.size >= maxSelectedAnimations) {
+            checkbox.checked = false
+            animationSelectionStatus.textContent = `单次最多选择 ${maxSelectedAnimations} 个动画`
+            return
+          }
+          selectedAnimationCandidates.set(assetIndex, candidate)
+        } else {
+          selectedAnimationCandidates.delete(assetIndex)
+        }
+        syncAnimationBundleLink()
+      })
+      const preview = document.createElement('button')
+      preview.type = 'button'
+      preview.className = 'model-animation-candidate-preview'
+      preview.textContent = animationCandidateName(candidate)
+      preview.title = candidate.path || ''
+      preview.disabled = !modelReady
+      preview.addEventListener('click', async () => {
+        animationSelectedName.value = animationCandidateName(candidate)
+        animationSelectedName.title = candidate.path || ''
+        try {
+          await loadModelAnimation(candidate)
+        } catch (error) {
+          console.error('模型动画加载失败', error)
+          $('modelAnimationSearchStatus').textContent = `动画加载失败：${error.message || error}`
+        }
+      })
+      row.append(checkbox, preview)
+      animationCandidateList.append(row)
+    })
+  }
+  syncAnimationBundleLink()
   const syncAnimationPager = (loading = false) => {
     animationPreviousPage.disabled = loading || animationCandidatePage <= 1
     animationNextPage.disabled = loading || animationCandidatePage >= animationCandidatePages
     animationPageStatus.textContent = `${animationCandidatePage} / ${animationCandidatePages}`
   }
   const loadAnimationCandidates = async (query = null, page = 1) => {
-    if (!data.animationCandidatesUrl || !animationSelect) return
+    if (!data.animationCandidatesUrl || !animationCandidateList) return
     const requestId = ++animationCandidateRequestId
     const status = $('modelAnimationSearchStatus')
     status.textContent = '正在查找动画...'
-    animationSelect.disabled = true
+    animationCandidateList.setAttribute('aria-busy', 'true')
     syncAnimationPager(true)
     const url = new URL(data.animationCandidatesUrl, window.location.origin)
     if (query != null) url.searchParams.set('q', query)
@@ -782,24 +858,8 @@ function renderModelPreview(data) {
     animationCandidatePages = result.pages || 1
     if (query == null) animationQuery.value = result.defaultQuery || animationCandidateQuery
     animationCandidates = result.files || []
-    animationSelect.replaceChildren(new Option('基础姿势', ''))
-    animationCandidates.forEach((candidate) => {
-      const label = animationCandidateName(candidate)
-      const option = new Option(label, String(candidate.assetIndex))
-      option.title = candidate.path
-      animationSelect.add(option)
-    })
-    if (data.animationAsset) {
-      animationSelect.value = String(data.animationAsset.asset_index)
-    }
-    const selectedCandidate = animationCandidates.find((candidate) => (
-      String(candidate.assetIndex) === animationSelect.value
-    ))
-    if (selectedCandidate) {
-      animationSelectedName.value = animationCandidateName(selectedCandidate)
-      animationSelectedName.title = selectedCandidate.path || ''
-    }
-    animationSelect.disabled = !modelReady
+    renderAnimationCandidates()
+    animationCandidateList.removeAttribute('aria-busy')
     syncAnimationPager()
     status.textContent = animationCandidates.length
       ? `${result.total} 个候选，当前页 ${animationCandidates.length} 个`
@@ -831,30 +891,10 @@ function renderModelPreview(data) {
         syncAnimationPager()
       }
     })
-    animationSelect.addEventListener('change', async (event) => {
-      const selectedValue = event.currentTarget.value
-      const selectedCandidate = animationCandidates.find((item) => (
-        String(item.assetIndex) === selectedValue
-      ))
-      animationSelectedName.value = animationCandidateName(selectedCandidate)
-      animationSelectedName.title = selectedCandidate?.path || ''
-      if (!selectedValue) {
-        stopAnimation()
-        $('modelAnimationSearchStatus').textContent = '基础姿势'
-        if (state.routeSelection?.kind === 'model') {
-          state.routeSelection.animationAssetIndex = null
-          writeRoute({ replace: true })
-        }
-        return
-      }
-      const candidate = selectedCandidate
-      if (!candidate) return
-      try {
-        await loadModelAnimation(candidate)
-      } catch (error) {
-        console.error('模型动画加载失败', error)
-        $('modelAnimationSearchStatus').textContent = `动画加载失败：${error.message || error}`
-      }
+    animationClearSelection.addEventListener('click', () => {
+      selectedAnimationCandidates.clear()
+      renderAnimationCandidates()
+      syncAnimationBundleLink()
     })
     animationSelectedName.addEventListener('focus', (event) => event.currentTarget.select())
     loadAnimationCandidates().catch((error) => {
@@ -890,7 +930,7 @@ function renderModelPreview(data) {
         return transforms
       })
       modelReady = true
-      if (animationSelect) animationSelect.disabled = false
+      if (animationCandidateList) renderAnimationCandidates()
       $('modelOutlineToggle').addEventListener('change', (event) => {
         outline.visible = event.currentTarget.checked
       })

@@ -98,10 +98,10 @@ class ManifestModelBlendTests(unittest.TestCase):
             {},
             self.root / "animation.chk",
         )
-        handler.resolve_optional_animation_source = lambda _query: animation_resolved
-        handler.ensure_animated_model_glb = lambda _model, animation, *, lod: (
+        handler.resolve_animation_sources = lambda _query: [animation_resolved]
+        handler.ensure_animated_model_glb = lambda _model, animations, *, lod: (
             {"asset_index": 7, "path": "assets/model.prefab"},
-            animation[1],
+            [animation[1] for animation in animations],
             model_root / "model-document.json",
             animated_glb,
         )
@@ -117,6 +117,68 @@ class ManifestModelBlendTests(unittest.TestCase):
 
         self.assertEqual(b"BLENDER-v404", handler.wfile.getvalue())
         self.assertTrue((animation_root / "model.blend").is_file())
+
+    def test_passes_all_selected_animations_to_bundle_export(self):
+        handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        animation_root = model_root / "animation-sets" / "selection"
+        animation_root.mkdir(parents=True)
+        animated_glb = animation_root / "model.glb"
+        animated_glb.write_bytes(b"animated-glb")
+        animations = [
+            (
+                object(),
+                {"asset_index": index, "path": f"assets/{name}.anim"},
+                {},
+                self.root / f"{name}.chk",
+            )
+            for index, name in ((11, "idle"), (22, "walk"))
+        ]
+        captured = []
+        handler.resolve_animation_sources = lambda _query: animations
+
+        def ensure_animations(_model, selected, *, lod):
+            captured.extend(int(item[1]["asset_index"]) for item in selected)
+            return (
+                {"asset_index": 7, "path": "assets/model.prefab"},
+                [item[1] for item in selected],
+                model_root / "model-document.json",
+                animated_glb,
+            )
+
+        handler.ensure_animated_model_glb = ensure_animations
+        with (
+            patch.object(server, "BLENDER_EXE", self.blender),
+            patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
+            patch.object(server, "PROJECT_ROOT", self.root),
+            patch.object(server.subprocess, "run", side_effect=self.run_blender),
+        ):
+            handler.handle_manifest_asset_model_blend(
+                {"animationAssetIndex": ["22", "11"], "lod": ["0"]}
+            )
+
+        self.assertEqual([11, 22], captured)
+        self.assertEqual(b"BLENDER-v404", handler.wfile.getvalue())
+
+    def test_resolves_repeated_and_comma_separated_animation_indexes(self):
+        handler = object.__new__(server.BrowserHandler)
+        resolved_indexes = []
+
+        def resolve(query):
+            index = int(query["assetIndex"][0])
+            resolved_indexes.append(index)
+            return object(), {"asset_index": index}, {}, self.root / f"{index}.chk"
+
+        handler.resolve_manifest_asset_source = resolve
+        handler.send_error_json = lambda status, message: self.fail(
+            f"unexpected HTTP {status}: {message}"
+        )
+
+        result = handler.resolve_animation_sources(
+            {"animationAssetIndex": ["22", "11,22"]}
+        )
+
+        self.assertEqual([11, 22], resolved_indexes)
+        self.assertEqual([11, 22], [item[1]["asset_index"] for item in result])
 
 
 if __name__ == "__main__":

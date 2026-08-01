@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import copy
 import gzip
+import hashlib
 import io
 import json
 import mimetypes
@@ -180,7 +181,8 @@ AVATAR_MODEL_SNAPSHOT_VERSION = 2
 ANIMATION_CLIP_EXPORT_VERSION = 4
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
-MODEL_BLEND_VERSION = 6
+MODEL_BLEND_VERSION = 7
+MAX_BLEND_ANIMATION_COUNT = 100
 AUDIO_PACKAGE_META_VERSION = 1
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
@@ -4192,6 +4194,42 @@ class BrowserHandler(BaseHTTPRequestHandler):
         animation_query["assetIndex"] = values
         return self.resolve_manifest_asset_source(animation_query)
 
+    def resolve_animation_sources(
+        self,
+        query: dict[str, list[str]],
+    ) -> list[tuple[ManifestIndex, dict, dict, Path]] | None:
+        raw_values = query.get("animationAssetIndex", [])
+        if not raw_values:
+            return []
+        try:
+            indexes = sorted(
+                {
+                    int(value)
+                    for raw_value in raw_values
+                    for value in raw_value.split(",")
+                    if value
+                }
+            )
+        except ValueError:
+            self.send_error_json(400, "animationAssetIndex is invalid")
+            return None
+        if not indexes or len(indexes) > MAX_BLEND_ANIMATION_COUNT:
+            self.send_error_json(
+                400,
+                f"animation selection must contain 1 to {MAX_BLEND_ANIMATION_COUNT} items",
+            )
+            return None
+
+        resolved = []
+        for index in indexes:
+            animation_query = dict(query)
+            animation_query["assetIndex"] = [str(index)]
+            animation = self.resolve_manifest_asset_source(animation_query)
+            if animation is None:
+                return None
+            resolved.append(animation)
+        return resolved
+
     def resolve_manifest_asset_file(
         self,
         query: dict[str, list[str]],
@@ -4995,15 +5033,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def ensure_animated_model_glb(
         self,
         model_resolved: tuple[ManifestIndex, dict, dict, Path],
-        animation_resolved: tuple[ManifestIndex, dict, dict, Path],
+        animation_sources: list[tuple[ManifestIndex, dict, dict, Path]],
         *,
         lod: int,
-    ) -> tuple[dict, dict, Path, Path]:
+    ) -> tuple[dict, list[dict], Path, Path]:
+        if not animation_sources:
+            raise ValueError("at least one animation is required")
+        animation_sources = sorted(
+            animation_sources,
+            key=lambda item: int(item[1]["asset_index"]),
+        )
         model_asset, model_path, _ = self.ensure_manifest_asset_model_glb(
             model_resolved,
             lod=lod,
         )
-        _, animation_asset, animation_record, animation_chunk = animation_resolved
         _, _, model_record, _ = model_resolved
         document, geometry, image_paths = self.load_model_glb_inputs(
             model_asset,
@@ -5011,34 +5054,48 @@ class BrowserHandler(BaseHTTPRequestHandler):
             model_path,
             lod=lod,
         )
-        clip, clip_path, _ = self.ensure_animation_clip_export(
-            animation_record,
-            animation_chunk,
-            animation_asset,
-        )
-        animation_index = int(animation_asset["asset_index"])
         animated_document = copy.deepcopy(document)
-        animated_geometry = attach_animation_clip(
-            animated_document,
-            geometry,
-            clip,
-            animation_id=f"animation:{animation_index}",
-            source={
-                "logicalPath": str(animation_asset["path"]),
-                "bundle": str(animation_asset["bundle_name"]),
-            },
-            bake_humanoid=True,
-        )
-        if not animated_document.get("animations"):
-            raise RuntimeError("animation has no transform tracks compatible with this model")
+        animated_geometry = geometry
+        animation_assets = []
+        clip_paths = []
+        for _, animation_asset, animation_record, animation_chunk in animation_sources:
+            clip, clip_path, _ = self.ensure_animation_clip_export(
+                animation_record,
+                animation_chunk,
+                animation_asset,
+            )
+            animation_index = int(animation_asset["asset_index"])
+            previous_count = len(animated_document.get("animations", []))
+            animated_geometry = attach_animation_clip(
+                animated_document,
+                animated_geometry,
+                clip,
+                animation_id=f"animation:{animation_index}",
+                source={
+                    "logicalPath": str(animation_asset["path"]),
+                    "bundle": str(animation_asset["bundle_name"]),
+                },
+                bake_humanoid=True,
+            )
+            if len(animated_document.get("animations", [])) == previous_count:
+                raise RuntimeError(
+                    "animation has no transform tracks compatible with this model: "
+                    f"{animation_asset['path']}"
+                )
+            animation_assets.append(animation_asset)
+            clip_paths.append(clip_path)
 
-        animation_root = model_path.parent / "animations" / str(animation_index)
+        animation_indexes = [int(asset["asset_index"]) for asset in animation_assets]
+        selection_key = hashlib.sha256(
+            ",".join(map(str, animation_indexes)).encode("ascii")
+        ).hexdigest()[:16]
+        animation_root = model_path.parent / "animation-sets" / selection_key
         animated_glb = animation_root / "model.glb"
         animated_glb_meta = animated_glb.with_suffix(".glb.meta.json")
         source_paths = [
             model_path,
             model_path.with_name("geometry.bin"),
-            clip_path,
+            *clip_paths,
             Path(attach_animation_clip.__code__.co_filename),
             Path(build_glb.__code__.co_filename),
             *image_paths.values(),
@@ -5054,7 +5111,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cache_identity = {
             "version": MODEL_GLB_VERSION,
             "materialPlan": material_plan_cache_identity(),
-            "animationAssetIndex": animation_index,
+            "animationAssetIndexes": animation_indexes,
         }
         if (
             not animated_glb.is_file()
@@ -5075,7 +5132,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
-        return model_asset, animation_asset, model_path, animated_glb
+        return model_asset, animation_assets, model_path, animated_glb
 
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_source(query)
@@ -5126,17 +5183,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         try:
             lod = int(query.get("lod", ["0"])[0])
-            animation_resolved = (
-                self.resolve_optional_animation_source(query)
-                if query.get("animationAssetIndex")
-                else None
-            )
-            if query.get("animationAssetIndex") and animation_resolved is None:
+            animation_sources = self.resolve_animation_sources(query)
+            if animation_sources is None:
                 return
-            if animation_resolved:
-                asset, animation_asset, model_path, glb_path = self.ensure_animated_model_glb(
+            if animation_sources:
+                asset, animation_assets, model_path, glb_path = self.ensure_animated_model_glb(
                     resolved,
-                    animation_resolved,
+                    animation_sources,
                     lod=lod,
                 )
             else:
@@ -5144,7 +5197,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     resolved,
                     lod=lod,
                 )
-                animation_asset = None
+                animation_assets = []
             blend_path = glb_path.with_suffix(".blend")
             material_backend = PROJECT_ROOT / "blender_materials.py"
             material_plan_backend = Path(blender_material_plan.__file__)
@@ -5202,11 +5255,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
 
-        suffix = (
-            f"-{Path(str(animation_asset['path'])).name.split('##')[-1]}"
-            if animation_asset
-            else ""
-        )
+        suffix = f"-animations-{len(animation_assets)}" if animation_assets else ""
         name = f"{Path(str(asset['path'])).stem}{suffix}.blend"
         self.send_response(200)
         self.send_header("Content-Type", "application/x-blender")

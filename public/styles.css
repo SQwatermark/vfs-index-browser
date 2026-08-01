@@ -751,8 +751,7 @@ tbody tr[data-file-key].selected {
   margin: 8px 0;
 }
 
-.model-animation-search input,
-.model-animation-search select {
+.model-animation-search input {
   min-width: 0;
   color: var(--text);
   border: 1px solid var(--border);
@@ -770,13 +769,63 @@ tbody tr[data-file-key].selected {
   padding: 0 8px;
 }
 
-.model-animation-search select {
+.model-animation-candidates {
   grid-column: 1 / -1;
   width: 100%;
   height: 112px;
-  padding: 4px;
+  overflow: auto;
+  padding: 3px;
   font-family: var(--font-mono);
   font-size: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+}
+
+.model-animation-candidate {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  min-height: 28px;
+}
+
+.model-animation-candidate:hover {
+  background: rgba(255, 214, 0, 0.08);
+}
+
+.model-animation-candidate input {
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.model-animation-candidate-preview {
+  overflow: hidden;
+  height: 26px;
+  padding: 0 6px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+}
+
+.model-animation-selection-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.model-animation-selection-actions .link-button,
+.model-animation-selection-actions button {
+  height: 28px;
+  padding: 0 10px;
 }
 
 .model-animation-pager {
