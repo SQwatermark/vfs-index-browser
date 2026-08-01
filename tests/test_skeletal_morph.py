@@ -2,6 +2,9 @@ import struct
 import unittest
 
 from skeletal_morph import (
+    CurveKey,
+    MorphCurve,
+    _evaluate_curve,
     bake_morph_animation,
     is_dialog_morph_animation_path,
     morph_avatar_asset_name,
@@ -131,6 +134,21 @@ def clip_payload():
 
 
 class SkeletalMorphTests(unittest.TestCase):
+    def test_infinite_unity_tangents_are_evaluated_as_a_step(self):
+        curve = MorphCurve(
+            control_name="step",
+            keys=(
+                CurveKey(0.0, 0.0, float("inf"), float("inf"), 0, 0.0, 0.0),
+                CurveKey(1.0, 1.0, float("inf"), float("inf"), 0, 0.0, 0.0),
+            ),
+            pre_infinity=2,
+            post_infinity=2,
+            rotation_order=4,
+        )
+
+        self.assertEqual(0.0, _evaluate_curve(curve, 0.5))
+        self.assertEqual(1.0, _evaluate_curve(curve, 1.0))
+
     def test_resource_names_follow_dialog_and_model_conventions(self):
         animation = "assets/dialog/morphanim/example.anim"
         self.assertTrue(is_dialog_morph_animation_path(animation))
@@ -219,6 +237,31 @@ class SkeletalMorphTests(unittest.TestCase):
         self.assertEqual("node:face", shape_track["targetId"])
         self.assertEqual("Blink", shape_track["propertyName"])
         self.assertEqual([[0.0], [1.0]], shape_track["values"])
+
+    def test_morph_delta_preserves_the_models_actual_bind_pose(self):
+        animation = bake_morph_animation(
+            {
+                "nodes": [{
+                    "id": "node:face",
+                    "name": "faceJoint",
+                    "transform": {
+                        "translation": [4.0, 0.0, 0.0],
+                        "rotation": [0.0, 0.0, 0.0, 1.0],
+                        "scale": [2.0, 2.0, 2.0],
+                    },
+                }],
+            },
+            parse_morph_clip(clip_payload()),
+            parse_morph_avatar(avatar_payload()),
+            animation_id="animation:test",
+            source={"logicalPath": "example.anim"},
+            sample_rate=1.0,
+        )
+
+        tracks = {track["property"]: track for track in animation["tracks"]}
+        self.assertEqual([[4.0, 0.0, 0.0], [5.0, 0.0, 0.0]], tracks["translation"]["values"])
+        self.assertNotIn("rotation", tracks)
+        self.assertNotIn("scale", tracks)
 
 
 if __name__ == "__main__":

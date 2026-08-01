@@ -31,6 +31,7 @@ class BonePose:
 
 @dataclass(frozen=True)
 class MorphMapping:
+    kind: str
     identifier: int
     name_hash: int
     tag_hash: int
@@ -246,6 +247,11 @@ def parse_morph_avatar(payload: bytes) -> MorphAvatar:
             }
         elif class_name in {"SkeletalMorphMappingData", "SkeletalMorphShaderPropMappingData"}:
             value = MorphMapping(
+                kind=(
+                    "shader"
+                    if class_name == "SkeletalMorphShaderPropMappingData"
+                    else "bone"
+                ),
                 identifier=reader.int32(),
                 name_hash=reader.int32(),
                 tag_hash=reader.int32(),
@@ -341,6 +347,14 @@ def parse_morph_clip(payload: bytes) -> MorphClip:
             raise SkeletalMorphError(
                 f"morph curve {curve.control_name!r} uses unsupported weighted tangents"
             )
+        if any(
+            math.isnan(value)
+            for key in curve.keys
+            for value in (key.time, key.value, key.in_slope, key.out_slope)
+        ):
+            raise SkeletalMorphError(
+                f"morph curve {curve.control_name!r} contains NaN keyframe data"
+            )
         if curve.pre_infinity != 2 or curve.post_infinity != 2:
             raise SkeletalMorphError(
                 f"morph curve {curve.control_name!r} uses unsupported infinity modes"
@@ -357,9 +371,15 @@ def _evaluate_curve(curve: MorphCurve, time: float) -> float:
     for left, right in zip(keys, keys[1:]):
         if time > right.time:
             continue
+        if time == right.time:
+            return right.value
         duration = right.time - left.time
         if duration <= 0:
             return right.value
+        # Unity serializes constant/stepped tangents as Infinity.  The value is
+        # held for the whole interval and changes only at the following key.
+        if not math.isfinite(left.out_slope) or not math.isfinite(right.in_slope):
+            return left.value
         position = (time - left.time) / duration
         position2 = position * position
         position3 = position2 * position
@@ -406,21 +426,60 @@ def _model_quaternion(euler: tuple[float, float, float]) -> list[float]:
     return [x / length, -y / length, -z / length, w / length]
 
 
+def _normalized_quaternion(value: tuple[float, float, float, float]) -> list[float]:
+    length = math.sqrt(sum(component * component for component in value))
+    if not math.isfinite(length) or length <= 1e-12:
+        raise SkeletalMorphError("facial morph produced an invalid quaternion")
+    return [component / length for component in value]
+
+
+def _quaternion_conjugate(
+    value: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    x, y, z, w = value
+    return (-x, -y, -z, w)
+
+
 def _lerp_pose(
     base: BonePose,
     contributions: list[tuple[float, BonePose]],
+    model_transform: Mapping[str, Any],
 ) -> tuple[list[float], list[float], list[float]]:
-    def combine(attribute: str) -> list[float]:
+    def combine(attribute: str) -> tuple[float, float, float]:
         origin = getattr(base, attribute)
-        return [
+        return tuple(
             origin[index]
             + sum(weight * (getattr(target, attribute)[index] - origin[index]) for weight, target in contributions)
             for index in range(3)
-        ]
+        )
 
-    position = combine("position")
-    rotation = _model_quaternion(tuple(combine("rotation")))
-    scale = combine("scale")
+    model_position = tuple(float(value) for value in model_transform.get("translation", (0, 0, 0)))
+    model_rotation = tuple(float(value) for value in model_transform.get("rotation", (0, 0, 0, 1)))
+    model_scale = tuple(float(value) for value in model_transform.get("scale", (1, 1, 1)))
+    if len(model_position) != 3 or len(model_rotation) != 4 or len(model_scale) != 3:
+        raise SkeletalMorphError("facial bone has an invalid model transform")
+
+    avatar_position = combine("position")
+    position = [
+        model_position[index] + avatar_position[index] - base.position[index]
+        for index in range(3)
+    ]
+
+    avatar_base_rotation = tuple(_model_quaternion(base.rotation))
+    avatar_rotation = tuple(_model_quaternion(combine("rotation")))
+    rotation_delta = _quaternion_multiply(
+        _quaternion_conjugate(avatar_base_rotation),
+        avatar_rotation,
+    )
+    rotation = _normalized_quaternion(_quaternion_multiply(model_rotation, rotation_delta))
+
+    avatar_scale = combine("scale")
+    scale = []
+    for index in range(3):
+        if abs(base.scale[index]) <= 1e-8:
+            scale.append(model_scale[index] + avatar_scale[index] - base.scale[index])
+        else:
+            scale.append(model_scale[index] * avatar_scale[index] / base.scale[index])
     return position, rotation, scale
 
 
@@ -476,6 +535,9 @@ def bake_morph_animation(
     unsupported_controls = []
     for curve in clip.curves:
         mapping = mapping_by_name[curve.control_name]
+        if mapping.kind == "shader":
+            unsupported_controls.append(curve.control_name)
+            continue
         blend_shape_index = blend_shape_index_by_hash.get(mapping.name_hash)
         has_blend_shape = False
         if blend_shape_index is not None:
@@ -529,15 +591,22 @@ def bake_morph_animation(
                 f"facial bone {bone_name!r} resolves to {len(candidates)} model nodes"
             )
         target_id = candidates[0].get("id")
+        model_transform = candidates[0].get("transform", {})
         if not isinstance(target_id, str):
             raise SkeletalMorphError(f"facial bone {bone_name!r} has no stable node id")
+        if not isinstance(model_transform, Mapping):
+            raise SkeletalMorphError(f"facial bone {bone_name!r} has no valid transform")
         values = {"translation": [], "rotation": [], "scale": []}
         for time_value in times:
             contributions = [
                 (_evaluate_curve(curve, time_value), target)
                 for curve, target in controls
             ]
-            position, rotation, scale = _lerp_pose(base_by_id[bone_id], contributions)
+            position, rotation, scale = _lerp_pose(
+                base_by_id[bone_id],
+                contributions,
+                model_transform,
+            )
             values["translation"].append(position)
             values["rotation"].append(rotation)
             values["scale"].append(scale)
@@ -575,17 +644,21 @@ def bake_morph_animation(
             }
         )
 
-    diagnostics = [
-        {
-            "severity": "info",
-            "code": "ANIMATION_SKELETAL_MORPH_BAKED",
-            "message": (
-                f"{len(clip.curves) - len(unsupported_controls)} skeletal-morph controls "
-                f"were baked into {len(tracks)} facial-bone tracks."
-            ),
-            "objectId": animation_id,
-        }
-    ]
+    diagnostics = [{
+        "severity": "info",
+        "code": (
+            "ANIMATION_SKELETAL_MORPH_BAKED"
+            if clip.curves
+            else "ANIMATION_SKELETAL_MORPH_EMPTY"
+        ),
+        "message": (
+            f"{len(clip.curves) - len(unsupported_controls)} skeletal-morph controls "
+            f"were baked into {len(tracks)} facial tracks."
+            if clip.curves
+            else "The skeletal-morph asset contains no animation curves."
+        ),
+        "objectId": animation_id,
+    }]
     if unsupported_controls:
         diagnostics.append(
             {

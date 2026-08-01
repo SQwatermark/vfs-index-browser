@@ -34,6 +34,8 @@
 - 对 Unity AnimationCurve 进行 30 FPS Hermite 采样；
 - 将控制器权重与角色基准姿态、目标姿态组合，生成现有
   `EndfieldModelAnimation` 可直接播放的平移、旋转、缩放轨道。
+- MorphAvatar 的基准姿态仅用于计算目标差值；输出以实际模型绑定姿势为基准，避免
+  prefab 覆盖或模型归一化导致动画首帧跳变。
 
 服务端仅对 `/morphanim/*.anim` 启用该流程，普通 Transform 动画与 Humanoid 动画不受
 影响。首次访问需要导出两个原始 MonoBehaviour，随后使用内容身份缓存。
