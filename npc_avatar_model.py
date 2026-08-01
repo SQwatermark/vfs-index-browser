@@ -19,6 +19,7 @@ from animestudio_model import (
     build_standalone_material_objects,
     collect_material_textures,
 )
+from animestudio_humanoid import annotate_humanoid_bones
 from model_assembly import create_avatar_mesh_assembly
 from model_document import create_model_document, validate_model_document
 
@@ -331,6 +332,7 @@ def build_static_avatar_mesh_document(
             )
     if avatar is not None:
         geometry = _attach_bind_skeleton(document, geometry, bindings, avatar, root_node_id)
+        annotate_humanoid_bones(document, [avatar])
     errors = validate_model_document(document)
     if errors:
         raise ValueError(f"生成的 ModelDocument 校验失败：{errors}")

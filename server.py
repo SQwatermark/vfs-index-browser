@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import gzip
 import io
 import json
@@ -68,9 +69,18 @@ from animestudio_tool import load_animestudio_tool_manifest
 from model_document import validate_model_document
 from gltf_export import build_glb
 from animestudio_animation import (
-    MODEL_ANIMATION_VERSION,
+    MODEL_ANIMATION_CACHE_REVISION,
+    attach_animation_clip,
     bind_animation_clip,
     load_unique_animation_clip,
+)
+from skeletal_morph import (
+    bake_morph_animation,
+    is_dialog_morph_animation_path,
+    morph_avatar_asset_name,
+    morph_clip_asset_path,
+    parse_morph_avatar,
+    parse_morph_clip,
 )
 
 try:
@@ -154,13 +164,14 @@ CHACHA_KEY = bytes.fromhex(
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
 MONOBEHAVIOUR_DUMP_VERSION = 1
+MONOBEHAVIOUR_RAW_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
-MODEL_SNAPSHOT_VERSION = 27
-AVATAR_MODEL_SNAPSHOT_VERSION = 1
-ANIMATION_CLIP_EXPORT_VERSION = 1
+MODEL_SNAPSHOT_VERSION = 29
+AVATAR_MODEL_SNAPSHOT_VERSION = 2
+ANIMATION_CLIP_EXPORT_VERSION = 4
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
-MODEL_BLEND_VERSION = 3
+MODEL_BLEND_VERSION = 6
 AUDIO_PACKAGE_META_VERSION = 1
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
@@ -879,6 +890,36 @@ def is_model_entry_path(path: str) -> bool:
     return file_suffix(path) == ".prefab" or is_avatar_mesh_asset_path(path)
 
 
+def default_model_animation_query(path: str) -> str:
+    stem = Path(path.split("##", 1)[0]).stem.casefold()
+    for pattern in (
+        r"^data_npc_avatarmesh_(.+)$",
+        r"^chr_\d+_(.+?)_postmodel$",
+        r"^(?:p|sk)_actor_(.+?)(?:_\d+)?$",
+    ):
+        match = re.match(pattern, stem)
+        if match:
+            return match.group(1)
+    return stem
+
+
+def model_animation_query_hint(path: str, document: dict) -> str:
+    """根据模型实际装配内容选择动画搜索词。"""
+
+    fallback = default_model_animation_query(path)
+    if not is_avatar_mesh_asset_path(path):
+        return fallback
+    parts = document.get("asset", {}).get("assembly", {}).get("parts", [])
+    for part in parts:
+        for mesh_path in part.get("meshPaths", []):
+            normalized = str(mesh_path).replace("\\", "/").casefold()
+            match = re.search(r"/entity/npc/major/([^/]+)/", normalized)
+            if match:
+                # Major NPC 按骨架家族共用身体动画；用 NPC 名搜索通常只会命中面部动画。
+                return f"a_actor_{match.group(1)}"
+    return fallback
+
+
 def dotnet_tool_identity(executable: Path) -> list[dict]:
     candidates = (
         executable,
@@ -1259,6 +1300,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/manifest-asset/model-animation":
             self.handle_manifest_asset_model_animation(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/manifest-asset/model-animations":
+            self.handle_manifest_asset_model_animations(parse_qs(parsed.query))
             return
         if parsed.path == "/api/tablecfg/json":
             self.handle_tablecfg_json(parse_qs(parsed.query))
@@ -2248,6 +2292,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         shutil.rmtree(export_root, ignore_errors=True)
         export_root.mkdir(parents=True, exist_ok=True)
         animation_name = str(asset["path"]).rsplit("##", 1)[-1]
+        # FBX 子资源直接使用 clip 名；独立 .anim 资源则需要从逻辑路径取文件名。
+        animation_name = animation_name.replace("\\", "/").rsplit("/", 1)[-1]
+        if animation_name.casefold().endswith(".anim"):
+            animation_name = animation_name[:-5]
         command = [
             str(ANIMESTUDIO_CLI),
             str(source_path),
@@ -2839,6 +2887,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         return root / "exported", root / "dump.txt", root / "meta.json"
 
+    def manifest_monobehaviour_raw_paths(
+        self,
+        record: dict,
+        asset_index: int,
+    ) -> tuple[Path, Path]:
+        root = (
+            INTERNAL_CACHE_DIR
+            / str(record["id"])
+            / "manifest-assets"
+            / str(asset_index)
+            / "monobehaviour-raw"
+        )
+        return root / "exported", root / "meta.json"
+
     def manifest_cubemap_export_paths(
         self,
         record: dict,
@@ -3057,6 +3119,116 @@ class BrowserHandler(BaseHTTPRequestHandler):
             sections.append(f"===== {relative} =====\n{text}")
         dump_path.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
         return dump_path, meta
+
+    def ensure_manifest_monobehaviour_raw(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+    ) -> tuple[Path, dict]:
+        """Export one MonoBehaviour's serialized bytes without TypeTree decoding."""
+
+        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
+            raise ValueError("raw MonoBehaviour export requires an .asset or .prefab")
+        if not ANIMESTUDIO_MONOBEHAVIOUR_CLI.exists():
+            raise FileNotFoundError(
+                f"AnimeStudio MonoBehaviour CLI not found: {ANIMESTUDIO_MONOBEHAVIOUR_CLI}"
+            )
+
+        export_root, meta_path = self.manifest_monobehaviour_raw_paths(
+            record,
+            int(asset["asset_index"]),
+        )
+        source_path, _, _, _ = self.assetbundle_cache_paths(record)
+        source_identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "assetIndex": int(asset["asset_index"]),
+            "assetPath": str(asset["path"]),
+            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
+        }
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                cached = export_root / str(meta.get("exportedFile") or "")
+                if (
+                    meta.get("version") == MONOBEHAVIOUR_RAW_VERSION
+                    and meta.get("source") == source_identity
+                    and meta.get("returncode") == 0
+                    and cached.is_file()
+                ):
+                    return cached, meta
+            except (OSError, json.JSONDecodeError):
+                pass
+
+        self.write_file_slice(record, chunk_path, source_path)
+        shutil.rmtree(export_root, ignore_errors=True)
+        export_root.mkdir(parents=True, exist_ok=True)
+        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
+        command = [
+            str(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
+            str(source_path),
+            str(export_root),
+            "--game",
+            "ArknightsEndfield",
+            "--types",
+            "MonoBehaviour",
+            "--containers",
+            f"^{re.escape(normalized_container)}$",
+            "--export_type",
+            "Raw",
+            "--group_assets",
+            "ByType",
+            "--logger_flags",
+            "Error",
+            "Warning",
+            "Info",
+        ]
+        completed = subprocess.run(
+            command,
+            cwd=str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.parent),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=180,
+            check=False,
+        )
+        expected_stem = Path(normalized_container).stem.casefold()
+        matching = [
+            path
+            for path in sorted(export_root.rglob("*.dat"))
+            if path.stem.casefold() == expected_stem
+        ]
+        relative = (
+            str(matching[0].relative_to(export_root)).replace("\\", "/")
+            if len(matching) == 1
+            else None
+        )
+        meta = {
+            "version": MONOBEHAVIOUR_RAW_VERSION,
+            "source": source_identity,
+            "command": command,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "builtAtEpoch": int(time.time()),
+            "exportedFile": relative,
+        }
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        if completed.returncode != 0:
+            raise RuntimeError(
+                f"AnimeStudio raw MonoBehaviour export failed: {completed.stderr[-2000:]}"
+            )
+        if len(matching) != 1:
+            raise RuntimeError(
+                f"expected one raw MonoBehaviour named {expected_stem!r}, found {len(matching)}"
+            )
+        return matching[0], meta
 
     def assetbundle_map_command(self, source_path: Path, map_path: Path) -> list[str]:
         return [
@@ -3839,6 +4011,83 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     resolved.append(source)
         return resolved, missing
 
+    def resolve_index_asset_bundle(
+        self,
+        index: ManifestIndex,
+        asset_index: int,
+    ) -> tuple[dict, dict, Path]:
+        asset = index.asset(asset_index)
+        if asset is None:
+            raise FileNotFoundError(f"manifest asset {asset_index} does not exist")
+        sources, missing = self.resolve_bundle_sources([{"name": asset["bundle_name"]}])
+        if missing or len(sources) != 1:
+            raise FileNotFoundError(
+                f"bundle for manifest asset {asset_index} is not available: {asset['bundle_name']}"
+            )
+        record, chunk_path = sources[0]
+        return asset, record, chunk_path
+
+    def build_skeletal_morph_animation(
+        self,
+        index: ManifestIndex,
+        model_asset: dict,
+        animation_asset: dict,
+        document: dict,
+    ) -> dict:
+        sidecar_path = morph_clip_asset_path(str(animation_asset["path"]))
+        sidecar_matches = index.assets_by_path(sidecar_path)
+        if len(sidecar_matches) != 1:
+            raise RuntimeError(
+                f"expected one skeletal-morph sidecar {sidecar_path!r}, "
+                f"found {len(sidecar_matches)}"
+            )
+
+        avatar_name = morph_avatar_asset_name(str(model_asset["path"]))
+        avatar_matches = [
+            asset
+            for asset in index.assets_by_name(avatar_name)
+            if "/skeletalmorph/skeletalmorphcfg/" in str(asset["path"]).casefold()
+        ]
+        if len(avatar_matches) != 1:
+            raise RuntimeError(
+                f"expected one skeletal-morph avatar {avatar_name!r}, "
+                f"found {len(avatar_matches)}"
+            )
+
+        sidecar_asset, sidecar_record, sidecar_chunk = self.resolve_index_asset_bundle(
+            index,
+            int(sidecar_matches[0]["assetIndex"]),
+        )
+        avatar_asset, avatar_record, avatar_chunk = self.resolve_index_asset_bundle(
+            index,
+            int(avatar_matches[0]["assetIndex"]),
+        )
+        sidecar_raw, _ = self.ensure_manifest_monobehaviour_raw(
+            sidecar_record,
+            sidecar_chunk,
+            sidecar_asset,
+        )
+        avatar_raw, _ = self.ensure_manifest_monobehaviour_raw(
+            avatar_record,
+            avatar_chunk,
+            avatar_asset,
+        )
+        clip = parse_morph_clip(sidecar_raw.read_bytes())
+        avatar = parse_morph_avatar(avatar_raw.read_bytes())
+        animation_index = int(animation_asset["asset_index"])
+        return bake_morph_animation(
+            document,
+            clip,
+            avatar,
+            animation_id=f"animation:{animation_index}",
+            source={
+                "logicalPath": str(animation_asset["path"]),
+                "bundle": str(animation_asset["bundle_name"]),
+                "morphClipPath": str(sidecar_asset["path"]),
+                "morphAvatarPath": str(avatar_asset["path"]),
+            },
+        )
+
     def resolve_manifest_asset_source(
         self,
         query: dict[str, list[str]],
@@ -4430,10 +4679,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not is_model_entry_path(str(asset["path"])):
             self.send_error_json(400, "resource is not a supported model entry")
             return
-        if is_avatar_mesh and animation_asset:
-            self.send_error_json(400, "AvatarMesh animation binding is not available yet")
-            return
-
         try:
             lod = int(query.get("lod", ["0"])[0])
             if is_avatar_mesh:
@@ -4475,13 +4720,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
         manifest_id = int(query["manifestId"][0])
         asset_index = int(asset["asset_index"])
         lod_parameter = f"&lod={lod}" if is_avatar_mesh else ""
+        animation_query_hint = model_animation_query_hint(str(asset["path"]), document)
+        animation_query_parameter = f"&queryHint={quote(animation_query_hint)}"
         animation_url = (
             f"/api/manifest-asset/model-animation?manifestId={manifest_id}"
             f"&assetIndex={asset_index}"
             f"&animationAssetIndex={int(animation_asset['asset_index'])}"
-            f"&v={MODEL_ANIMATION_VERSION}"
+            f"&v={MODEL_ANIMATION_CACHE_REVISION}"
             if animation_asset
             else None
+        )
+        animation_parameter = (
+            f"&animationAssetIndex={int(animation_asset['asset_index'])}"
+            if animation_asset
+            else ""
         )
         self.send_json(
             {
@@ -4501,11 +4753,24 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 ),
                 "blendUrl": (
                     f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
+                    f"&assetIndex={asset_index}{lod_parameter}{animation_parameter}"
+                    f"&v={MODEL_BLEND_VERSION}"
+                    if (is_prefab or is_avatar_mesh)
+                    and BLENDER_EXE.is_file()
+                    and BLENDER_MODEL_IMPORTER.is_file()
+                    else None
+                ),
+                "baseBlendUrl": (
+                    f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
                     f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_BLEND_VERSION}"
                     if (is_prefab or is_avatar_mesh)
                     and BLENDER_EXE.is_file()
                     and BLENDER_MODEL_IMPORTER.is_file()
                     else None
+                ),
+                "animationCandidatesUrl": (
+                    f"/api/manifest-asset/model-animations?manifestId={manifest_id}"
+                    f"&assetIndex={asset_index}{lod_parameter}{animation_query_parameter}"
                 ),
                 "animationUrl": animation_url,
                 "document": document,
@@ -4598,11 +4863,49 @@ class BrowserHandler(BaseHTTPRequestHandler):
             _, _, model_path, _ = self.model_snapshot_paths(
                 bundle_record, int(asset["asset_index"])
             )
+        document, geometry, image_paths = self.load_model_glb_inputs(
+            asset,
+            bundle_record,
+            model_path,
+            lod=lod,
+        )
+        geometry_path = model_path.with_name("geometry.bin")
+        glb_path = model_path.with_name("model.glb")
+        # Exporter changes can alter the GLB without rebuilding ModelDocument.
+        exporter_path = Path(build_glb.__code__.co_filename)
+        source_paths = [
+            model_path,
+            geometry_path,
+            exporter_path,
+            *image_paths.values(),
+        ]
+        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
+        if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
+            glb = build_glb(
+                document,
+                geometry,
+                lambda image: image_paths[str(image["id"])].read_bytes(),
+            )
+            temporary = glb_path.with_suffix(".glb.tmp")
+            temporary.write_bytes(glb)
+            os.replace(temporary, glb_path)
+        return asset, model_path, glb_path
+
+    def load_model_glb_inputs(
+        self,
+        asset: dict,
+        bundle_record: dict,
+        model_path: Path,
+        *,
+        lod: int,
+    ) -> tuple[dict, bytes, dict[str, Path]]:
+        document = json.loads(model_path.read_text(encoding="utf-8"))
         geometry_path = model_path.with_name("geometry.bin")
         if not geometry_path.is_file():
             raise FileNotFoundError("model geometry buffer not found")
         geometry = geometry_path.read_bytes()
 
+        is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
         texture_root = (model_path.parent / "textures").resolve()
         image_paths: dict[str, Path] = {}
         for image in document.get("images", []):
@@ -4624,27 +4927,70 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if not relative or texture_root not in target.parents or not target.is_file():
                 raise FileNotFoundError(f"model texture not found: {relative}")
             image_paths[str(image["id"])] = target
+        return document, geometry, image_paths
 
-        glb_path = model_path.with_name("model.glb")
-        # Exporter changes can alter the GLB without rebuilding ModelDocument.
-        exporter_path = Path(build_glb.__code__.co_filename)
+    def ensure_animated_model_glb(
+        self,
+        model_resolved: tuple[ManifestIndex, dict, dict, Path],
+        animation_resolved: tuple[ManifestIndex, dict, dict, Path],
+        *,
+        lod: int,
+    ) -> tuple[dict, dict, Path, Path]:
+        model_asset, model_path, _ = self.ensure_manifest_asset_model_glb(
+            model_resolved,
+            lod=lod,
+        )
+        _, animation_asset, animation_record, animation_chunk = animation_resolved
+        _, _, model_record, _ = model_resolved
+        document, geometry, image_paths = self.load_model_glb_inputs(
+            model_asset,
+            model_record,
+            model_path,
+            lod=lod,
+        )
+        clip, clip_path, _ = self.ensure_animation_clip_export(
+            animation_record,
+            animation_chunk,
+            animation_asset,
+        )
+        animation_index = int(animation_asset["asset_index"])
+        animated_document = copy.deepcopy(document)
+        animated_geometry = attach_animation_clip(
+            animated_document,
+            geometry,
+            clip,
+            animation_id=f"animation:{animation_index}",
+            source={
+                "logicalPath": str(animation_asset["path"]),
+                "bundle": str(animation_asset["bundle_name"]),
+            },
+            bake_humanoid=True,
+        )
+        if not animated_document.get("animations"):
+            raise RuntimeError("animation has no transform tracks compatible with this model")
+
+        animation_root = model_path.parent / "animations" / str(animation_index)
+        animated_glb = animation_root / "model.glb"
         source_paths = [
             model_path,
-            geometry_path,
-            exporter_path,
+            model_path.with_name("geometry.bin"),
+            clip_path,
+            Path(attach_animation_clip.__code__.co_filename),
+            Path(build_glb.__code__.co_filename),
             *image_paths.values(),
         ]
         newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-        if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
-            glb = build_glb(
-                document,
-                geometry,
+        if not animated_glb.is_file() or animated_glb.stat().st_mtime_ns < newest_source_mtime:
+            payload = build_glb(
+                animated_document,
+                animated_geometry,
                 lambda image: image_paths[str(image["id"])].read_bytes(),
             )
-            temporary = glb_path.with_suffix(".glb.tmp")
-            temporary.write_bytes(glb)
-            os.replace(temporary, glb_path)
-        return asset, model_path, glb_path
+            animation_root.mkdir(parents=True, exist_ok=True)
+            temporary = animated_glb.with_suffix(".glb.tmp")
+            temporary.write_bytes(payload)
+            os.replace(temporary, animated_glb)
+        return model_asset, animation_asset, model_path, animated_glb
 
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_source(query)
@@ -4695,11 +5041,26 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         try:
             lod = int(query.get("lod", ["0"])[0])
-            asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(
-                resolved,
-                lod=lod,
+            animation_resolved = (
+                self.resolve_optional_animation_source(query)
+                if query.get("animationAssetIndex")
+                else None
             )
-            blend_path = model_path.with_name("model.blend")
+            if query.get("animationAssetIndex") and animation_resolved is None:
+                return
+            if animation_resolved:
+                asset, animation_asset, model_path, glb_path = self.ensure_animated_model_glb(
+                    resolved,
+                    animation_resolved,
+                    lod=lod,
+                )
+            else:
+                asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(
+                    resolved,
+                    lod=lod,
+                )
+                animation_asset = None
+            blend_path = glb_path.with_suffix(".blend")
             material_backend = PROJECT_ROOT / "blender_materials.py"
             source_paths = [
                 glb_path,
@@ -4754,7 +5115,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
 
-        name = f"{Path(str(asset['path'])).stem}.blend"
+        suffix = (
+            f"-{Path(str(animation_asset['path'])).name.split('##')[-1]}"
+            if animation_asset
+            else ""
+        )
+        name = f"{Path(str(asset['path'])).stem}{suffix}.blend"
         self.send_response(200)
         self.send_header("Content-Type", "application/x-blender")
         self.send_header("Content-Length", str(blend_path.stat().st_size))
@@ -4781,36 +5147,55 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         index, model_asset, model_record, model_chunk = model_resolved
         _, animation_asset, animation_record, animation_chunk = animation_resolved
-        if file_suffix(str(model_asset["path"])) != ".prefab":
-            self.send_error_json(400, "Animation binding currently requires a .prefab model asset")
+        if not is_model_entry_path(str(model_asset["path"])):
+            self.send_error_json(400, "resource is not a supported model entry")
             return
 
         try:
-            dependencies = index.bundle_dependencies(int(model_asset["bundle_index"]))
-            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, _ = self.ensure_model_hierarchy(
-                model_record,
-                model_chunk,
-                model_asset,
-                dependencies,
-                dependency_sources,
-                missing_dependencies,
-            )
-            clip, _, _ = self.ensure_animation_clip_export(
-                animation_record,
-                animation_chunk,
-                animation_asset,
-            )
+            lod = int(query.get("lod", ["0"])[0])
+            if is_avatar_mesh_asset_path(str(model_asset["path"])):
+                document, _, _ = self.ensure_avatar_mesh_model(
+                    index,
+                    model_asset,
+                    model_record,
+                    model_chunk,
+                    lod,
+                )
+            else:
+                dependencies = index.bundle_dependencies(int(model_asset["bundle_index"]))
+                dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+                document, _ = self.ensure_model_hierarchy(
+                    model_record,
+                    model_chunk,
+                    model_asset,
+                    dependencies,
+                    dependency_sources,
+                    missing_dependencies,
+                )
             animation_asset_index = int(animation_asset["asset_index"])
-            animation = bind_animation_clip(
-                document,
-                clip,
-                animation_id=f"animation:{animation_asset_index}",
-                source={
-                    "logicalPath": str(animation_asset["path"]),
-                    "bundle": str(animation_asset["bundle_name"]),
-                },
-            )
+            if is_dialog_morph_animation_path(str(animation_asset["path"])):
+                animation = self.build_skeletal_morph_animation(
+                    index,
+                    model_asset,
+                    animation_asset,
+                    document,
+                )
+            else:
+                clip, _, _ = self.ensure_animation_clip_export(
+                    animation_record,
+                    animation_chunk,
+                    animation_asset,
+                )
+                animation = bind_animation_clip(
+                    document,
+                    clip,
+                    animation_id=f"animation:{animation_asset_index}",
+                    source={
+                        "logicalPath": str(animation_asset["path"]),
+                        "bundle": str(animation_asset["bundle_name"]),
+                    },
+                    bake_humanoid=True,
+                )
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "AnimeStudio timed out while exporting the animation")
             return
@@ -4821,6 +5206,64 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.send_json(
             animation,
             cache_control="private, max-age=3600",
+            compress=True,
+        )
+
+    def handle_manifest_asset_model_animations(
+        self,
+        query: dict[str, list[str]],
+    ) -> None:
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        index, model_asset, _, _ = resolved
+        if not is_model_entry_path(str(model_asset["path"])):
+            self.send_error_json(400, "resource is not a supported model entry")
+            return
+        default_query = query.get(
+            "queryHint",
+            [default_model_animation_query(str(model_asset["path"]))],
+        )[0].strip()
+        search_query = query.get("q", [default_query])[0].strip()
+        try:
+            page = int(query.get("page", ["1"])[0])
+            page_size = int(query.get("pageSize", ["50"])[0])
+            lod = int(query.get("lod", ["0"])[0])
+            if is_avatar_mesh_asset_path(str(model_asset["path"])) and lod not in range(4):
+                raise ValueError("invalid AvatarMesh LOD")
+            result = index.search_animation_assets(
+                search_query,
+                page=page,
+                page_size=page_size,
+            )
+        except (ValueError, sqlite3.Error) as error:
+            self.send_error_json(400, str(error))
+            return
+        manifest_id = int(query["manifestId"][0])
+        model_asset_index = int(model_asset["asset_index"])
+        lod_parameter = (
+            f"&lod={lod}" if is_avatar_mesh_asset_path(str(model_asset["path"])) else ""
+        )
+        for animation_asset in result["files"]:
+            animation_index = int(animation_asset["assetIndex"])
+            parameters = (
+                f"manifestId={manifest_id}&assetIndex={model_asset_index}{lod_parameter}"
+                f"&animationAssetIndex={animation_index}"
+            )
+            animation_asset["previewUrl"] = (
+                f"/api/manifest-asset/model-animation?{parameters}"
+                f"&v={MODEL_ANIMATION_CACHE_REVISION}"
+            )
+            animation_asset["blendUrl"] = (
+                f"/api/manifest-asset/model-blend?{parameters}&v={MODEL_BLEND_VERSION}"
+            )
+        self.send_json(
+            {
+                "kind": "modelAnimationCandidates",
+                "modelAsset": model_asset,
+                "defaultQuery": default_query,
+                **result,
+            },
             compress=True,
         )
 

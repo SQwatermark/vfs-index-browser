@@ -78,6 +78,8 @@ GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源�
 GET /api/manifest-asset/model-glb?manifestId=<manifest文件ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
 GET /api/manifest-asset/model-animation?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
+GET /api/manifest-asset/model-animations?manifestId=<manifest文件ID>&assetIndex=<资源索引>&q=<关键词>
+GET /api/manifest-asset/model-blend?manifestId=<manifest文件ID>&assetIndex=<资源索引>&animationAssetIndex=<动画资源索引>
 GET /api/manifest-asset/model-buffer?recordId=<VFS记录ID>&assetIndex=<资源索引>
 GET /api/manifest-asset/model-texture?recordId=<VFS记录ID>&assetIndex=<资源索引>&path=<纹理路径>
 ```
@@ -95,6 +97,11 @@ buffer、texture 与 GLB URL 都携带同一 LOD，防止不同装配结果共�
 `AnimationClip`。因此一个模型只生成一份 GLB，切换片段仅加载动画数据。
 独立动画文档的协议由 `schemas/model-animation.schema.json` 固定。
 `attach_animation_clip()` 仍保留为离线打包工具，但不属于网页预览的默认路径。
+
+`model-animations` 按 manifest 逻辑路径搜索显式的 `.anim` 和 FBX AnimationClip
+子资源。前端根据模型入口推导初始关键词，允许继续按动画名或路径收窄结果；候选只是
+索引匹配，是否能绑定到当前模型由实际加载时的稳定节点映射决定。切换片段会停止旧
+Mixer、恢复基础姿势，再为模型和轮廓副本建立新动画，不会重新下载基础 GLB。
 
 前端支持直接链接：
 
@@ -160,7 +167,15 @@ Blender 4.3 的 glTF 导入器会把材质 extras 保留为自定义属性。Ble
 ```text
 GET /api/manifest-asset/model-blend?manifestId=451359&assetIndex=<Prefab>
 GET /api/manifest-asset/model-blend?manifestId=451359&assetIndex=<AvatarMesh>&lod=0
+GET /api/manifest-asset/model-blend?manifestId=451359&assetIndex=<模型>&animationAssetIndex=<动画>
 ```
+
+指定 `animationAssetIndex` 时，服务复制 ModelDocument，在派生 GLB 中临时附加所选
+Transform 动画，再导入到独立的 `animations/<assetIndex>/model.blend` 缓存。基础 GLB
+和基础 `.blend` 都保持不变。Blender 导入器保留 glTF Action；Blender 4.4 的 Action
+Slot 可分别绑定骨架和辅助对象，并自动把场景起止帧设为所有导入 Action 的并集。
+佩丽卡待机样本 `300024` 已验证为 `A_actor_pelica_idle_loop`，包含 20 个 Action Slot，
+场景范围为 0–48 帧。
 
 远程真实样本 `data_npc_avatarmesh_qinjc.asset` 已生成 Blender 4.4 可读取的 20.4 MiB
 文件；其中 9 个材质均保留 `endfieldShaderBackend` 和对应 CharacterNPR/PBR 节点树，证明

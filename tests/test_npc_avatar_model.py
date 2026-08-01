@@ -282,6 +282,11 @@ class NpcAvatarModelTests(unittest.TestCase):
             {"samplebody": mesh},
             avatar={
                 "m_TOS": {"100": "Root", "500": "Root/Bone"},
+                "m_HumanDescription": {
+                    "m_Human": [
+                        {"m_BoneName": "Bone", "m_HumanName": "Spine"},
+                    ]
+                },
                 "m_Avatar": {
                     "m_AvatarSkeleton": {
                         "m_Node": [
@@ -304,6 +309,37 @@ class NpcAvatarModelTests(unittest.TestCase):
                             },
                         ]
                     },
+                    "m_Human": {
+                        "m_Skeleton": {
+                            "m_Node": [{"m_ParentId": -1, "m_AxesId": 0}],
+                            "m_ID": [500],
+                            "m_AxesArray": [
+                                {
+                                    "m_PreQ": {"X": 0, "Y": 0, "Z": 0, "W": 1},
+                                    "m_PostQ": {"X": 0, "Y": 0, "Z": 0, "W": 1},
+                                    "m_Sgn": {"X": 1, "Y": 1, "Z": 1},
+                                    "m_Limit": {
+                                        "m_Min": {"X": -1, "Y": -1, "Z": -1},
+                                        "m_Max": {"X": 1, "Y": 1, "Z": 1},
+                                    },
+                                }
+                            ],
+                        },
+                        "m_SkeletonPose": {
+                            "m_X": [
+                                {
+                                    "t": {"X": 0, "Y": 1, "Z": 0},
+                                    "q": {"X": 0, "Y": 0, "Z": 0, "W": 1},
+                                }
+                            ]
+                        },
+                        "m_RootX": {
+                            "t": {"X": 0, "Y": 0, "Z": 0},
+                            "q": {"X": 0, "Y": 0, "Z": 0, "W": 1},
+                        },
+                        "m_Scale": 1,
+                        "m_HumanBoneMass": [1 / 25] * 25,
+                    },
                 },
             },
         )
@@ -317,6 +353,10 @@ class NpcAvatarModelTests(unittest.TestCase):
         root_bone, weighted_bone = document["skeletons"][0]["bones"]
         self.assertEqual(root_bone["id"], weighted_bone["parentId"])
         self.assertEqual([0.0, 1.0, 0.0], weighted_bone["transform"]["translation"])
+        self.assertEqual("Spine", weighted_bone["extras"]["humanoid"]["humanBone"])
+        self.assertEqual("Spine", next(
+            node for node in document["nodes"] if node["id"] == weighted_bone["id"]
+        )["extras"]["humanoid"]["humanBone"])
 
 
 if __name__ == "__main__":

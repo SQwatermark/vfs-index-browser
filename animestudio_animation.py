@@ -10,10 +10,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from animestudio_humanoid import (
+    bake_humanoid_body_tracks,
+    bake_humanoid_rotation_tracks,
+)
+
 ANIMATION_FORMAT = "AnimeStudioAnimationClip"
-ANIMATION_VERSION = "1.0.0"
+ANIMATION_VERSION = "1.1.0"
 MODEL_ANIMATION_FORMAT = "EndfieldModelAnimation"
 MODEL_ANIMATION_VERSION = "1.0.0"
+MODEL_ANIMATION_CACHE_REVISION = "10"
 GEOMETRY_BUFFER_ID = "buffer:geometry"
 TRANSFORM_PROPERTIES = {
     "translation": ("vec3", 3),
@@ -45,6 +51,7 @@ def bind_animation_clip(
     *,
     animation_id: str,
     source: Mapping[str, Any],
+    bake_humanoid: bool = False,
 ) -> dict[str, Any]:
     """Resolve compact Unity animation curves to stable ModelDocument node IDs."""
 
@@ -72,14 +79,14 @@ def bind_animation_clip(
     tracks = []
     unresolved_hashes = set()
     ambiguous_hashes = set()
-    unsupported_float_count = 0
+    float_curves = []
 
     for curve_index, curve in enumerate(curves):
         if not isinstance(curve, Mapping):
             raise ValueError(f"animation curve {curve_index} must be an object")
         property_name = curve.get("property")
         if property_name == "float":
-            unsupported_float_count += 1
+            float_curves.append(curve)
             continue
         layout = TRANSFORM_PROPERTIES.get(property_name)
         if layout is None:
@@ -120,6 +127,36 @@ def bind_animation_clip(
             }
         )
 
+    explicit_rotation_targets = {
+        track["targetId"]
+        for track in tracks
+        if track["property"] == "rotation"
+    }
+    explicit_translation_targets = {
+        track["targetId"]
+        for track in tracks
+        if track["property"] == "translation"
+    }
+    humanoid_tracks, consumed_float_curves = ([], set())
+    if bake_humanoid:
+        rotation_tracks, muscle_curves = bake_humanoid_rotation_tracks(
+            document,
+            float_curves,
+            timelines,
+            excluded_target_ids=explicit_rotation_targets,
+        )
+        body_tracks, body_curves = bake_humanoid_body_tracks(
+            document,
+            float_curves,
+            timelines,
+            rotation_tracks,
+            excluded_rotation_target_ids=explicit_rotation_targets,
+            excluded_translation_target_ids=explicit_translation_targets,
+        )
+        humanoid_tracks = rotation_tracks + body_tracks
+        consumed_float_curves = muscle_curves | body_curves
+    tracks.extend(humanoid_tracks)
+
     diagnostics = []
     if unresolved_hashes:
         diagnostics.append(
@@ -141,6 +178,19 @@ def bind_animation_clip(
                 "details": {"pathHashes": sorted(ambiguous_hashes)},
             }
         )
+    if humanoid_tracks:
+        diagnostics.append(
+            {
+                "severity": "info",
+                "code": "ANIMATION_HUMANOID_CURVES_BAKED",
+                "message": (
+                    f"{len(consumed_float_curves)} Humanoid curves were baked "
+                    f"into {len(humanoid_tracks)} bone transform tracks."
+                ),
+                "objectId": animation_id,
+            }
+        )
+    unsupported_float_count = len(float_curves) - len(consumed_float_curves)
     if unsupported_float_count:
         diagnostics.append(
             {
@@ -175,6 +225,7 @@ def attach_animation_clip(
     animation_id: str,
     source: Mapping[str, Any],
     buffer_uri: str | None = None,
+    bake_humanoid: bool = False,
 ) -> bytes:
     """Append transform curves and their binary accessors to *document*.
 
@@ -188,6 +239,7 @@ def attach_animation_clip(
         clip,
         animation_id=animation_id,
         source=source,
+        bake_humanoid=bake_humanoid,
     )
     timelines = animation["timelines"]
     binary = bytearray(geometry)

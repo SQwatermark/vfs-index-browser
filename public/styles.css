@@ -743,6 +743,69 @@ tbody tr[data-file-key].selected {
   display: none;
 }
 
+.model-animation-search {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(150px, auto);
+  gap: 6px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.model-animation-search input,
+.model-animation-search select {
+  min-width: 0;
+  color: var(--text);
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+}
+
+.model-animation-selected-name {
+  grid-column: 1 / -1;
+  font-family: var(--font-mono);
+  user-select: text;
+}
+
+.model-animation-search input {
+  height: 30px;
+  padding: 0 8px;
+}
+
+.model-animation-search select {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 112px;
+  padding: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+.model-animation-pager {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.model-animation-pager button {
+  height: 28px;
+  padding: 0 10px;
+}
+
+.model-animation-pager span {
+  min-width: 52px;
+  text-align: center;
+}
+
+.model-animation-search span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .model-animation-controls button {
   width: 30px;
   height: 28px;

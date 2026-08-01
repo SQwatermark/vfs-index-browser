@@ -1229,6 +1229,18 @@ def configure_armature_viewport() -> int:
     return len(armatures)
 
 
+def configure_animation_timeline() -> int:
+    actions = list(bpy.data.actions)
+    if not actions:
+        return 0
+    frame_starts = [action.frame_range[0] for action in actions]
+    frame_ends = [action.frame_range[1] for action in actions]
+    bpy.context.scene.frame_start = math.floor(min(frame_starts))
+    bpy.context.scene.frame_end = math.ceil(max(frame_ends))
+    bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+    return len(actions)
+
+
 def configure_preview_scene(
     enable_outline: bool,
     lighting: CharacterLighting | None,
@@ -1339,6 +1351,7 @@ def main() -> None:
         configure_overlay_shadow_nodes(material) for material in bpy.data.materials
     )
     configured_armatures = configure_armature_viewport()
+    configured_actions = configure_animation_timeline()
     configure_preview_scene(
         args.outline,
         lighting,
@@ -1360,6 +1373,7 @@ def main() -> None:
         f"configured {configured_cloth} Character cloth materials; "
         f"configured {configured_overlays} overlay shadows; "
         f"configured {configured_armatures} hidden armatures; "
+        f"configured {configured_actions} animation actions; "
         f"lighting={'configured' if lighting is not None else 'fallback'}"
     )
 

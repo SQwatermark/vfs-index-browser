@@ -154,6 +154,12 @@ def validate_model_document(document: Mapping[str, Any]) -> list[dict[str, Any]]
                     _value_ref(accessor_id, "accessors", mesh, indexes, error)
             _optional_ref(primitive, "indicesAccessorId", "accessors", indexes, error, owner=mesh)
             _optional_ref(primitive, "materialId", "materials", indexes, error, owner=mesh)
+        for blend_shape in _object_list(mesh.get("blendShapes")):
+            for frame in _object_list(blend_shape.get("frames")):
+                attributes = frame.get("attributes")
+                if isinstance(attributes, Mapping):
+                    for accessor_id in attributes.values():
+                        _value_ref(accessor_id, "accessors", mesh, indexes, error)
 
     for skin in indexes["skins"].values():
         _optional_ref(skin, "skeletonId", "skeletons", indexes, error, optional=False)

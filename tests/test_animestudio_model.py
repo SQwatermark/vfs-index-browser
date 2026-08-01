@@ -379,6 +379,23 @@ class AnimeStudioModelTests(unittest.TestCase):
                     "m_Tangents": [1, 0, 0, 1] * 3,
                     "m_Indices": [0, 1, 2],
                     "m_SubMeshes": [{"indexCount": 3, "topology": "Triangles"}],
+                    "m_Shapes": {
+                        "vertices": [
+                            {
+                                "vertex": {"X": 0.1, "Y": 0.0, "Z": 0.0},
+                                "normal": {"X": 0.0, "Y": 0.1, "Z": 0.0},
+                                "tangent": {"X": 0.0, "Y": 0.0, "Z": 0.1},
+                                "index": 1,
+                            }
+                        ],
+                        "shapes": [
+                            {"firstVertex": 0, "vertexCount": 1}
+                        ],
+                        "channels": [
+                            {"name": "Blink", "frameIndex": 0, "frameCount": 1}
+                        ],
+                        "fullWeights": [100.0],
+                    },
                     "m_Skin": [],
                     "m_BindPose": [
                         {
@@ -502,6 +519,11 @@ class AnimeStudioModelTests(unittest.TestCase):
         self.assertFalse(document["materials"][0]["previewPbr"]["doubleSided"])
         self.assertEqual("/texture.png", document["images"][0]["uri"])
         self.assertEqual({"POSITION", "NORMAL", "TEXCOORD_0", "TANGENT"}, set(document["meshes"][0]["primitives"][0]["attributes"]))
+        self.assertEqual("Blink", document["meshes"][0]["blendShapes"][0]["name"])
+        self.assertEqual(
+            {"POSITION", "NORMAL", "TANGENT"},
+            set(document["meshes"][0]["blendShapes"][0]["frames"][0]["attributes"]),
+        )
         self.assertEqual([], validate_model_document(document))
 
 

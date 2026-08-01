@@ -83,6 +83,41 @@ class ManifestModelBlendTests(unittest.TestCase):
 
         self.assertEqual([(400, "resource is not a supported model entry")], errors)
 
+    def test_exports_selected_animation_as_a_separate_blend(self):
+        handler, model_root, _lods = self.make_handler(
+            "assets/beyond/dynamicassets/gameplay/npc/avatarmesh/actor/"
+            "data_npc_avatarmesh_qinjc.asset"
+        )
+        animation_root = model_root / "animations" / "99"
+        animation_root.mkdir(parents=True)
+        animated_glb = animation_root / "model.glb"
+        animated_glb.write_bytes(b"animated-glb")
+        animation_resolved = (
+            object(),
+            {"asset_index": 99, "path": "assets/animations/idle.anim"},
+            {},
+            self.root / "animation.chk",
+        )
+        handler.resolve_optional_animation_source = lambda _query: animation_resolved
+        handler.ensure_animated_model_glb = lambda _model, animation, *, lod: (
+            {"asset_index": 7, "path": "assets/model.prefab"},
+            animation[1],
+            model_root / "model-document.json",
+            animated_glb,
+        )
+        with (
+            patch.object(server, "BLENDER_EXE", self.blender),
+            patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
+            patch.object(server, "PROJECT_ROOT", self.root),
+            patch.object(server.subprocess, "run", side_effect=self.run_blender),
+        ):
+            handler.handle_manifest_asset_model_blend(
+                {"animationAssetIndex": ["99"], "lod": ["0"]}
+            )
+
+        self.assertEqual(b"BLENDER-v404", handler.wfile.getvalue())
+        self.assertTrue((animation_root / "model.blend").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -208,6 +208,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/id" },
         "name": { "type": "string" },
+        "extras": { "type": "object" },
         "bones": { "type": "array", "items": { "type": "object", "required": ["id", "name", "transform"], "properties": { "id": { "$ref": "#/$defs/id" }, "name": { "type": "string" }, "parentId": { "$ref": "#/$defs/id" }, "transform": { "$ref": "#/$defs/transform" }, "source": { "$ref": "#/$defs/source" }, "extras": { "type": "object" } }, "additionalProperties": false } }
       }
     },

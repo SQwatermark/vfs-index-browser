@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import struct
 from collections.abc import Callable, Mapping
 from io import BytesIO
@@ -35,7 +36,11 @@ def _is_preview_node(node: Mapping[str, Any]) -> bool:
     lod_level = node.get("extras", {}).get("lodLevel")
     if lod_level is not None:
         return lod_level == 0
-    return "shadowproxy" not in str(node.get("name", "")).casefold()
+    name = str(node.get("name", "")).casefold()
+    inferred_lod = re.search(r"(?:^|_)lod(\d+)(?:$|_)", name)
+    if inferred_lod is not None and int(inferred_lod.group(1)) != 0:
+        return False
+    return "shadowproxy" not in name
 
 
 def build_glb(
@@ -136,6 +141,14 @@ def build_glb(
         )
         if accessor_id
     }
+    selected_accessor_ids.update(
+        accessor_id
+        for mesh in selected_meshes
+        for blend_shape in mesh.get("blendShapes", [])
+        for frame in blend_shape.get("frames", [])[-1:]
+        for accessor_id in frame.get("attributes", {}).values()
+        if accessor_id
+    )
     selected_skins = [
         skin for skin in document.get("skins", []) if skin.get("id") in selected_skin_ids
     ]
@@ -342,6 +355,11 @@ def build_glb(
 
     mesh_indexes = {}
     for mesh in selected_meshes:
+        blend_shapes = [
+            (blend_shape, blend_shape.get("frames", [])[-1])
+            for blend_shape in mesh.get("blendShapes", [])
+            if blend_shape.get("frames")
+        ]
         primitives = []
         for primitive in mesh.get("primitives", []):
             value = {
@@ -357,9 +375,27 @@ def build_glb(
                 value["indices"] = accessor_indexes[primitive["indicesAccessorId"]]
             if primitive.get("materialId") in material_indexes:
                 value["material"] = material_indexes[primitive["materialId"]]
+            if blend_shapes:
+                value["targets"] = [
+                    {
+                        semantic: accessor_indexes[accessor_id]
+                        for semantic, accessor_id in frame.get("attributes", {}).items()
+                        if accessor_id in accessor_indexes
+                    }
+                    for _blend_shape, frame in blend_shapes
+                ]
             primitives.append(value)
         mesh_indexes[mesh["id"]] = len(gltf["meshes"])
-        gltf["meshes"].append({"name": mesh["name"], "primitives": primitives})
+        mesh_value = {"name": mesh["name"], "primitives": primitives}
+        if blend_shapes:
+            mesh_value["weights"] = [0.0] * len(blend_shapes)
+            mesh_value["extras"] = {
+                "targetNames": [blend_shape["name"] for blend_shape, _frame in blend_shapes],
+                "endfieldBlendShapeWeights": [
+                    frame.get("weight", 100.0) for _blend_shape, frame in blend_shapes
+                ],
+            }
+        gltf["meshes"].append(mesh_value)
 
     node_indexes = {node["id"]: index for index, node in enumerate(nodes)}
     for node in nodes:

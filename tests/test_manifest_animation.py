@@ -46,7 +46,7 @@ class ManifestAnimationExportTests(unittest.TestCase):
         export_root.mkdir(parents=True)
         payload = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "name": "Idle_Loop",
             "timelines": [],
             "curves": [],
@@ -83,6 +83,41 @@ class ManifestAnimationExportTests(unittest.TestCase):
             ["AnimeStudio.CLI.exe", "AnimeStudio.CLI.dll", "AnimeStudio.dll"],
             [Path(item["path"]).name for item in first[2]["source"]["toolArtifacts"]],
         )
+
+    def test_matches_standalone_animation_asset_by_file_stem(self):
+        self.asset["path"] = (
+            "assets/beyond/dynamicassets/gameplay/dialog/timeline/example/"
+            "dialog_character_01.anim"
+        )
+
+        def run_standalone(command, **_kwargs):
+            export_root = Path(command[2]) / "AnimationClip"
+            export_root.mkdir(parents=True)
+            payload = {
+                "format": "AnimeStudioAnimationClip",
+                "version": "1.1.0",
+                "name": "dialog_character_01",
+                "timelines": [],
+                "curves": [],
+            }
+            (export_root / "dialog_character_01.animation.json").write_text(
+                json.dumps(payload),
+                encoding="utf-8",
+            )
+            return SimpleNamespace(returncode=0, stdout="ok", stderr="")
+
+        with (
+            patch.object(server, "INTERNAL_CACHE_DIR", self.root / "cache"),
+            patch.object(server, "ANIMESTUDIO_CLI", self.cli),
+            patch.object(server.subprocess, "run", side_effect=run_standalone),
+        ):
+            clip, _, _ = self.handler.ensure_animation_clip_export(
+                self.record,
+                self.chunk,
+                self.asset,
+            )
+
+        self.assertEqual("dialog_character_01", clip["name"])
 
     def test_rejects_ambiguous_export(self):
         def run_ambiguous(command, **_kwargs):

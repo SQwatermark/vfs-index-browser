@@ -134,6 +134,8 @@ GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&lod=0
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456&animationAssetIndex=789
 GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationAssetIndex=789
+GET /api/manifest-asset/model-animations?manifestId=123&assetIndex=456&q=pelica
+GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
 
 AudioDialog API 默认读取 `data/audio-dialog-index.sqlite`。可通过
@@ -146,11 +148,25 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 服务按需导出紧凑动画数据，并将 Unity 路径哈希绑定到基础模型的稳定节点 ID。
 基础 GLB 不包含动画，切换动画时浏览器只获取独立动画 JSON，不会重复生成或下载模型。
 独立动画数据的格式由 `schemas/model-animation.schema.json` 固定。
+模型预览会从 manifest 搜索动画候选，并允许切换基础姿势、播放片段和导出当前动画。
+带动画的 Blender 文件是由基础模型与所选片段按需派生的独立缓存，不会改写基础模型缓存。
 直接预览链接使用：
 
 ```text
 /?modelManifestId=123&modelAssetIndex=456&animationAssetIndex=789
 ```
+
+浏览器会把当前视图、逻辑目录、文件分页和预览对象同步到地址栏。复制当前 URL
+即可恢复同一浏览位置；浏览器前进和后退也会重新加载对应状态。常用参数包括：
+
+- `scope`、`path`、`page`：当前数据视图、逻辑目录和分页。
+- `audioLanguage`：AudioDialog 视图使用的语言。
+- `fileId`：普通 VFS 文件。
+- `previewUrl`：AudioDialog、Wwise 等虚拟文件的站内预览地址。
+- `modelManifestId`、`modelAssetIndex`、`animationAssetIndex`：模型及当前动画。
+- `avatarPlanManifestId`、`avatarPlanAssetIndex`、`lod`：AvatarMesh 资源计划。
+
+`previewUrl` 只接受本站 `/api/` 路径，避免复制链接时引入外部预览目标。
 
 ## 研究工具
 

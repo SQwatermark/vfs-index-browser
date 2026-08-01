@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from animestudio_humanoid import annotate_humanoid_bones
 from model_assembly import create_prefab_assembly
 from model_document import add_diagnostic, create_model_document
 
@@ -609,6 +610,89 @@ def attach_mesh_geometry(
                     mesh_document_id, "JOINTS_0", joints, "u16", "vec4", vertex_count
                 )
 
+        blend_shapes = []
+        raw_blend_shapes = mesh.payload.get("m_Shapes")
+        if isinstance(raw_blend_shapes, Mapping):
+            shape_vertices = raw_blend_shapes.get("vertices")
+            shape_frames = raw_blend_shapes.get("shapes")
+            shape_channels = raw_blend_shapes.get("channels")
+            full_weights = raw_blend_shapes.get("fullWeights")
+            if all(isinstance(value, list) for value in (
+                shape_vertices, shape_frames, shape_channels, full_weights
+            )):
+                for channel_index, channel in enumerate(shape_channels):
+                    if not isinstance(channel, Mapping):
+                        continue
+                    frame_index = channel.get("frameIndex")
+                    frame_count = channel.get("frameCount")
+                    channel_name = channel.get("name")
+                    if (
+                        not isinstance(frame_index, int)
+                        or not isinstance(frame_count, int)
+                        or not isinstance(channel_name, str)
+                    ):
+                        continue
+                    frames = []
+                    for local_index in range(frame_count):
+                        source_index = frame_index + local_index
+                        if source_index >= len(shape_frames) or source_index >= len(full_weights):
+                            break
+                        frame = shape_frames[source_index]
+                        if not isinstance(frame, Mapping):
+                            break
+                        first_vertex = frame.get("firstVertex")
+                        shape_vertex_count = frame.get("vertexCount")
+                        if not isinstance(first_vertex, int) or not isinstance(shape_vertex_count, int):
+                            break
+                        records = shape_vertices[first_vertex:first_vertex + shape_vertex_count]
+                        deltas = {
+                            "POSITION": [0.0] * (vertex_count * 3),
+                            "NORMAL": [0.0] * (vertex_count * 3),
+                            "TANGENT": [0.0] * (vertex_count * 3),
+                        }
+                        valid = len(records) == shape_vertex_count
+                        for record in records:
+                            if not isinstance(record, Mapping):
+                                valid = False
+                                break
+                            vertex_index = record.get("index")
+                            if not isinstance(vertex_index, int) or not 0 <= vertex_index < vertex_count:
+                                valid = False
+                                break
+                            for source_field, semantic in (
+                                ("vertex", "POSITION"),
+                                ("normal", "NORMAL"),
+                                ("tangent", "TANGENT"),
+                            ):
+                                vector = _vector(record.get(source_field), ("x", "y", "z"))
+                                if vector is None:
+                                    valid = False
+                                    break
+                                offset = vertex_index * 3
+                                deltas[semantic][offset:offset + 3] = vector
+                            if not valid:
+                                break
+                        if not valid:
+                            break
+                        frames.append(
+                            {
+                                "weight": float(full_weights[source_index]),
+                                "attributes": {
+                                    semantic: add_accessor(
+                                        mesh_document_id,
+                                        f"BLEND_{channel_index}_{local_index}_{semantic}",
+                                        values,
+                                        "f32",
+                                        "vec3",
+                                        vertex_count,
+                                    )
+                                    for semantic, values in deltas.items()
+                                },
+                            }
+                        )
+                    if len(frames) == frame_count and frames:
+                        blend_shapes.append({"name": channel_name, "frames": frames})
+
         primitives = []
         index_cursor = 0
         for index, submesh in enumerate(submeshes):
@@ -631,14 +715,15 @@ def attach_mesh_geometry(
                 primitive["materialId"] = material_ids[index].document_id
             primitives.append(primitive)
 
-        document["meshes"].append(
-            {
-                "id": mesh_document_id,
-                "name": mesh.name,
-                "primitives": primitives,
-                "source": _source(mesh),
-            }
-        )
+        mesh_record = {
+            "id": mesh_document_id,
+            "name": mesh.name,
+            "primitives": primitives,
+            "source": _source(mesh),
+        }
+        if blend_shapes:
+            mesh_record["blendShapes"] = blend_shapes
+        document["meshes"].append(mesh_record)
         emitted_meshes.add(mesh_document_id)
         return mesh_document_id
 
@@ -783,6 +868,14 @@ def attach_mesh_geometry(
                 "name": f"{document['asset']['name']} Skeleton",
                 "bones": list(skeleton_bones.values()),
             }
+        )
+        annotate_humanoid_bones(
+            document,
+            (
+                obj.payload
+                for obj in objects.values()
+                if obj.type_name == "Avatar"
+            ),
         )
 
     if geometry:

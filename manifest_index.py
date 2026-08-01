@@ -88,6 +88,10 @@ def _normal_path(raw: str) -> str:
     return "/".join(parts)
 
 
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class ManifestIndex:
     """Persistent, read-optimized view of one decompressed HGM manifest."""
 
@@ -276,6 +280,74 @@ class ManifestIndex:
                 ORDER BY a.asset_index
             """, (path,)).fetchall()
         return [dict(row) for row in rows]
+
+    def assets_by_name(self, name: str) -> list[dict]:
+        """Return assets with one exact filename, ignoring manifest path casing."""
+
+        if not name or "/" in name or "\\" in name:
+            raise ValueError(f"invalid asset name: {name!r}")
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT a.asset_index AS assetIndex, a.path, a.parent, a.name,
+                       a.bundle_index AS bundleIndex, b.name AS bundleName,
+                       a.size, a.path_hash AS pathHash
+                FROM assets a
+                JOIN bundles b ON b.bundle_index = a.bundle_index
+                WHERE a.name = ? COLLATE NOCASE
+                ORDER BY a.asset_index
+            """, (name,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def search_animation_assets(
+        self,
+        query: str,
+        *,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> dict:
+        query = query.strip()
+        if page < 1 or page_size not in range(1, 201):
+            raise ValueError("invalid animation search page")
+        if not query:
+            return {
+                "query": "",
+                "files": [],
+                "page": page,
+                "pageSize": page_size,
+                "pages": 1,
+                "total": 0,
+            }
+        pattern = f"%{_escape_like(query)}%"
+        animation_filter = """
+            (lower(a.path) LIKE '%.anim'
+             OR (lower(a.path) LIKE '%/animations/%' AND lower(a.path) LIKE '%.fbx##%'))
+        """
+        with self._connect() as conn:
+            total = conn.execute(
+                f"SELECT COUNT(*) FROM assets a WHERE {animation_filter} "
+                "AND a.path LIKE ? ESCAPE '\\' COLLATE NOCASE",
+                (pattern,),
+            ).fetchone()[0]
+            rows = conn.execute(
+                f"""
+                SELECT a.asset_index AS assetIndex, a.path, a.name, a.size,
+                       a.bundle_index AS bundleIndex, b.name AS bundleName
+                FROM assets a JOIN bundles b ON b.bundle_index = a.bundle_index
+                WHERE {animation_filter}
+                  AND a.path LIKE ? ESCAPE '\\' COLLATE NOCASE
+                ORDER BY a.path COLLATE NOCASE, a.asset_index
+                LIMIT ? OFFSET ?
+                """,
+                (pattern, page_size, (page - 1) * page_size),
+            ).fetchall()
+        return {
+            "query": query,
+            "files": [dict(row) for row in rows],
+            "page": page,
+            "pageSize": page_size,
+            "pages": max((total + page_size - 1) // page_size, 1),
+            "total": total,
+        }
 
     def bundle_dependencies(self, bundle_index: int, *, transitive: bool = True) -> list[dict]:
         """Return direct dependencies or their deterministic transitive closure."""

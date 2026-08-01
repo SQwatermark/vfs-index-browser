@@ -8,6 +8,17 @@ const PAGE_SIZE = 100
 const MANIFEST_VIRTUAL_DIR = '__manifest_assets__'
 const AUDIO_DIALOG_SCOPE = 'audioDialog'
 const WWISE_SCOPE = 'wwise'
+const ROUTE_SELECTION_PARAMS = [
+  'fileId',
+  'previewUrl',
+  'selectionKey',
+  'modelManifestId',
+  'modelAssetIndex',
+  'animationAssetIndex',
+  'avatarPlanManifestId',
+  'avatarPlanAssetIndex',
+  'lod',
+]
 
 const state = {
   scope: 'effective',
@@ -17,6 +28,8 @@ const state = {
   audioLanguage: 'chinese',
   selectedFileId: null,
   selectedFileKey: null,
+  routeSelection: null,
+  availableScopes: new Set(),
   disposeModelViewer: null,
 }
 
@@ -30,6 +43,83 @@ const scopeNames = {
 }
 
 const $ = (id) => document.getElementById(id)
+
+function normalizeDirectoryPath(value) {
+  return String(value || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+}
+
+function normalizePreviewUrl(value) {
+  if (!value) return null
+  const url = new URL(value, window.location.origin)
+  if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')) return null
+  return `${url.pathname}${url.search}`
+}
+
+function parsePositiveInteger(value, fallback = 1) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function clearRouteSelectionParams(params) {
+  ROUTE_SELECTION_PARAMS.forEach((key) => params.delete(key))
+}
+
+function writeRoute({ replace = false } = {}) {
+  const url = new URL(window.location.href)
+  url.searchParams.set('scope', state.scope)
+  if (state.path) url.searchParams.set('path', state.path)
+  else url.searchParams.delete('path')
+  if (state.page > 1) url.searchParams.set('page', String(state.page))
+  else url.searchParams.delete('page')
+  if (state.scope === AUDIO_DIALOG_SCOPE) {
+    url.searchParams.set('audioLanguage', state.audioLanguage)
+  } else {
+    url.searchParams.delete('audioLanguage')
+  }
+
+  clearRouteSelectionParams(url.searchParams)
+  const selection = state.routeSelection
+  if (selection) {
+    if (
+      selection.fileKey
+      && (selection.kind === 'model' || selection.kind === 'avatarPlan')
+    ) {
+      url.searchParams.set('selectionKey', selection.fileKey)
+    }
+    if (selection.kind === 'file') {
+      url.searchParams.set('fileId', String(selection.fileId))
+    } else if (selection.kind === 'virtual') {
+      url.searchParams.set('previewUrl', selection.previewUrl)
+    } else if (selection.kind === 'model') {
+      url.searchParams.set('modelManifestId', selection.manifestId)
+      url.searchParams.set('modelAssetIndex', selection.assetIndex)
+      if (selection.lod != null) url.searchParams.set('lod', selection.lod)
+      if (selection.animationAssetIndex != null) {
+        url.searchParams.set('animationAssetIndex', String(selection.animationAssetIndex))
+      }
+    } else if (selection.kind === 'avatarPlan') {
+      url.searchParams.set('avatarPlanManifestId', selection.manifestId)
+      url.searchParams.set('avatarPlanAssetIndex', selection.assetIndex)
+      url.searchParams.set('lod', selection.lod)
+    }
+  }
+
+  const method = replace ? 'replaceState' : 'pushState'
+  window.history[method](null, '', url)
+}
+
+async function navigateDirectory({ scope, path, page, audioLanguage } = {}) {
+  if (scope != null) state.scope = scope
+  if (path != null) state.path = normalizeDirectoryPath(path)
+  if (page != null) state.page = page
+  if (audioLanguage != null) state.audioLanguage = audioLanguage
+  $('scopeSelect').value = state.scope
+  $('audioLanguageSelect').value = state.audioLanguage
+  syncScopeControls()
+  clearPreviewSelection()
+  writeRoute()
+  await loadDirectory()
+}
 
 function formatBytes(value) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -119,13 +209,7 @@ function renderSummary(scopes) {
     .join('')
   document.querySelectorAll('.summary-card').forEach((card) => {
     card.addEventListener('click', () => {
-      state.scope = card.dataset.scope
-      state.path = ''
-      state.page = 1
-      $('scopeSelect').value = state.scope
-      syncScopeControls()
-      clearPreviewSelection()
-      loadDirectory()
+      navigateDirectory({ scope: card.dataset.scope, path: '', page: 1 })
     })
   })
 }
@@ -149,9 +233,7 @@ function renderBreadcrumbs() {
     .join('')
   document.querySelectorAll('.crumb').forEach((button) => {
     button.addEventListener('click', () => {
-      state.path = button.dataset.path
-      state.page = 1
-      loadDirectory()
+      navigateDirectory({ path: button.dataset.path, page: 1 })
     })
   })
 }
@@ -206,9 +288,7 @@ function renderDirs(dirs) {
     : '<div class="empty">没有子目录</div>'
   document.querySelectorAll('.dir-card').forEach((card) => {
     card.addEventListener('click', () => {
-      state.path = card.dataset.path
-      state.page = 1
-      loadDirectory()
+      navigateDirectory({ path: card.dataset.path, page: 1 })
     })
   })
 }
@@ -411,6 +491,7 @@ function resetPreviewActions() {
 function clearPreviewSelection() {
   state.selectedFileId = null
   state.selectedFileKey = null
+  state.routeSelection = null
   disposeModelViewer()
   resetPreviewActions()
   $('previewContent').innerHTML = '<div class="empty">点击文件列表中的文件进行预览</div>'
@@ -496,10 +577,27 @@ function renderModelPreview(data) {
       <span>${formatInt(modelDocument.images?.length)} 纹理</span>
       ${data.animationAsset ? `<span>${escapeHtml(data.animationAsset.path)} 动画</span>` : ''}
     </div>
-    ${data.blendUrl ? `
+    ${data.baseBlendUrl || data.blendUrl ? `
       <div class="preview-actions model-export-actions">
-        <a class="link-button" href="${escapeHtml(data.blendUrl)}" title="首次导出需要等待 Blender 后台生成">下载 Blender</a>
+        <a class="link-button" href="${escapeHtml(data.baseBlendUrl || data.blendUrl)}" title="首次导出需要等待 Blender 后台生成">导出基础模型</a>
+        <a id="modelAnimationBlendLink" class="link-button" href="${escapeHtml(data.animationAsset ? data.blendUrl : '')}" ${data.animationAsset ? '' : 'hidden'} title="将当前动画保存为 Blender Action">导出当前动画</a>
       </div>
+    ` : ''}
+    ${data.animationCandidatesUrl ? `
+      <form id="modelAnimationSearch" class="model-animation-search">
+        <input id="modelAnimationQuery" type="search" placeholder="搜索动画名称或路径" autocomplete="off" />
+        <button type="submit">搜索</button>
+        <span id="modelAnimationSearchStatus">正在查找动画...</span>
+        <select id="modelAnimationCandidates" size="5" aria-label="动画候选" disabled>
+          <option value="">基础姿势</option>
+        </select>
+        <input id="modelAnimationSelectedName" class="model-animation-selected-name" type="text" readonly aria-label="当前动画名称" placeholder="选择动画后可复制名称" />
+        <div class="model-animation-pager">
+          <button id="modelAnimationPreviousPage" type="button" disabled>上一页</button>
+          <span id="modelAnimationPageStatus">1 / 1</span>
+          <button id="modelAnimationNextPage" type="button" disabled>下一页</button>
+        </div>
+      </form>
     ` : ''}
     <div id="modelViewport" class="model-viewport">
       <label class="model-view-option">
@@ -538,14 +636,99 @@ function renderModelPreview(data) {
 
   let model = null
   let mixers = []
+  let animationRoots = []
+  let baseTransforms = []
   let animationDuration = 0
   let isAnimationPlaying = true
   let active = true
+  let modelReady = false
+  let animationCandidates = []
+  let animationRequestId = 0
+  let animationCandidateRequestId = 0
+  let animationCandidateQuery = null
+  let animationCandidatePage = 1
+  let animationCandidatePages = 1
   const clock = new THREE.Clock()
   const renderAnimationTime = (time) => {
     animationTimeInput.value = String(time)
     animationTimeLabel.value = `${formatAnimationTime(time)} / ${formatAnimationTime(animationDuration)}`
   }
+  const restoreBasePose = () => {
+    baseTransforms.forEach((transforms) => {
+      transforms.forEach(({ object, position, quaternion, scale }) => {
+        object.position.copy(position)
+        object.quaternion.copy(quaternion)
+        object.scale.copy(scale)
+      })
+    })
+    animationRoots.forEach((root) => root.updateMatrixWorld(true))
+  }
+  const stopAnimation = () => {
+    animationRequestId += 1
+    for (const mixer of mixers) mixer.stopAllAction()
+    mixers = []
+    animationDuration = 0
+    restoreBasePose()
+    const animationControls = $('modelAnimationControls')
+    if (animationControls) animationControls.hidden = true
+    const exportLink = $('modelAnimationBlendLink')
+    if (exportLink) exportLink.hidden = true
+    renderAnimationTime(0)
+  }
+  const setAnimationTime = (time) => {
+    for (const mixer of mixers) mixer.setTime(time)
+    renderAnimationTime(time)
+  }
+  const loadModelAnimation = async ({ previewUrl, blendUrl, assetIndex } = {}) => {
+    if (!previewUrl || !animationRoots.length) {
+      stopAnimation()
+      return
+    }
+    const status = $('modelAnimationSearchStatus')
+    if (status) status.textContent = '正在解析动画...'
+    stopAnimation()
+    const requestId = animationRequestId
+    const animation = await getJson(previewUrl)
+    if (!active || requestId !== animationRequestId) return
+    const clips = animationRoots.map((root) => createModelAnimationClip(animation, root))
+    mixers = animationRoots.map((root, index) => {
+      const mixer = new THREE.AnimationMixer(root)
+      mixer.clipAction(clips[index]).play()
+      return mixer
+    })
+    animationDuration = Number(animation.duration) || clips[0].duration
+    animationTimeInput.max = String(animationDuration)
+    $('modelAnimationName').textContent = animation.name || 'AnimationClip'
+    $('modelAnimationControls').hidden = false
+    isAnimationPlaying = true
+    $('modelAnimationToggle').textContent = '❚❚'
+    $('modelAnimationToggle').title = '暂停动画'
+    const exportLink = $('modelAnimationBlendLink')
+    if (exportLink && blendUrl) {
+      exportLink.href = blendUrl
+      exportLink.hidden = false
+    }
+    const unresolved = (animation.diagnostics || []).filter((item) => (
+      item.code === 'ANIMATION_PATHS_UNRESOLVED' || item.code === 'ANIMATION_PATHS_AMBIGUOUS'
+    )).length
+    if (status) {
+      status.textContent = `${animation.tracks.length} 条轨道${unresolved ? `，${unresolved} 项绑定诊断` : ''}`
+    }
+    if (state.routeSelection?.kind === 'model') {
+      state.routeSelection.animationAssetIndex = assetIndex == null ? null : String(assetIndex)
+      writeRoute({ replace: true })
+    }
+    renderAnimationTime(0)
+  }
+
+  $('modelAnimationToggle').addEventListener('click', () => {
+    isAnimationPlaying = !isAnimationPlaying
+    $('modelAnimationToggle').textContent = isAnimationPlaying ? '❚❚' : '▶'
+    $('modelAnimationToggle').title = isAnimationPlaying ? '暂停动画' : '播放动画'
+  })
+  animationTimeInput.addEventListener('input', (event) => {
+    setAnimationTime(Number(event.currentTarget.value))
+  })
   const resize = () => {
     const width = Math.max(viewport.clientWidth, 1)
     const height = Math.max(viewport.clientHeight, 1)
@@ -556,6 +739,123 @@ function renderModelPreview(data) {
   const observer = new ResizeObserver(resize)
   observer.observe(viewport)
   resize()
+
+  const animationSearch = $('modelAnimationSearch')
+  const animationQuery = $('modelAnimationQuery')
+  const animationSelect = $('modelAnimationCandidates')
+  const animationSelectedName = $('modelAnimationSelectedName')
+  const animationPreviousPage = $('modelAnimationPreviousPage')
+  const animationNextPage = $('modelAnimationNextPage')
+  const animationPageStatus = $('modelAnimationPageStatus')
+  const animationCandidateName = (candidate) => (
+    candidate?.path?.split('##').pop() || candidate?.name || ''
+  )
+  if (animationSelectedName && data.animationAsset) {
+    animationSelectedName.value = animationCandidateName(data.animationAsset)
+    animationSelectedName.title = data.animationAsset.path || ''
+  }
+  const syncAnimationPager = (loading = false) => {
+    animationPreviousPage.disabled = loading || animationCandidatePage <= 1
+    animationNextPage.disabled = loading || animationCandidatePage >= animationCandidatePages
+    animationPageStatus.textContent = `${animationCandidatePage} / ${animationCandidatePages}`
+  }
+  const loadAnimationCandidates = async (query = null, page = 1) => {
+    if (!data.animationCandidatesUrl || !animationSelect) return
+    const requestId = ++animationCandidateRequestId
+    const status = $('modelAnimationSearchStatus')
+    status.textContent = '正在查找动画...'
+    animationSelect.disabled = true
+    syncAnimationPager(true)
+    const url = new URL(data.animationCandidatesUrl, window.location.origin)
+    if (query != null) url.searchParams.set('q', query)
+    url.searchParams.set('page', String(page))
+    const result = await getJson(url.toString())
+    if (!active || requestId !== animationCandidateRequestId) return
+    animationCandidateQuery = result.query || ''
+    animationCandidatePage = result.page || 1
+    animationCandidatePages = result.pages || 1
+    if (query == null) animationQuery.value = result.defaultQuery || animationCandidateQuery
+    animationCandidates = result.files || []
+    animationSelect.replaceChildren(new Option('基础姿势', ''))
+    animationCandidates.forEach((candidate) => {
+      const label = animationCandidateName(candidate)
+      const option = new Option(label, String(candidate.assetIndex))
+      option.title = candidate.path
+      animationSelect.add(option)
+    })
+    if (data.animationAsset) {
+      animationSelect.value = String(data.animationAsset.asset_index)
+    }
+    const selectedCandidate = animationCandidates.find((candidate) => (
+      String(candidate.assetIndex) === animationSelect.value
+    ))
+    if (selectedCandidate) {
+      animationSelectedName.value = animationCandidateName(selectedCandidate)
+      animationSelectedName.title = selectedCandidate.path || ''
+    }
+    animationSelect.disabled = !modelReady
+    syncAnimationPager()
+    status.textContent = animationCandidates.length
+      ? `${result.total} 个候选，当前页 ${animationCandidates.length} 个`
+      : '没有找到动画候选'
+  }
+  if (animationSearch) {
+    animationSearch.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      try {
+        await loadAnimationCandidates(animationQuery.value, 1)
+      } catch (error) {
+        $('modelAnimationSearchStatus').textContent = `动画搜索失败：${error.message || error}`
+        syncAnimationPager()
+      }
+    })
+    animationPreviousPage.addEventListener('click', async () => {
+      try {
+        await loadAnimationCandidates(animationCandidateQuery, animationCandidatePage - 1)
+      } catch (error) {
+        $('modelAnimationSearchStatus').textContent = `动画搜索失败：${error.message || error}`
+        syncAnimationPager()
+      }
+    })
+    animationNextPage.addEventListener('click', async () => {
+      try {
+        await loadAnimationCandidates(animationCandidateQuery, animationCandidatePage + 1)
+      } catch (error) {
+        $('modelAnimationSearchStatus').textContent = `动画搜索失败：${error.message || error}`
+        syncAnimationPager()
+      }
+    })
+    animationSelect.addEventListener('change', async (event) => {
+      const selectedValue = event.currentTarget.value
+      const selectedCandidate = animationCandidates.find((item) => (
+        String(item.assetIndex) === selectedValue
+      ))
+      animationSelectedName.value = animationCandidateName(selectedCandidate)
+      animationSelectedName.title = selectedCandidate?.path || ''
+      if (!selectedValue) {
+        stopAnimation()
+        $('modelAnimationSearchStatus').textContent = '基础姿势'
+        if (state.routeSelection?.kind === 'model') {
+          state.routeSelection.animationAssetIndex = null
+          writeRoute({ replace: true })
+        }
+        return
+      }
+      const candidate = selectedCandidate
+      if (!candidate) return
+      try {
+        await loadModelAnimation(candidate)
+      } catch (error) {
+        console.error('模型动画加载失败', error)
+        $('modelAnimationSearchStatus').textContent = `动画加载失败：${error.message || error}`
+      }
+    })
+    animationSelectedName.addEventListener('focus', (event) => event.currentTarget.select())
+    loadAnimationCandidates().catch((error) => {
+      $('modelAnimationSearchStatus').textContent = `动画搜索失败：${error.message || error}`
+      syncAnimationPager()
+    })
+  }
 
   new GLTFLoader().load(
     glbUrl,
@@ -570,6 +870,21 @@ function renderModelPreview(data) {
       const outline = createOutlineModel(gltf.scene)
       outline.visible = false
       model.add(outline)
+      animationRoots = [gltf.scene, outline]
+      baseTransforms = animationRoots.map((root) => {
+        const transforms = []
+        root.traverse((object) => {
+          transforms.push({
+            object,
+            position: object.position.clone(),
+            quaternion: object.quaternion.clone(),
+            scale: object.scale.clone(),
+          })
+        })
+        return transforms
+      })
+      modelReady = true
+      if (animationSelect) animationSelect.disabled = false
       $('modelOutlineToggle').addEventListener('change', (event) => {
         outline.visible = event.currentTarget.checked
       })
@@ -594,47 +909,20 @@ function renderModelPreview(data) {
       controls.target.set(0, 0, 0)
       controls.update()
       if (data.animationUrl) {
-        loading.textContent = '正在加载动画...'
-      } else {
-        loading.remove()
-      }
-
-      if (data.animationUrl) {
         try {
-          const animation = await getJson(data.animationUrl)
-          if (!active) return
-          const roots = [gltf.scene, outline]
-          const clips = roots.map((root) => createModelAnimationClip(animation, root))
-          mixers = roots.map((root, index) => {
-            const mixer = new THREE.AnimationMixer(root)
-            mixer.clipAction(clips[index]).play()
-            return mixer
+          loading.textContent = '正在加载动画...'
+          await loadModelAnimation({
+            previewUrl: data.animationUrl,
+            blendUrl: data.blendUrl,
+            assetIndex: data.animationAsset?.asset_index,
           })
-          const animationControls = $('modelAnimationControls')
-          const animationToggle = $('modelAnimationToggle')
-          animationControls.hidden = false
-          $('modelAnimationName').textContent = animation.name || 'AnimationClip'
-          animationDuration = Number(animation.duration) || clips[0].duration
-          animationTimeInput.max = String(animationDuration)
-
-          const setAnimationTime = (time) => {
-            for (const mixer of mixers) mixer.setTime(time)
-            renderAnimationTime(time)
-          }
-          animationToggle.addEventListener('click', () => {
-            isAnimationPlaying = !isAnimationPlaying
-            animationToggle.textContent = isAnimationPlaying ? '❚❚' : '▶'
-            animationToggle.title = isAnimationPlaying ? '暂停动画' : '播放动画'
-          })
-          animationTimeInput.addEventListener('input', (event) => {
-            setAnimationTime(Number(event.currentTarget.value))
-          })
-          renderAnimationTime(0)
           loading.remove()
         } catch (error) {
           console.error('模型动画加载失败', error)
           loading.textContent = `动画加载失败：${error.message || error}`
         }
+      } else {
+        loading.remove()
       }
     },
     (event) => {
@@ -1241,9 +1529,11 @@ function renderInternalPreview(data) {
   target.innerHTML = `${heading}<div class="empty">暂不支持预览该内部文件。</div>`
 }
 
-async function selectFile(fileId) {
+async function selectFile(fileId, { updateRoute = true } = {}) {
   state.selectedFileId = fileId
   state.selectedFileKey = `id:${fileId}`
+  state.routeSelection = { kind: 'file', fileId, fileKey: state.selectedFileKey }
+  if (updateRoute) writeRoute()
   document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
     row.classList.toggle('selected', row.dataset.fileKey === state.selectedFileKey)
   })
@@ -1252,45 +1542,78 @@ async function selectFile(fileId) {
   renderPreview(data)
 }
 
-async function selectVirtualFile(previewUrl, fileKey) {
+async function selectVirtualFile(previewUrl, fileKey, { updateRoute = true } = {}) {
+  const normalizedUrl = normalizePreviewUrl(previewUrl)
+  if (!normalizedUrl) throw new Error('Invalid preview URL')
   state.selectedFileId = null
   state.selectedFileKey = fileKey
+  state.routeSelection = { kind: 'virtual', previewUrl: normalizedUrl, fileKey }
+  if (updateRoute) writeRoute()
   document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
     row.classList.toggle('selected', row.dataset.fileKey === fileKey)
   })
   renderPreviewLoading()
   try {
-    const data = await getJson(previewUrl)
+    const data = await getJson(normalizedUrl)
     renderPreview(data)
   } catch (error) {
     $('previewContent').innerHTML = `<div class="notice">资源读取失败：${escapeHtml(error.message)}</div>`
   }
 }
 
-async function selectModel(modelUrl, fileKey) {
+async function selectModel(modelUrl, fileKey, { updateRoute = true } = {}) {
+  const normalizedUrl = normalizePreviewUrl(modelUrl)
+  if (!normalizedUrl) throw new Error('Invalid model URL')
+  const params = new URL(normalizedUrl, window.location.origin).searchParams
+  const manifestId = params.get('manifestId')
+  const assetIndex = params.get('assetIndex')
+  if (!manifestId || !assetIndex) throw new Error('Model URL is missing its asset identity')
   state.selectedFileId = null
   state.selectedFileKey = fileKey
+  state.routeSelection = {
+    kind: 'model',
+    manifestId,
+    assetIndex,
+    lod: params.get('lod'),
+    animationAssetIndex: params.get('animationAssetIndex'),
+    fileKey,
+  }
+  if (updateRoute) writeRoute()
   document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
     row.classList.toggle('selected', row.dataset.fileKey === fileKey)
   })
   renderPreviewLoading()
   try {
-    renderModelPreview(await getJson(modelUrl))
+    renderModelPreview(await getJson(normalizedUrl))
   } catch (error) {
     $('previewContent').innerHTML = `<div class="notice">模型读取失败：${escapeHtml(error.message)}</div>`
   }
 }
 
-async function selectAvatarPlan(planUrl, fileKey) {
+async function selectAvatarPlan(planUrl, fileKey, { updateRoute = true } = {}) {
+  const normalizedUrl = normalizePreviewUrl(planUrl)
+  if (!normalizedUrl) throw new Error('Invalid avatar plan URL')
+  const params = new URL(normalizedUrl, window.location.origin).searchParams
+  const manifestId = params.get('manifestId')
+  const assetIndex = params.get('assetIndex')
+  if (!manifestId || !assetIndex) throw new Error('Avatar plan URL is missing its asset identity')
   state.selectedFileId = null
   state.selectedFileKey = fileKey
+  state.routeSelection = {
+    kind: 'avatarPlan',
+    manifestId,
+    assetIndex,
+    lod: params.get('lod') || '0',
+    fileKey,
+  }
+  if (updateRoute) writeRoute()
   document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
     row.classList.toggle('selected', row.dataset.fileKey === fileKey)
   })
   renderPreviewLoading()
   try {
-    const data = await getJson(planUrl)
-    renderAvatarPlan({ ...data, planUrl })
+    const data = await getJson(normalizedUrl)
+    renderAvatarPlan({ ...data, planUrl: normalizedUrl })
   } catch (error) {
     $('previewContent').innerHTML = `<div class="notice">资源计划读取失败：${escapeHtml(error.message)}</div>`
   }
@@ -1308,41 +1631,26 @@ async function search() {
 
 function bindEvents() {
   $('scopeSelect').addEventListener('change', (event) => {
-    state.scope = event.target.value
-    state.path = ''
-    state.page = 1
-    syncScopeControls()
-    clearPreviewSelection()
-    loadDirectory()
+    navigateDirectory({ scope: event.target.value, path: '', page: 1 })
   })
   $('audioLanguageSelect').addEventListener('change', (event) => {
-    state.audioLanguage = event.target.value
-    state.path = ''
-    state.page = 1
-    clearPreviewSelection()
-    loadDirectory()
+    navigateDirectory({ audioLanguage: event.target.value, path: '', page: 1 })
   })
   $('rootButton').addEventListener('click', () => {
-    state.path = ''
-    state.page = 1
-    loadDirectory()
+    navigateDirectory({ path: '', page: 1 })
   })
   $('upButton').addEventListener('click', () => {
     const parts = state.path.split('/').filter(Boolean)
     parts.pop()
-    state.path = parts.join('/')
-    state.page = 1
-    loadDirectory()
+    navigateDirectory({ path: parts.join('/'), page: 1 })
   })
   $('prevPage').addEventListener('click', () => {
     if (state.page <= 1) return
-    state.page -= 1
-    loadDirectory()
+    navigateDirectory({ page: state.page - 1 })
   })
   $('nextPage').addEventListener('click', () => {
     if (state.page >= state.pageInfo.pages) return
-    state.page += 1
-    loadDirectory()
+    navigateDirectory({ page: state.page + 1 })
   })
   $('searchButton').addEventListener('click', search)
   $('searchInput').addEventListener('keydown', (event) => {
@@ -1356,46 +1664,89 @@ function syncScopeControls() {
   $('searchField').classList.toggle('hidden', isAudioDialog || state.scope === WWISE_SCOPE)
 }
 
-async function init() {
-  bindEvents()
-  const manifest = await getJson('/api/manifest')
+async function restoreRoute() {
   const query = new URLSearchParams(window.location.search)
   const requestedScope = query.get('scope')
-  const availableScopes = new Set([
-    ...manifest.scopes.map((item) => item.scope),
-    AUDIO_DIALOG_SCOPE,
-    WWISE_SCOPE,
-  ])
-  if (requestedScope && availableScopes.has(requestedScope)) {
-    state.scope = requestedScope
-    state.path = (query.get('path') || '').replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
-  }
-  renderScopes(manifest.scopes)
-  renderSummary(manifest.scopes)
+  state.scope = requestedScope && state.availableScopes.has(requestedScope)
+    ? requestedScope
+    : 'effective'
+  state.path = normalizeDirectoryPath(query.get('path'))
+  state.page = parsePositiveInteger(query.get('page'))
+
+  const requestedLanguage = query.get('audioLanguage')
+  const availableLanguages = new Set(
+    Array.from($('audioLanguageSelect').options, (option) => option.value),
+  )
+  state.audioLanguage = requestedLanguage && availableLanguages.has(requestedLanguage)
+    ? requestedLanguage
+    : 'chinese'
+
+  $('scopeSelect').value = state.scope
+  $('audioLanguageSelect').value = state.audioLanguage
   syncScopeControls()
+  clearPreviewSelection()
   await loadDirectory()
-  const manifestId = query.get('modelManifestId')
-  const assetIndex = query.get('modelAssetIndex')
-  const animationAssetIndex = query.get('animationAssetIndex')
+
+  const selectionKey = query.get('selectionKey')
   const avatarPlanManifestId = query.get('avatarPlanManifestId')
   const avatarPlanAssetIndex = query.get('avatarPlanAssetIndex')
+  const modelManifestId = query.get('modelManifestId')
+  const modelAssetIndex = query.get('modelAssetIndex')
+  const animationAssetIndex = query.get('animationAssetIndex')
+  const fileId = Number.parseInt(query.get('fileId'), 10)
+  const previewUrl = normalizePreviewUrl(query.get('previewUrl'))
+
   if (avatarPlanManifestId && avatarPlanAssetIndex) {
     const params = new URLSearchParams({
       manifestId: avatarPlanManifestId,
       assetIndex: avatarPlanAssetIndex,
       lod: query.get('lod') || '0',
     })
-    const planUrl = `/api/manifest-asset/avatar-plan?${params}`
     await selectAvatarPlan(
-      planUrl,
-      `avatar-plan:${avatarPlanManifestId}:${avatarPlanAssetIndex}`,
+      `/api/manifest-asset/avatar-plan?${params}`,
+      selectionKey || `avatar-plan:${avatarPlanManifestId}:${avatarPlanAssetIndex}`,
+      { updateRoute: false },
     )
-  } else if (manifestId && assetIndex) {
-    const params = new URLSearchParams({ manifestId, assetIndex })
+  } else if (modelManifestId && modelAssetIndex) {
+    const params = new URLSearchParams({
+      manifestId: modelManifestId,
+      assetIndex: modelAssetIndex,
+    })
+    if (query.has('lod')) params.set('lod', query.get('lod'))
     if (animationAssetIndex) params.set('animationAssetIndex', animationAssetIndex)
-    const modelUrl = `/api/manifest-asset/model?${params}`
-    await selectModel(modelUrl, `model:${manifestId}:${assetIndex}`)
+    await selectModel(
+      `/api/manifest-asset/model?${params}`,
+      selectionKey || `model:${modelManifestId}:${modelAssetIndex}`,
+      { updateRoute: false },
+    )
+  } else if (Number.isInteger(fileId) && fileId > 0) {
+    await selectFile(fileId, { updateRoute: false })
+  } else if (previewUrl) {
+    await selectVirtualFile(
+      previewUrl,
+      selectionKey || `virtual:${previewUrl}`,
+      { updateRoute: false },
+    )
   }
+}
+
+async function init() {
+  bindEvents()
+  const manifest = await getJson('/api/manifest')
+  state.availableScopes = new Set([
+    ...manifest.scopes.map((item) => item.scope),
+    AUDIO_DIALOG_SCOPE,
+    WWISE_SCOPE,
+  ])
+  renderScopes(manifest.scopes)
+  renderSummary(manifest.scopes)
+  await restoreRoute()
+  writeRoute({ replace: true })
+  window.addEventListener('popstate', () => {
+    restoreRoute().catch((error) => {
+      $('previewContent').innerHTML = `<div class="notice">URL 鐘舵€佹仮澶嶅け璐ワ細${escapeHtml(error.message)}</div>`
+    })
+  })
 }
 
 init().catch((error) => {

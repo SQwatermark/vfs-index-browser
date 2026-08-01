@@ -28,12 +28,31 @@ export function createModelAnimationClip(animation, root) {
     targets.set(nodeId, object)
   })
 
-  const tracks = animation.tracks.map((track) => {
+  const tracks = animation.tracks.flatMap((track) => {
     const target = targets.get(track.targetId)
     if (!target) {
       throw new Error(`动画目标节点不存在：${track.targetId}`)
     }
     const times = animation.timelines[track.timeline]
+    if (track.property === 'blendShapeWeight') {
+      const shapeTargets = []
+      target.traverse((object) => {
+        const shapeIndex = object.morphTargetDictionary?.[track.propertyName]
+        if (Number.isInteger(shapeIndex)) {
+          shapeTargets.push({ object, shapeIndex })
+        }
+      })
+      if (!Array.isArray(times) || !shapeTargets.length || !Array.isArray(track.values)) {
+        throw new Error(`动画目标缺少 BlendShape：${track.propertyName || track.targetId}`)
+      }
+      return shapeTargets.map(({ object, shapeIndex }) => (
+        new THREE.NumberKeyframeTrack(
+          `${object.uuid}.morphTargetInfluences[${shapeIndex}]`,
+          times,
+          track.values.flat(),
+        )
+      ))
+    }
     const propertyName = propertyNames[track.property]
     if (!Array.isArray(times) || !propertyName || !Array.isArray(track.values)) {
       throw new Error(`动画轨道格式无效：${track.targetId}`)

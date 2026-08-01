@@ -9,6 +9,82 @@ from gltf_export import build_glb
 
 
 class GltfExportTests(unittest.TestCase):
+    def test_exports_mesh_blend_shapes_as_gltf_morph_targets(self):
+        document = {
+            "asset": {"rootNodeIds": ["node:face"]},
+            "bufferViews": [
+                {
+                    "id": f"view:{name}",
+                    "bufferId": "buffer",
+                    "byteOffset": index * 12,
+                    "byteLength": 12,
+                }
+                for index, name in enumerate(("position", "delta-position", "delta-normal", "delta-tangent"))
+            ],
+            "accessors": [
+                {
+                    "id": name,
+                    "bufferViewId": f"view:{name}",
+                    "componentType": "f32",
+                    "type": "vec3",
+                    "count": 1,
+                }
+                for name in ("position", "delta-position", "delta-normal", "delta-tangent")
+            ],
+            "images": [],
+            "textures": [],
+            "materials": [],
+            "meshes": [
+                {
+                    "id": "mesh:face",
+                    "name": "Face_lod0",
+                    "primitives": [
+                        {"topology": "triangles", "attributes": {"POSITION": "position"}}
+                    ],
+                    "blendShapes": [
+                        {
+                            "name": "Blink",
+                            "frames": [
+                                {
+                                    "weight": 100.0,
+                                    "attributes": {
+                                        "POSITION": "delta-position",
+                                        "NORMAL": "delta-normal",
+                                        "TANGENT": "delta-tangent",
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "nodes": [
+                {
+                    "id": "node:face",
+                    "name": "Face_lod0",
+                    "active": True,
+                    "children": [],
+                    "transform": {},
+                    "meshId": "mesh:face",
+                }
+            ],
+            "skins": [],
+            "animations": [],
+        }
+
+        glb = build_glb(document, b"\0" * 48, lambda _image: b"")
+        json_length = struct.unpack_from("<I", glb, 12)[0]
+        payload = json.loads(glb[20:20 + json_length].decode("utf-8"))
+
+        mesh = payload["meshes"][0]
+        self.assertEqual(["Blink"], mesh["extras"]["targetNames"])
+        self.assertEqual([100.0], mesh["extras"]["endfieldBlendShapeWeights"])
+        self.assertEqual([0.0], mesh["weights"])
+        self.assertEqual(
+            {"POSITION", "NORMAL", "TANGENT"},
+            set(mesh["primitives"][0]["targets"][0]),
+        )
+
     def test_builds_self_contained_glb(self):
         document = {
             "asset": {"rootNodeIds": ["node:root"]},
@@ -94,7 +170,7 @@ class GltfExportTests(unittest.TestCase):
             ],
             "nodes": [
                 {"id": "node:root", "name": "Root", "children": ["node:lod1", "node:shadow"], "transform": {}, "meshId": "mesh"},
-                {"id": "node:lod1", "name": "LOD1", "children": [], "transform": {}, "meshId": "unused-mesh", "extras": {"lodLevel": 1}},
+                {"id": "node:lod1", "name": "Body_lod1", "children": [], "transform": {}, "meshId": "unused-mesh"},
                 {"id": "node:shadow", "name": "Body_shadowProxyDesktop", "children": [], "transform": {}, "meshId": "unused-mesh"},
             ],
             "skins": [],
