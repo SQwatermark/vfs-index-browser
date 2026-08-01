@@ -1,0 +1,36 @@
+{
+  "shader": "HGRP/CharacterNPR",
+  "textureEnvironments": {
+    "_BaseMap": {
+      "textureId": "texture:base",
+      "scale": [2.0, 1.0],
+      "offset": [0.25, 0.0]
+    },
+    "_MetallicGlossMap": {
+      "textureId": "texture:packed",
+      "scale": [2.0, 1.0],
+      "offset": [0.25, 0.0]
+    },
+    "_SilkStockingsMask": {
+      "textureId": "texture:silk-mask",
+      "scale": [1.0, 1.0],
+      "offset": [0.0, 0.0]
+    }
+  },
+  "ints": {
+    "_Mode": 1
+  },
+  "floats": {
+    "_UseBumpMap": 1.0,
+    "_UseMetallicGlossMap": 1.0,
+    "_SilkStockings": 1.0,
+    "_SilkStockingsAdvance": 0.0,
+    "_SilkStockingsMaxAffect": 0.82,
+    "_SilkStockingsSpecularInt": 0.1756,
+    "_LegacyStockingsValue": 4.0
+  },
+  "colors": {
+    "_BaseColor": { "r": 0.8, "g": 0.7, "b": 0.6, "a": 1.0 },
+    "_SilkStockingsColor": { "r": 0.02, "g": 0.01, "b": 0.03, "a": 0.9 }
+  }
+}

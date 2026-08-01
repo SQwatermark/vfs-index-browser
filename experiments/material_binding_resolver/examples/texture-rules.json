@@ -1,0 +1,23 @@
+{
+  "_BaseMap": {
+    "uvSet": "uv0",
+    "sampler": {
+      "name": "sampler_LinearMirror",
+      "filter": "linear",
+      "wrapU": "mirror",
+      "wrapV": "mirror"
+    }
+  },
+  "_MetallicGlossMap": {
+    "uvSet": "uv0",
+    "sampler": {
+      "name": "sampler_LinearRepeat",
+      "filter": "linear",
+      "wrapU": "repeat",
+      "wrapV": "repeat"
+    }
+  },
+  "_SilkStockingsMask": {
+    "uvSet": "uv1"
+  }
+}

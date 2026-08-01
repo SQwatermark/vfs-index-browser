@@ -1,0 +1,181 @@
+{
+  "format": "MaterialSemanticIR",
+  "version": "0.1.0",
+  "source": {
+    "materialId": "sample:pelica:stockings",
+    "shader": {
+      "name": "HGRP/CharacterNPR",
+      "archiveVersion": "1.4.4",
+      "uri": "archive://AllShader_1.4.4/characternpr.shader"
+    },
+    "variant": {
+      "stage": "fragment",
+      "pass": "Sub0_Pass0",
+      "blob": 391,
+      "materialKeywords": ["_METALLICSPECGLOSSMAP", "_NORMALMAP", "_SILK_STOCKINGS", "_SPEC_RAMP_ON"],
+      "runtimeKeywords": {
+        "enabled": ["HG_ENABLE_PER_OBJECT_MV", "HG_ENABLE_SCREEN_SPACE_SHADOW_MASK", "SRP_INSTANCING_ON"],
+        "disabled": []
+      }
+    },
+    "frontend": {
+      "kind": "hlsl-cst",
+      "tool": "tree-sitter-hlsl+endfield",
+      "toolVersion": "0.2.0-draft1"
+    }
+  },
+  "bindings": [
+    {
+      "id": "baseColor",
+      "kind": "material",
+      "sourceName": "_BaseColor",
+      "type": { "kind": "color", "lanes": 4, "colorSpace": "linear" },
+      "value": [1.0, 1.0, 1.0, 1.0],
+      "evidence": {
+        "level": "exact",
+        "sources": [{ "uri": "model-document://sample/material/sourceMaterial/colors/_BaseColor" }]
+      }
+    },
+    {
+      "id": "baseMap",
+      "kind": "texture",
+      "sourceName": "_BaseMap",
+      "type": { "kind": "texture2d" },
+      "resourceId": "texture:base-map",
+      "space": "uv0",
+      "evidence": {
+        "level": "exact",
+        "sources": [{ "uri": "model-document://sample/material/sourceMaterial/textureEnvironments/_BaseMap" }]
+      }
+    },
+    {
+      "id": "silkMask",
+      "kind": "texture",
+      "sourceName": "_SilkStockingsMask",
+      "type": { "kind": "texture2d" },
+      "resourceId": "texture:silk-mask",
+      "space": "uv0",
+      "evidence": {
+        "level": "exact",
+        "sources": [{ "uri": "model-document://sample/material/sourceMaterial/textureEnvironments/_SilkStockingsMask" }]
+      }
+    },
+    {
+      "id": "viewDirection",
+      "kind": "runtimeInput",
+      "sourceName": "viewDirectionWS",
+      "type": { "kind": "vector", "lanes": 3 },
+      "space": "world",
+      "evidence": {
+        "level": "external",
+        "sources": [{ "uri": "shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl", "symbol": "_TransformVariables_WorldSpaceCameraPos_Internal" }]
+      }
+    }
+  ],
+  "graph": {
+    "nodes": [
+      {
+        "id": "nBaseColor",
+        "op": "input.binding",
+        "inputs": {},
+        "outputs": { "value": { "kind": "color", "lanes": 4, "colorSpace": "linear" } },
+        "parameters": { "bindingId": "baseColor" },
+        "evidence": {
+          "level": "exact",
+          "sources": [{ "uri": "model-document://sample/material/sourceMaterial/colors/_BaseColor" }]
+        }
+      },
+      {
+        "id": "nBaseMap",
+        "op": "texture.sample2d",
+        "inputs": {},
+        "outputs": { "rgba": { "kind": "color", "lanes": 4, "colorSpace": "srgb" } },
+        "parameters": { "bindingId": "baseMap", "uv": "uv0" },
+        "space": "uv0",
+        "evidence": {
+          "level": "recovered",
+          "sources": [{ "uri": "shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl", "symbol": "_BaseMap" }]
+        }
+      },
+      {
+        "id": "nSkinBase",
+        "op": "math.multiply",
+        "inputs": {
+          "left": { "node": "nBaseMap", "output": "rgba" },
+          "right": { "node": "nBaseColor", "output": "value" }
+        },
+        "outputs": { "value": { "kind": "color", "lanes": 4, "colorSpace": "linear" } },
+        "parameters": { "decodeLeftFrom": "srgb" },
+        "evidence": {
+          "level": "recovered",
+          "sources": [{ "uri": "shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl", "symbol": "_BaseMap" }]
+        }
+      },
+      {
+        "id": "nSilkMask",
+        "op": "texture.sample2d",
+        "inputs": {},
+        "outputs": { "rgba": { "kind": "color", "lanes": 4, "colorSpace": "data" } },
+        "parameters": { "bindingId": "silkMask", "uv": "uv0" },
+        "space": "uv0",
+        "evidence": {
+          "level": "exact",
+          "sources": [{ "uri": "shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl", "symbol": "_SilkStockingsMask" }]
+        }
+      },
+      {
+        "id": "nSilk",
+        "op": "endfield.silkStockings.previewApproximation.v0",
+        "inputs": {
+          "skinBase": { "node": "nSkinBase", "output": "value" },
+          "mask": { "node": "nSilkMask", "output": "rgba" }
+        },
+        "outputs": {
+          "baseColor": { "kind": "color", "lanes": 3, "colorSpace": "linear" },
+          "roughness": { "kind": "float" },
+          "anisotropy": { "kind": "float" }
+        },
+        "parameters": { "patternVersion": "b391-recovery-1" },
+        "evidence": {
+          "level": "recovered",
+          "sources": [{ "uri": "shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl", "symbol": "frag_main" }],
+          "note": "历史最小 Schema 示例，仅展示旧预览折叠形态；不可作为 b391 完整语义。"
+        }
+      },
+      {
+        "id": "nSurface",
+        "op": "material.standardSurface",
+        "inputs": {
+          "baseColor": { "node": "nSilk", "output": "baseColor" },
+          "roughness": { "node": "nSilk", "output": "roughness" },
+          "anisotropy": { "node": "nSilk", "output": "anisotropy" }
+        },
+        "outputs": { "surface": { "kind": "surface" } },
+        "parameters": {},
+        "evidence": {
+          "level": "approximated",
+          "sources": [{ "uri": "docs://research/silk-stockings-b391-recovery" }],
+          "note": "Blender Standard Surface 近似游戏的定制角色 BRDF。"
+        }
+      }
+    ],
+    "outputs": {
+      "surface": { "node": "nSurface", "output": "surface" }
+    }
+  },
+  "renderState": {
+    "surface": "opaque",
+    "cull": "front",
+    "depthWrite": true,
+    "depthTest": "LEqual",
+    "passes": ["forward"]
+  },
+  "diagnostics": [
+    {
+      "code": "RUNTIME_LIGHTING_EXTERNAL",
+      "message": "角色主光、屏幕空间阴影、雾和曝光由运行时提供，当前 IR 未将其折叠进 surface。",
+      "affectedOutputs": ["surface"],
+      "source": { "uri": "shader-archive://1.4.4/characternpr/Sub0_Pass0_Fragment_b391.hlsl", "symbol": "frag_main" }
+    }
+  ]
+}

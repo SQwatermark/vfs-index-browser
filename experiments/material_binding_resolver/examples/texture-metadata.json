@@ -1,0 +1,29 @@
+{
+  "texture:base": {
+    "colorSpace": "srgb",
+    "sampler": {
+      "name": "textureAssetSampler",
+      "filter": "linear",
+      "wrapU": "repeat",
+      "wrapV": "repeat"
+    }
+  },
+  "texture:packed": {
+    "colorSpace": "data",
+    "sampler": {
+      "name": "packedAssetSampler",
+      "filter": "linear",
+      "wrapU": "repeat",
+      "wrapV": "repeat"
+    }
+  },
+  "texture:silk-mask": {
+    "colorSpace": "data",
+    "sampler": {
+      "name": "silkMaskAssetSampler",
+      "filter": "nearest",
+      "wrapU": "clamp",
+      "wrapV": "clamp"
+    }
+  }
+}

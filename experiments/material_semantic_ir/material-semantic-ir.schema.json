@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://endfield.local/schemas/material-semantic-ir-0.1.0.json",
+  "title": "MaterialSemanticIR",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "source", "bindings", "graph", "diagnostics"],
+  "properties": {
+    "format": { "const": "MaterialSemanticIR" },
+    "version": { "const": "0.1.0" },
+    "source": { "$ref": "#/$defs/source" },
+    "bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/binding" }
+    },
+    "graph": { "$ref": "#/$defs/graph" },
+    "renderState": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "surface": { "enum": ["opaque", "cutout", "transparent"] },
+        "cull": { "enum": ["none", "front", "back"] },
+        "depthWrite": { "type": "boolean" },
+        "depthTest": { "type": "string", "minLength": 1 },
+        "blend": { "type": "string", "minLength": 1 },
+        "passes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z_][A-Za-z0-9_.:-]*$"
+    },
+    "sourceLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uri"],
+      "properties": {
+        "uri": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 },
+        "column": { "type": "integer", "minimum": 1 },
+        "symbol": { "type": "string", "minLength": 1 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "sources"],
+      "properties": {
+        "level": {
+          "enum": ["exact", "recovered", "approximated", "external", "unsupported"]
+        },
+        "sources": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sourceLocation" },
+          "minItems": 1
+        },
+        "note": { "type": "string" }
+      }
+    },
+    "valueType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "enum": ["boolean", "integer", "float", "vector", "color", "texture2d", "textureCube", "texture3d", "sampler", "surface"]
+        },
+        "lanes": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "colorSpace": { "enum": ["linear", "srgb", "data"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "color" } }, "required": ["kind"] },
+          "then": { "required": ["lanes", "colorSpace"] }
+        }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["materialId", "shader", "variant", "frontend"],
+      "properties": {
+        "materialId": { "type": "string", "minLength": 1 },
+        "shader": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "archiveVersion", "uri"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "archiveVersion": { "type": "string", "minLength": 1 },
+            "uri": { "type": "string", "minLength": 1 }
+          }
+        },
+        "variant": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stage", "pass", "blob", "materialKeywords", "runtimeKeywords"],
+          "properties": {
+            "stage": { "enum": ["vertex", "fragment", "geometry", "compute", "mesh", "task"] },
+            "pass": { "type": "string", "minLength": 1 },
+            "blob": { "type": "integer", "minimum": 0 },
+            "materialKeywords": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "runtimeKeywords": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled", "disabled"],
+              "properties": {
+                "enabled": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+                "disabled": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+              }
+            }
+          }
+        },
+        "frontend": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "tool", "toolVersion"],
+          "properties": {
+            "kind": { "enum": ["spirv", "hlsl-cst", "manual"] },
+            "tool": { "type": "string", "minLength": 1 },
+            "toolVersion": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "sourceName", "type", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "kind": { "enum": ["material", "texture", "sampler", "vertexAttribute", "runtimeInput"] },
+        "sourceName": { "type": "string", "minLength": 1 },
+        "type": { "$ref": "#/$defs/valueType" },
+        "value": {},
+        "valueSource": { "enum": ["shaderDefault", "materialInstance", "runtime"] },
+        "resourceId": { "type": "string", "minLength": 1 },
+        "textureBinding": { "$ref": "#/$defs/textureBinding" },
+        "space": { "$ref": "#/$defs/space" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "textureBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resource", "uv", "colorSpace", "sampler"],
+      "properties": {
+        "resource": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "source"],
+          "properties": {
+            "kind": { "enum": ["resource", "builtin"] },
+            "id": { "type": "string", "minLength": 1 },
+            "name": { "type": "string", "minLength": 1 },
+            "source": { "enum": ["shaderDefault", "materialInstance"] }
+          }
+        },
+        "uv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["set", "scale", "offset"],
+          "properties": {
+            "set": { "enum": ["uv0", "uv1"] },
+            "scale": { "$ref": "#/$defs/vec2" },
+            "offset": { "$ref": "#/$defs/vec2" }
+          }
+        },
+        "colorSpace": { "enum": ["linear", "srgb", "data", "unresolved"] },
+        "sampler": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "effective"],
+          "properties": {
+            "source": { "enum": ["shaderRule", "textureAsset", "unresolved"] },
+            "effective": {
+              "oneOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": { "type": "string" },
+                    "filter": { "type": "string" },
+                    "wrapU": { "type": "string" },
+                    "wrapV": { "type": "string" },
+                    "wrapW": { "type": "string" },
+                    "anisotropy": { "type": "number" }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    "vec2": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "space": {
+      "enum": ["none", "uv0", "uv1", "tangent", "object", "world", "view", "clip", "screen"]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node", "output"],
+      "properties": {
+        "node": { "$ref": "#/$defs/identifier" },
+        "output": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "op", "inputs", "outputs", "parameters", "evidence"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "op": { "$ref": "#/$defs/identifier" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/edge" }
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/valueType" },
+          "minProperties": 1
+        },
+        "parameters": { "type": "object" },
+        "space": { "$ref": "#/$defs/space" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "graph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "outputs"],
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/node" }
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/edge" },
+          "minProperties": 1
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "affectedOutputs"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "message": { "type": "string", "minLength": 1 },
+        "affectedOutputs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/identifier" },
+          "uniqueItems": true
+        },
+        "source": { "$ref": "#/$defs/sourceLocation" }
+      }
+    }
+  }
+}
