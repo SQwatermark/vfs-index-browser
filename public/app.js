@@ -708,11 +708,17 @@ function renderModelPreview(data) {
       exportLink.href = blendUrl
       exportLink.hidden = false
     }
-    const unresolved = (animation.diagnostics || []).filter((item) => (
+    const diagnostics = animation.diagnostics || []
+    const unresolved = diagnostics.filter((item) => (
       item.code === 'ANIMATION_PATHS_UNRESOLVED' || item.code === 'ANIMATION_PATHS_AMBIGUOUS'
     )).length
+    const isEmptyMorph = diagnostics.some((item) => (
+      item.code === 'ANIMATION_SKELETAL_MORPH_EMPTY'
+    ))
     if (status) {
-      status.textContent = `${animation.tracks.length} 条轨道${unresolved ? `，${unresolved} 项绑定诊断` : ''}`
+      status.textContent = isEmptyMorph
+        ? '空表情资源（源数据无动画曲线）'
+        : `${animation.tracks.length} 条轨道${unresolved ? `，${unresolved} 项绑定诊断` : ''}`
     }
     if (state.routeSelection?.kind === 'model') {
       state.routeSelection.animationAssetIndex = assetIndex == null ? null : String(assetIndex)

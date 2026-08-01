@@ -105,6 +105,14 @@ def morph_avatar_asset_name(model_path: str) -> str:
     raise SkeletalMorphError(f"cannot infer facial-morph avatar from {model_path!r}")
 
 
+def morph_avatar_asset_names(model_path: str) -> tuple[str, str]:
+    """Return the required face avatar and the optional character ear avatar."""
+
+    face_name = morph_avatar_asset_name(model_path)
+    character = face_name.removeprefix("data_facemorph_avatar_").removesuffix(".asset")
+    return face_name, f"data_earmorph_avatar_{character}.asset"
+
+
 class _Reader:
     def __init__(self, payload: bytes):
         self.payload = payload
@@ -301,6 +309,55 @@ def parse_morph_avatar(payload: bytes) -> MorphAvatar:
     )
 
 
+def merge_morph_avatars(avatars: tuple[MorphAvatar, ...]) -> MorphAvatar:
+    """Merge disjoint face/ear controller maps that target the same model."""
+
+    if not avatars:
+        raise SkeletalMorphError("at least one morph avatar is required")
+
+    poses: dict[int, tuple[BonePose, str]] = {}
+    mappings: dict[str, MorphMapping] = {}
+    blend_shapes: dict[int, int] = {}
+    for avatar in avatars:
+        for pose, bone_name in zip(avatar.base_poses, avatar.bone_names, strict=True):
+            existing = poses.get(pose.bone_id)
+            value = (pose, bone_name)
+            if existing is not None and existing != value:
+                raise SkeletalMorphError(
+                    f"morph avatars disagree about bone {pose.bone_id} ({bone_name!r})"
+                )
+            poses[pose.bone_id] = value
+        for mapping_name, mapping in zip(
+            avatar.mapping_names,
+            avatar.mappings,
+            strict=True,
+        ):
+            existing = mappings.get(mapping_name)
+            if existing is not None and existing != mapping:
+                raise SkeletalMorphError(
+                    f"morph avatars disagree about control {mapping_name!r}"
+                )
+            mappings[mapping_name] = mapping
+        for name_hash, index in avatar.blend_shape_mapping:
+            existing = blend_shapes.get(name_hash)
+            if existing is not None and existing != index:
+                raise SkeletalMorphError(
+                    f"morph avatars disagree about blend-shape hash {name_hash}"
+                )
+            blend_shapes[name_hash] = index
+
+    ordered_poses = [poses[bone_id] for bone_id in sorted(poses)]
+    ordered_mappings = sorted(mappings.items())
+    return MorphAvatar(
+        name="+".join(avatar.name for avatar in avatars),
+        base_poses=tuple(value[0] for value in ordered_poses),
+        bone_names=tuple(value[1] for value in ordered_poses),
+        mapping_names=tuple(value[0] for value in ordered_mappings),
+        mappings=tuple(value[1] for value in ordered_mappings),
+        blend_shape_mapping=tuple(sorted(blend_shapes.items())),
+    )
+
+
 def _read_curve(reader: _Reader) -> MorphCurve:
     control_name = reader.string()
     keys = _read_array(
@@ -449,7 +506,7 @@ def _lerp_pose(
         origin = getattr(base, attribute)
         return tuple(
             origin[index]
-            + sum(weight * (getattr(target, attribute)[index] - origin[index]) for weight, target in contributions)
+            + sum(weight * getattr(target, attribute)[index] for weight, target in contributions)
             for index in range(3)
         )
 
@@ -516,13 +573,9 @@ def bake_morph_animation(
         for pose, name in zip(avatar.base_poses, avatar.bone_names, strict=True)
     }
     mapping_by_name = dict(zip(avatar.mapping_names, avatar.mappings, strict=True))
-    unknown_controls = sorted(
+    unknown_controls = sorted({
         curve.control_name for curve in clip.curves if curve.control_name not in mapping_by_name
-    )
-    if unknown_controls:
-        raise SkeletalMorphError(
-            f"morph controls are absent from avatar mapping: {', '.join(unknown_controls)}"
-        )
+    })
 
     frame_count = max(math.ceil(clip.duration * sample_rate), 1)
     times = [min(index / sample_rate, clip.duration) for index in range(frame_count + 1)]
@@ -534,6 +587,8 @@ def bake_morph_animation(
     blend_shape_index_by_hash = dict(avatar.blend_shape_mapping)
     unsupported_controls = []
     for curve in clip.curves:
+        if curve.control_name not in mapping_by_name:
+            continue
         mapping = mapping_by_name[curve.control_name]
         if mapping.kind == "shader":
             unsupported_controls.append(curve.control_name)
@@ -559,19 +614,19 @@ def bake_morph_animation(
                 shapes = mesh.get("blendShapes", []) if isinstance(mesh, Mapping) else []
                 if blend_shape_index < len(shapes):
                     candidates.append((node, shapes[blend_shape_index]))
-            if len(candidates) != 1:
+            if not candidates:
                 raise SkeletalMorphError(
                     f"control {curve.control_name!r} blend shape {blend_shape_index} "
-                    f"resolves to {len(candidates)} preview mesh nodes"
+                    "does not resolve to a preview mesh node"
                 )
-            node, blend_shape = candidates[0]
-            target_id = node.get("id")
-            shape_name = blend_shape.get("name")
-            if not isinstance(target_id, str) or not isinstance(shape_name, str):
-                raise SkeletalMorphError(
-                    f"control {curve.control_name!r} has an invalid blend-shape target"
-                )
-            blend_shape_controls.setdefault((target_id, shape_name), []).append(curve)
+            for node, blend_shape in candidates:
+                target_id = node.get("id")
+                shape_name = blend_shape.get("name")
+                if not isinstance(target_id, str) or not isinstance(shape_name, str):
+                    raise SkeletalMorphError(
+                        f"control {curve.control_name!r} has an invalid blend-shape target"
+                    )
+                blend_shape_controls.setdefault((target_id, shape_name), []).append(curve)
             has_blend_shape = True
         if not mapping.bones and not has_blend_shape:
             unsupported_controls.append(curve.control_name)
@@ -652,7 +707,8 @@ def bake_morph_animation(
             else "ANIMATION_SKELETAL_MORPH_EMPTY"
         ),
         "message": (
-            f"{len(clip.curves) - len(unsupported_controls)} skeletal-morph controls "
+            f"{len(clip.curves) - len(unsupported_controls) - len(unknown_controls)} "
+            "skeletal-morph controls "
             f"were baked into {len(tracks)} facial tracks."
             if clip.curves
             else "The skeletal-morph asset contains no animation curves."
@@ -670,6 +726,19 @@ def bake_morph_animation(
                 ),
                 "objectId": animation_id,
                 "details": {"controls": sorted(unsupported_controls)},
+            }
+        )
+    if unknown_controls:
+        diagnostics.append(
+            {
+                "severity": "warning",
+                "code": "ANIMATION_SKELETAL_MORPH_CONTROLS_UNMAPPED",
+                "message": (
+                    f"{len(unknown_controls)} skeletal-morph controls are not present "
+                    "in the available character avatar mappings."
+                ),
+                "objectId": animation_id,
+                "details": {"controls": unknown_controls},
             }
         )
 

@@ -19,7 +19,9 @@
    `AnimationCurve`，本例实际只有四条眼部控制曲线。
 3. `data_facemorph_avatar_jsspsi.asset`：角色专属 `SkeletalMorphAvatarDataSO`，保存
    91 根脸部骨骼的基准姿态和 269 个控制器到骨骼目标姿态的映射。
-4. 角色 postmodel：已经包含上述脸部骨骼，无需额外拼装隐藏脸模。
+4. 部分角色另有 `data_earmorph_avatar_<角色>.asset`，保存耳朵控制器及其目标姿态。
+   动画可能同时引用脸部和耳部控制器，因此两份映射需要按控制器与骨骼身份合并。
+5. 角色 postmodel：已经包含上述脸部和耳部骨骼，无需额外拼装隐藏模型。
 
 角色映射中的 `SerializeReference` 内容不能由当前 AnimeStudio TypeTree 文本正确展开，
 但原始 MonoBehaviour 数据可依据 IL2CPP 类型定义严格读取。当前解析器要求托管引用
@@ -30,15 +32,19 @@
 `skeletal_morph.py` 负责：
 
 - 解析 `SkeletalMorphAnimSO` 和 `SkeletalMorphAvatarDataSO` 原始数据；
-- 根据模型路径推导角色专属脸部映射，并按逻辑路径配对同名 `morphanimso`；
+- 根据模型路径推导必需的脸部映射和可选的耳部映射，并按逻辑路径配对同名
+  `morphanimso`；
 - 对 Unity AnimationCurve 进行 30 FPS Hermite 采样；
 - 将控制器权重与角色基准姿态、目标姿态组合，生成现有
   `EndfieldModelAnimation` 可直接播放的平移、旋转、缩放轨道。
+- 映射中的骨骼姿态是相对 Avatar 基准姿态的增量，而不是绝对目标姿态。多个控制器
+  同时生效时先加权累积增量，再应用到实际模型绑定姿势；把增量误作绝对姿态会在每个
+  控制器上重复减去基准值，典型结果是面部骨骼出现零或负缩放。
 - MorphAvatar 的基准姿态仅用于计算目标差值；输出以实际模型绑定姿势为基准，避免
   prefab 覆盖或模型归一化导致动画首帧跳变。
 
 服务端仅对 `/morphanim/*.anim` 启用该流程，普通 Transform 动画与 Humanoid 动画不受
-影响。首次访问需要导出两个原始 MonoBehaviour，随后使用内容身份缓存。
+影响。首次访问需要导出动画数据、脸部映射以及角色存在时的耳部映射，随后使用内容身份缓存。
 
 ## 已知边界
 
@@ -49,6 +55,8 @@
 - 从 Unity Mesh 的 `m_Shapes` 导出 ModelDocument `blendShapes`；
 - 将每个单帧 Shape 转为 GLB Morph Target，并保留目标名称；
 - 读取 `blendShapeMorphHashMap`，把语义控制器曲线转换为命名的 `blendShapeWeight` 轨道；
+- 同一 BlendShape 索引可能存在于多个有效 LOD0 网格，控制器会同步生成所有目标轨道，
+  而不是假定它只能命中一个网格；
 - 当前端播放外置动画时，按 `morphTargetDictionary` 解析名称并驱动对应权重；
 - 当模型缺少 LODGroup 元数据时，从 `_lod0`、`_lod1` 等节点名推导预览 LOD，只渲染并绑定 LOD0。
 
@@ -61,7 +69,8 @@
 - 当前网页动画接口已接入该流程；带面部动画的 GLB/Blend 导出仍需复用同一份已绑定
   动画结果，不能重新走普通 AnimationClip 绑定。
 
-当前实现仍属于基础设施阶段：空的 MorphAnimSO、纯 Shader 参数表情、跨 LOD 的
+空的 MorphAnimSO 是源数据中的占位资源，网页会将其明确显示为“空表情资源”，不再与
+解析失败混为一谈。当前实现仍属于基础设施阶段：纯 Shader 参数表情、跨 LOD 的
 BlendShape 绑定和播放器端目标解析需要在全量样本审计后分别处理，不能仅凭单个角色
 样本宣称表情动画已经完整恢复。
 
@@ -74,3 +83,8 @@ BlendShape 绑定和播放器端目标解析需要在全量样本审计后分别
 
 修复前结果为 0 条轨道和 268 个未解析路径哈希；修复后识别四个语义控制器、32 根
 受影响脸部骨骼，并生成 96 条模型动画轨道。
+
+佩丽卡模型 `chr_0004_pelica_postmodel.prefab`（Manifest 模型资源索引 `36304`）用于
+验证脸部与耳部映射合并。表情资源 `181369`、`136906`、`145947` 分别生成 117、174、
+109 条轨道，所有采样值均为有限数，没有零或负缩放，也没有未映射控制器诊断。该检查
+只能证明解析结果满足基本数值约束，最终视觉正确性仍需在网页预览中人工核对。

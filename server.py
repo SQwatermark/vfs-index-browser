@@ -77,7 +77,8 @@ from animestudio_animation import (
 from skeletal_morph import (
     bake_morph_animation,
     is_dialog_morph_animation_path,
-    morph_avatar_asset_name,
+    merge_morph_avatars,
+    morph_avatar_asset_names,
     morph_clip_asset_path,
     parse_morph_avatar,
     parse_morph_clip,
@@ -4042,38 +4043,50 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"found {len(sidecar_matches)}"
             )
 
-        avatar_name = morph_avatar_asset_name(str(model_asset["path"]))
-        avatar_matches = [
-            asset
-            for asset in index.assets_by_name(avatar_name)
-            if "/skeletalmorph/skeletalmorphcfg/" in str(asset["path"]).casefold()
-        ]
-        if len(avatar_matches) != 1:
+        avatar_names = morph_avatar_asset_names(str(model_asset["path"]))
+        avatar_matches = []
+        for position, avatar_name in enumerate(avatar_names):
+            matches = [
+                asset
+                for asset in index.assets_by_name(avatar_name)
+                if "/skeletalmorph/skeletalmorphcfg/" in str(asset["path"]).casefold()
+            ]
+            if len(matches) > 1 or (position == 0 and len(matches) != 1):
+                raise RuntimeError(
+                    f"expected {'one' if position == 0 else 'at most one'} skeletal-morph "
+                    f"avatar {avatar_name!r}, found {len(matches)}"
+                )
+            avatar_matches.extend(matches)
+        if not avatar_matches:
             raise RuntimeError(
-                f"expected one skeletal-morph avatar {avatar_name!r}, "
-                f"found {len(avatar_matches)}"
+                f"expected a skeletal-morph avatar for {model_asset['path']!r}"
             )
 
         sidecar_asset, sidecar_record, sidecar_chunk = self.resolve_index_asset_bundle(
             index,
             int(sidecar_matches[0]["assetIndex"]),
         )
-        avatar_asset, avatar_record, avatar_chunk = self.resolve_index_asset_bundle(
-            index,
-            int(avatar_matches[0]["assetIndex"]),
-        )
         sidecar_raw, _ = self.ensure_manifest_monobehaviour_raw(
             sidecar_record,
             sidecar_chunk,
             sidecar_asset,
         )
-        avatar_raw, _ = self.ensure_manifest_monobehaviour_raw(
-            avatar_record,
-            avatar_chunk,
-            avatar_asset,
-        )
         clip = parse_morph_clip(sidecar_raw.read_bytes())
-        avatar = parse_morph_avatar(avatar_raw.read_bytes())
+        avatar_assets = []
+        avatars = []
+        for avatar_match in avatar_matches:
+            avatar_asset, avatar_record, avatar_chunk = self.resolve_index_asset_bundle(
+                index,
+                int(avatar_match["assetIndex"]),
+            )
+            avatar_raw, _ = self.ensure_manifest_monobehaviour_raw(
+                avatar_record,
+                avatar_chunk,
+                avatar_asset,
+            )
+            avatar_assets.append(avatar_asset)
+            avatars.append(parse_morph_avatar(avatar_raw.read_bytes()))
+        avatar = merge_morph_avatars(tuple(avatars))
         animation_index = int(animation_asset["asset_index"])
         return bake_morph_animation(
             document,
@@ -4084,7 +4097,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 "logicalPath": str(animation_asset["path"]),
                 "bundle": str(animation_asset["bundle_name"]),
                 "morphClipPath": str(sidecar_asset["path"]),
-                "morphAvatarPath": str(avatar_asset["path"]),
+                "morphAvatarPaths": [str(asset["path"]) for asset in avatar_assets],
             },
         )
 
