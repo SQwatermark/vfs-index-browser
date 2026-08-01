@@ -58,5 +58,7 @@ Shader 语义通道和 Unity Material 存储通道，并统一输出四元素值
 - Shader 名称和材质实例参数已经来自真实对象引用。
 - ShaderLab/HLSL 归档仍是独立输入，不把大型 Shader 编译数据塞进模型快照。
 - 当前语义映射只覆盖 CharacterNPR 丝袜状态，Blender 后端仍是可解释近似实现。
-- 下一步应建立版本化 Shader 归档注册表，并让 Blender 后端消费参数计划，而不是再次读取
-  `sourceMaterial` 并手工映射同一组字段。
+- GLB 导出已能从本地 1.4.4 Shader 归档生成参数计划，Blender 后端会优先消费计划中已实现
+  的输入；模型快照本身不保存这些派生结果。
+- 下一步应扩展 Blender 节点组对计划的覆盖范围，尤其是 Wet Color、丝袜独立 NDF、
+  SpecRamp 和场景运行时输入。

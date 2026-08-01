@@ -47,6 +47,7 @@ def build_glb(
     document: Mapping[str, Any],
     geometry: bytes,
     image_loader: Callable[[Mapping[str, Any]], bytes],
+    material_plans: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> bytes:
     """Build a GLB while preserving ModelDocument object relationships."""
 
@@ -330,6 +331,9 @@ def build_glb(
             extras["endfieldSourceMaterial"] = source_material
         if preview_metadata:
             extras["endfieldPreview"] = preview_metadata
+        material_plan = (material_plans or {}).get(material["id"])
+        if isinstance(material_plan, Mapping):
+            extras["endfieldMaterialPlan"] = material_plan
         if extras:
             value["extras"] = extras
         if preview.get("alphaMode") in {"MASK", "BLEND"}:

@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
+import blender_material_plan
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
 from wwise_store import (
     get_wwise_bank,
@@ -68,6 +69,7 @@ from animestudio_model import (
 from animestudio_tool import load_animestudio_tool_manifest
 from model_document import validate_model_document
 from gltf_export import build_glb
+from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
     MODEL_ANIMATION_CACHE_REVISION,
     attach_animation_clip,
@@ -118,6 +120,12 @@ WWISE_DB = Path(
 )
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
+SHADER_ARCHIVE_ROOT = Path(
+    os.environ.get(
+        "VFS_BROWSER_SHADER_ARCHIVE_ROOT",
+        PROJECT_ROOT / "data" / "shader-archives" / "1.4.4",
+    )
+)
 BUNDLED_ANIMESTUDIO_CLI = (
     PROJECT_ROOT / "tools" / "AnimeStudio.CLI-633f30c" / "AnimeStudio.CLI.exe"
 )
@@ -185,6 +193,30 @@ MEMORYPACK_SCHEMA = Path(
 MEMORYPACK_UNION_MAP = Path(
     os.environ.get("VFS_BROWSER_MEMORYPACK_UNION_MAP", PROJECT_ROOT / "schemas" / "memorypack-known-unions.json")
 )
+
+
+def material_plan_cache_identity() -> dict:
+    shader_path = SHADER_ARCHIVE_ROOT / CHARACTER_NPR_PATH
+    identity = {
+        "builderMtimeNs": Path(
+            build_blender_material_plans.__code__.co_filename
+        ).stat().st_mtime_ns,
+        "shaderPath": str(shader_path),
+    }
+    if shader_path.is_file():
+        stat = shader_path.stat()
+        identity["shader"] = {"size": stat.st_size, "mtimeNs": stat.st_mtime_ns}
+    else:
+        identity["shader"] = None
+    return identity
+
+
+def load_cache_identity(path: Path) -> dict | None:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
 
 SOURCE_PRIORITY = {
     "Persistent": 0,
@@ -4884,6 +4916,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         geometry_path = model_path.with_name("geometry.bin")
         glb_path = model_path.with_name("model.glb")
+        glb_meta_path = glb_path.with_suffix(".glb.meta.json")
         # Exporter changes can alter the GLB without rebuilding ModelDocument.
         exporter_path = Path(build_glb.__code__.co_filename)
         source_paths = [
@@ -4892,16 +4925,33 @@ class BrowserHandler(BaseHTTPRequestHandler):
             exporter_path,
             *image_paths.values(),
         ]
+        material_plans = {}
+        if SHADER_ARCHIVE_ROOT.is_dir():
+            material_plans = build_blender_material_plans(document, SHADER_ARCHIVE_ROOT)
+            source_paths.append(SHADER_ARCHIVE_ROOT / CHARACTER_NPR_PATH)
         newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-        if not glb_path.is_file() or glb_path.stat().st_mtime_ns < newest_source_mtime:
+        cache_identity = {
+            "version": MODEL_GLB_VERSION,
+            "materialPlan": material_plan_cache_identity(),
+        }
+        if (
+            not glb_path.is_file()
+            or glb_path.stat().st_mtime_ns < newest_source_mtime
+            or load_cache_identity(glb_meta_path) != cache_identity
+        ):
             glb = build_glb(
                 document,
                 geometry,
                 lambda image: image_paths[str(image["id"])].read_bytes(),
+                material_plans,
             )
             temporary = glb_path.with_suffix(".glb.tmp")
             temporary.write_bytes(glb)
             os.replace(temporary, glb_path)
+            glb_meta_path.write_text(
+                json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         return asset, model_path, glb_path
 
     def load_model_glb_inputs(
@@ -4984,6 +5034,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         animation_root = model_path.parent / "animations" / str(animation_index)
         animated_glb = animation_root / "model.glb"
+        animated_glb_meta = animated_glb.with_suffix(".glb.meta.json")
         source_paths = [
             model_path,
             model_path.with_name("geometry.bin"),
@@ -4992,17 +5043,38 @@ class BrowserHandler(BaseHTTPRequestHandler):
             Path(build_glb.__code__.co_filename),
             *image_paths.values(),
         ]
+        material_plans = {}
+        if SHADER_ARCHIVE_ROOT.is_dir():
+            material_plans = build_blender_material_plans(
+                animated_document,
+                SHADER_ARCHIVE_ROOT,
+            )
+            source_paths.append(SHADER_ARCHIVE_ROOT / CHARACTER_NPR_PATH)
         newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-        if not animated_glb.is_file() or animated_glb.stat().st_mtime_ns < newest_source_mtime:
+        cache_identity = {
+            "version": MODEL_GLB_VERSION,
+            "materialPlan": material_plan_cache_identity(),
+            "animationAssetIndex": animation_index,
+        }
+        if (
+            not animated_glb.is_file()
+            or animated_glb.stat().st_mtime_ns < newest_source_mtime
+            or load_cache_identity(animated_glb_meta) != cache_identity
+        ):
             payload = build_glb(
                 animated_document,
                 animated_geometry,
                 lambda image: image_paths[str(image["id"])].read_bytes(),
+                material_plans,
             )
             animation_root.mkdir(parents=True, exist_ok=True)
             temporary = animated_glb.with_suffix(".glb.tmp")
             temporary.write_bytes(payload)
             os.replace(temporary, animated_glb)
+            animated_glb_meta.write_text(
+                json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
         return model_asset, animation_asset, model_path, animated_glb
 
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
@@ -5075,10 +5147,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 animation_asset = None
             blend_path = glb_path.with_suffix(".blend")
             material_backend = PROJECT_ROOT / "blender_materials.py"
+            material_plan_backend = Path(blender_material_plan.__file__)
             source_paths = [
                 glb_path,
                 BLENDER_MODEL_IMPORTER,
                 material_backend,
+                material_plan_backend,
                 PROJECT_ROOT / "character_lighting.py",
             ]
             newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)

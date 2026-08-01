@@ -214,7 +214,17 @@ class GltfExportTests(unittest.TestCase):
             + struct.pack("<2f", 0.0, 1.0)
             + struct.pack("<6f", 0.0, 0.0, 0.0, 0.0, 1.0, 0.0)
         )
-        glb = build_glb(document, geometry, lambda image: source_images[image["id"]])
+        material_plan = {
+            "format": "BlenderNodeParameterPlan",
+            "version": "0.1.0",
+            "nodeGroups": [],
+        }
+        glb = build_glb(
+            document,
+            geometry,
+            lambda image: source_images[image["id"]],
+            {"material": material_plan},
+        )
 
         magic, version, length = struct.unpack_from("<III", glb)
         self.assertEqual(0x46546C67, magic)
@@ -265,6 +275,10 @@ class GltfExportTests(unittest.TestCase):
                 },
             },
             payload["materials"][0]["extras"]["endfieldSourceMaterial"],
+        )
+        self.assertEqual(
+            material_plan,
+            payload["materials"][0]["extras"]["endfieldMaterialPlan"],
         )
         self.assertEqual(
             ["KHR_materials_unlit", "KHR_texture_transform"],

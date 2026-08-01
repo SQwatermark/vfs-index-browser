@@ -28,6 +28,7 @@ from blender_materials import (
     MATERIAL_BACKEND_VERSION,
     create_silk_stockings_group,
 )
+from blender_material_plan import plan_texture_id, plan_value, silk_plan_inputs
 
 DEFAULT_CHARINFO_AMBIENT = AmbientLighting(
     base_intensity=1.0,
@@ -90,6 +91,11 @@ def material_preview_metadata(material: bpy.types.Material) -> dict:
 
 def material_source_metadata(material: bpy.types.Material) -> dict:
     value = material.get("endfieldSourceMaterial")
+    return id_property_to_dict(value) if value is not None else {}
+
+
+def material_plan_metadata(material: bpy.types.Material) -> dict:
+    value = material.get("endfieldMaterialPlan")
     return id_property_to_dict(value) if value is not None else {}
 
 
@@ -976,6 +982,8 @@ def build_character_npr_nodes(
 def configure_silk_stockings_nodes(material: bpy.types.Material) -> bool:
     metadata = material_preview_metadata(material)
     source_material = material_source_metadata(material)
+    plan = material_plan_metadata(material)
+    plan_inputs = silk_plan_inputs(plan)
     silk = metadata.get("silkStockings")
     if not isinstance(silk, dict) or not material.node_tree:
         return False
@@ -1023,17 +1031,37 @@ def configure_silk_stockings_nodes(material: bpy.types.Material) -> bool:
 
     source_colors = source_material.get("colors", {})
     source_floats = source_material.get("floats", {})
-    color = source_colors.get("_SilkStockingsColor", silk.get("color"))
+    dry_color = plan_value(plan_inputs, "Dry Color") if plan_inputs is not None else None
+    if isinstance(dry_color, list) and len(dry_color) in {3, 4}:
+        group.inputs["Dry Tint"].default_value = (*map(float, dry_color[:3]), 1.0)
+    color = (
+        plan_value(plan_inputs, "Edge Color")
+        if plan_inputs is not None
+        else source_colors.get("_SilkStockingsColor", silk.get("color"))
+    )
     if isinstance(color, list) and len(color) in {3, 4}:
         group.inputs["Edge Color"].default_value = (*map(float, color[:3]), 1.0)
-    min_affect = source_floats.get("_SilkStockingsMinAffect")
+    min_affect = (
+        plan_value(plan_inputs, "Minimum Affect")
+        if plan_inputs is not None
+        else source_floats.get("_SilkStockingsMinAffect")
+    )
     if isinstance(min_affect, (int, float)):
         group.inputs["Min Affect"].default_value = max(0.0, min(0.49, float(min_affect)))
-    max_affect = source_floats.get("_SilkStockingsMaxAffect", silk.get("maxAffect"))
+    max_affect = (
+        plan_value(plan_inputs, "Maximum Affect")
+        if plan_inputs is not None
+        else source_floats.get("_SilkStockingsMaxAffect", silk.get("maxAffect"))
+    )
     if isinstance(max_affect, (int, float)):
         group.inputs["Max Affect"].default_value = max(0.5, min(1.0, float(max_affect)))
 
-    mask_image = find_imported_image(metadata.get("silkStockingsMaskTextureId"))
+    mask_texture_id = (
+        plan_texture_id(plan_inputs, "Silk Mask")
+        if plan_inputs is not None
+        else metadata.get("silkStockingsMaskTextureId")
+    )
+    mask_image = find_imported_image(mask_texture_id)
     if mask_image is not None:
         mask = nodes.new("ShaderNodeTexImage")
         mask.name = "Endfield Silk Stockings Mask"
@@ -1057,6 +1085,8 @@ def configure_silk_stockings_nodes(material: bpy.types.Material) -> bool:
     material["endfieldShaderBackend"] = (
         f"blender-eevee-silk-stockings-v{MATERIAL_BACKEND_VERSION}"
     )
+    if plan_inputs is not None:
+        material["endfieldMaterialPlanApplied"] = plan.get("version")
     return True
 
 
