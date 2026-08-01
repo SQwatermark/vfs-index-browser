@@ -1,7 +1,7 @@
 {
   "tool": "AnimeStudio.CLI",
   "sourceRepository": "Escartem/AnimeStudio",
-  "sourceCommit": "5169b95",
+  "sourceCommit": "633f30c",
   "objectSnapshot": {
     "contract": "AnimeStudioObjectSnapshot",
     "version": "1.0.0"

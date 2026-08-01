@@ -450,6 +450,13 @@ def attach_mesh_geometry(
             None,
         )
         shader_target = _reference_target(shader_reference) if shader_reference else None
+        shader_target_name = (
+            shader_reference.get("targetName")
+            if isinstance(shader_reference, Mapping)
+            else None
+        )
+        if not isinstance(shader_target_name, str) or not shader_target_name:
+            shader_target_name = None
         shader = material.payload.get("m_Shader")
         shader_name = shader.get("Name") if isinstance(shader, Mapping) else None
         if (
@@ -478,7 +485,9 @@ def attach_mesh_geometry(
             "name": material.name,
             "sourceMaterial": {
                 "shader": str(
-                    shader_name or (shader_target.document_id if shader_target else "Unknown")
+                    shader_name
+                    or shader_target_name
+                    or (shader_target.document_id if shader_target else "Unknown")
                 ),
                 "textureEnvironments": texture_environments,
                 "ints": _plain_mapping(saved.get("m_Ints")),

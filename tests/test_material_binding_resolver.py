@@ -140,6 +140,20 @@ class MaterialBindingResolverTests(unittest.TestCase):
             {item["code"] for item in result["diagnostics"]},
         )
 
+    def test_accepts_unity_material_color_channels_for_vector_property(self):
+        shader = 'Shader "Test" { Properties {\n_Direction ("Direction", Vector) = (0,0,0,0)\n} }'
+        result = resolve_material_bindings(
+            shader,
+            ShaderSource("test", "memory://test.shader"),
+            {
+                "shader": "Test",
+                "colors": {"_Direction": {"r": 1, "g": 2, "b": 3, "a": 4}},
+            },
+        )
+
+        self.assertEqual([1.0, 2.0, 3.0, 4.0], result["bindings"][0]["effective"]["value"])
+        self.assertFalse(result["diagnostics"])
+
     def test_rejects_unknown_shaderlab_property_type(self):
         shader = 'Shader "Test" { Properties {\n_M ("Matrix", Matrix) = 0\n} }'
         with self.assertRaisesRegex(ShaderLabParseError, "unsupported property type"):

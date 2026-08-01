@@ -119,7 +119,7 @@ WWISE_DB = Path(
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
 BUNDLED_ANIMESTUDIO_CLI = (
-    PROJECT_ROOT / "tools" / "AnimeStudio.CLI-5169b95" / "AnimeStudio.CLI.exe"
+    PROJECT_ROOT / "tools" / "AnimeStudio.CLI-633f30c" / "AnimeStudio.CLI.exe"
 )
 ANIMESTUDIO_CLI = Path(
     os.environ.get("VFS_BROWSER_ANIMESTUDIO_CLI", BUNDLED_ANIMESTUDIO_CLI)

@@ -22,6 +22,7 @@ VECTOR_CHANNELS = {
     "Color": ("r", "g", "b", "a"),
     "Vector": ("x", "y", "z", "w"),
 }
+UNITY_MATERIAL_VECTOR_CHANNELS = ("r", "g", "b", "a")
 
 
 class MaterialBindingError(ValueError):
@@ -462,11 +463,20 @@ def _normalize_value(kind: str, value: Any):
         return float(value)
     channels = VECTOR_CHANNELS["Color" if kind == "color" else "Vector"]
     if isinstance(value, Mapping):
-        if not all(channel in value for channel in channels):
+        storage_channels = channels
+        if kind == "vector" and not all(channel in value for channel in channels):
+            storage_channels = UNITY_MATERIAL_VECTOR_CHANNELS
+        if not all(channel in value for channel in storage_channels):
             raise MaterialBindingError(
-                f"expected {kind} channels {channels}, got {value!r}"
+                f"expected {kind} channels {channels}"
+                + (
+                    f" or Unity Material channels {UNITY_MATERIAL_VECTOR_CHANNELS}"
+                    if kind == "vector"
+                    else ""
+                )
+                + f", got {value!r}"
             )
-        value = [value[channel] for channel in channels]
+        value = [value[channel] for channel in storage_channels]
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         raise MaterialBindingError(f"expected four-component {kind}, got {value!r}")
     if any(isinstance(item, bool) or not isinstance(item, Real) for item in value):

@@ -39,8 +39,8 @@ def make_object(source_file, path_id, type_name, name, payload, references=(), m
     return AnimeStudioObject.from_payload(value)
 
 
-def ref(path, source_file, path_id, type_name):
-    return {
+def ref(path, source_file, path_id, type_name, *, target_name=None):
+    reference = {
         "path": path,
         "fileId": 0,
         "pathId": path_id,
@@ -48,6 +48,9 @@ def ref(path, source_file, path_id, type_name):
         "targetPathId": path_id,
         "targetSourceFile": source_file,
     }
+    if target_name is not None:
+        reference["targetName"] = target_name
+    return reference
 
 
 class AnimeStudioModelTests(unittest.TestCase):
@@ -411,6 +414,7 @@ class AnimeStudioModelTests(unittest.TestCase):
                 "Material",
                 "BodyMat",
                 {
+                    "m_Shader": {"m_FileID": 1, "m_PathID": 40, "IsNull": False},
                     "m_SavedProperties": {
                         "m_TexEnvs": {
                             "_BaseMap": {
@@ -451,6 +455,13 @@ class AnimeStudioModelTests(unittest.TestCase):
                     }
                 },
                 [
+                    ref(
+                        "$.m_Shader",
+                        "CAB-shader",
+                        40,
+                        "Shader",
+                        target_name="HGRP/CharacterNPR",
+                    ),
                     ref("$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture", "CAB-texture", 30, "Texture2D"),
                     ref("$.m_SavedProperties.m_TexEnvs._DiffRampMap.m_Texture", "CAB-texture", 30, "Texture2D"),
                     ref("$.m_SavedProperties.m_TexEnvs._SDFMask.m_Texture", "CAB-texture", 30, "Texture2D"),
@@ -510,6 +521,10 @@ class AnimeStudioModelTests(unittest.TestCase):
         self.assertEqual(0.2, document["materials"][0]["previewPbr"]["metallicFactor"])
         self.assertEqual(0.75, document["materials"][0]["previewPbr"]["roughnessFactor"])
         self.assertEqual("characterNpr", document["materials"][0]["previewPbr"]["materialFamily"])
+        self.assertEqual(
+            "HGRP/CharacterNPR",
+            document["materials"][0]["sourceMaterial"]["shader"],
+        )
         self.assertEqual("cloth", document["materials"][0]["previewPbr"]["materialRole"])
         self.assertNotIn("unlit", document["materials"][0]["previewPbr"])
         self.assertEqual(
