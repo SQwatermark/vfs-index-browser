@@ -60,6 +60,7 @@ MEMBER_TYPE_OVERRIDES = {
     ("Beyond.Blackboard.BlackboardInt", "value"): "System.Int32",
     ("Beyond.Blackboard.BlackboardString", "value"): "System.String",
     ("Beyond.Gameplay.Core.BlackboardImpactValue", "value"): "System.Int32",
+    ("Beyond.Gameplay.Core.BlackboardSuperArmorValue", "value"): "System.Int32",
 }
 
 TYPE_OVERRIDES = {

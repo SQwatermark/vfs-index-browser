@@ -12,6 +12,7 @@
 - [combat-system-reversing-plan.md](combat-system-reversing-plan.md)：战斗系统反推的证据来源、领域拆分、执行阶段与首轮任务。
 - [combat-runtime-type-map.md](combat-runtime-type-map.md)：当前客户端中技能、资源账本、连携队列与释放候选链的首批类型证据。
 - [combat-runtime-probes.json](combat-runtime-probes.json)：同版本技能释放、资源扣费与连携入口的批量运行时探针清单。
+- [combat-config-runtime-bridge.md](combat-config-runtime-bridge.md)：二进制 SkillData、干员技能集合、实例创建与运行时刷新的首批桥接证据。
 
 Shader 的公式级实验暂位于 `experiments/endfield_blender_shader/`；其中面部与丝袜结论已经
 汇入[资源恢复整合路线](../design/integrated-roadmap.md)，实验目录和工具职责见
