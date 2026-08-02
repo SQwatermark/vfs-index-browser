@@ -10,6 +10,7 @@
 - [effect-resource-recovery.md](effect-resource-recovery.md)：特效 Prefab、VFX 配置、粒子、Playable、VAT 与运行时渲染输入的组合边界和恢复路线。
 - [humanoid-animation-recovery.md](humanoid-animation-recovery.md)：Humanoid 动画导出、Muscle 求解、Unity oracle 和最终蒙皮矩阵验证路线。
 - [combat-system-reversing-plan.md](combat-system-reversing-plan.md)：战斗系统反推的证据来源、领域拆分、执行阶段与首轮任务。
+- [combat-runtime-type-map.md](combat-runtime-type-map.md)：当前客户端中技能、资源账本、连携队列与释放候选链的首批类型证据。
 
 Shader 的公式级实验暂位于 `experiments/endfield_blender_shader/`；其中面部与丝袜结论已经
 汇入[资源恢复整合路线](../design/integrated-roadmap.md)，实验目录和工具职责见
