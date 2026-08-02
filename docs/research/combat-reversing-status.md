@@ -73,6 +73,11 @@ python tools/inspect_probe_pe.py `
   --output data/research-artifacts/combat-1.2.4/derived/static-pe-probes.json
 ```
 
+`probe_runtime_rvas.py` 除了记录探针地址本身，还会对采样字节中的
+8 字节对齐指针生成 `pointerTargets`：其中包含目标内存权限、目标前导字节、
+模块内 RVA 和目标中的二级模块指针。这些字段用来判断 `.rdata` 样本是
+单纯数据、跳板描述符还是指向运行时解密代码的节点。
+
 逆向工具的可选依赖统一位于 `requirements-research.txt`，不加入网页服务的运行依赖。
 
 ## 文档导航

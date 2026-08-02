@@ -35,6 +35,8 @@ MEMORY_PROTECTIONS = {
 PAGE_GUARD = 0x100
 PAGE_NOCACHE = 0x200
 PAGE_WRITECOMBINE = 0x400
+MEM_COMMIT = 0x1000
+READABLE_PROTECTIONS = {0x02, 0x04, 0x08, 0x20, 0x40, 0x80}
 
 
 class MEMORY_BASIC_INFORMATION(ctypes.Structure):
@@ -101,6 +103,49 @@ def read_memory(kernel32, process, address: int, byte_count: int) -> bytes:
     return buffer.raw[: bytes_read.value]
 
 
+def iter_aligned_qwords(data: bytes):
+    for offset in range(0, len(data) - 7, 8):
+        yield offset, struct.unpack_from("<Q", data, offset)[0]
+
+
+def is_readable_region(region: dict) -> bool:
+    protection = region["protect"]
+    return (
+        region["state"] == MEM_COMMIT
+        and not protection & PAGE_GUARD
+        and protection & 0xFF in READABLE_PROTECTIONS
+    )
+
+
+def inspect_pointer_target(
+    kernel32, process, module_base: int, module_size: int, address: int, byte_count: int
+) -> dict | None:
+    if address == 0:
+        return None
+    try:
+        region = query_region(kernel32, process, address)
+    except OSError:
+        return None
+    if not is_readable_region(region):
+        return None
+
+    result = {"address": address, "region": region}
+    if module_base <= address < module_base + module_size:
+        result["moduleRva"] = address - module_base
+    try:
+        data = read_memory(kernel32, process, address, byte_count)
+    except OSError as error:
+        result["readError"] = str(error)
+        return result
+    result["bytes"] = data.hex()
+    result["modulePointers"] = [
+        {"offset": offset, "address": value, "rva": value - module_base}
+        for offset, value in iter_aligned_qwords(data)
+        if module_base <= value < module_base + module_size
+    ]
+    return result
+
+
 def inspect_probe(kernel32, process, module_base, module_size, probe, byte_count):
     rva_value = probe["rva"]
     rva = int(rva_value, 0) if isinstance(rva_value, str) else rva_value
@@ -119,6 +164,13 @@ def inspect_probe(kernel32, process, module_base, module_size, probe, byte_count
     }
     if first_pointer is not None and module_base <= first_pointer < module_base + module_size:
         result["firstPointerRva"] = first_pointer - module_base
+    result["pointerTargets"] = []
+    for offset, value in iter_aligned_qwords(data):
+        target = inspect_pointer_target(
+            kernel32, process, module_base, module_size, value, byte_count
+        )
+        if target is not None:
+            result["pointerTargets"].append({"sourceOffset": offset, **target})
     return result
 
 
