@@ -1,0 +1,4 @@
+# Optional dependencies for reverse-engineering and disassembly tools.
+pefile>=2024.8.26
+capstone>=5.0.6
+

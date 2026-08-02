@@ -10,6 +10,7 @@
 - [effect-resource-recovery.md](effect-resource-recovery.md)：特效 Prefab、VFX 配置、粒子、Playable、VAT 与运行时渲染输入的组合边界和恢复路线。
 - [humanoid-animation-recovery.md](humanoid-animation-recovery.md)：Humanoid 动画导出、Muscle 求解、Unity oracle 和最终蒙皮矩阵验证路线。
 - [combat-system-reversing-plan.md](combat-system-reversing-plan.md)：战斗系统反推的证据来源、领域拆分、执行阶段与首轮任务。
+- [combat-reversing-status.md](combat-reversing-status.md)：当前已确认结论、未知项、本地证据布局和下一执行序列。
 - [combat-runtime-type-map.md](combat-runtime-type-map.md)：当前客户端中技能、资源账本、连携队列与释放候选链的首批类型证据。
 - [combat-runtime-probes.json](combat-runtime-probes.json)：同版本技能释放、资源扣费与连携入口的批量运行时探针清单。
 - [combat-config-runtime-bridge.md](combat-config-runtime-bridge.md)：二进制 SkillData、干员技能集合、实例创建与运行时刷新的首批桥接证据。

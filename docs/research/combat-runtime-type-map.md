@@ -151,12 +151,12 @@ python -m tools.probe_runtime_rvas `
 
 ```powershell
 python tools/index_il2cpp_types.py `
-  data/research-artifacts/combat-1.2.4/Gameplay.Beyond.ai.cs `
-  --output data/research-artifacts/combat-1.2.4/gameplay-types-ai.json
+  data/research-artifacts/combat-1.2.4/dumps/ai/Gameplay.Beyond.dll.cs `
+  --output data/research-artifacts/combat-1.2.4/derived/indexes/gameplay-types-ai.json
 
 python tools/index_il2cpp_types.py `
-  data/Common.Beyond.normal.cs `
-  --output data/research-artifacts/combat-1.2.4/common-types.json `
+  data/research-artifacts/combat-1.2.4/dumps/normal/Common.Beyond.dll.cs `
+  --output data/research-artifacts/combat-1.2.4/derived/indexes/common-types.json `
   --match 'CostType|SkillType|Ability'
 ```
 
