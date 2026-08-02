@@ -78,6 +78,7 @@ schema、测试或生产代码后，才算正式进入实现路线。
 - `tools/build_il2cpp_type_graph.py`：从类型索引生成保守的字段/属性/方法签名引用图。
 - `tools/disassemble_rva.py`：反汇编指定 RVA。
 - `tools/inspect_process_rva.py`：检查运行进程中的 RVA。
+- `tools/probe_runtime_rvas.py`：按版本化清单批量采集关键战斗 RVA 的运行时内存证据。
 
 ## Shader 实验
 

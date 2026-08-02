@@ -131,6 +131,17 @@ USP 位于每个 `AbilitySystem`：
 对磁盘文件中同 RVA 的字节下反编译结论。下一步需要在游戏运行并完成初始化后读取对应
 进程内存，检查方法指针是实际代码、跳板还是描述符，再决定静态反编译或最小 Hook 路线。
 
+批量探针定义在 `combat-runtime-probes.json`。游戏进入可操作场景后可执行：
+
+```powershell
+python -m tools.probe_runtime_rvas `
+  docs/research/combat-runtime-probes.json `
+  --output data/research-artifacts/combat-1.2.4/runtime-probes.json
+```
+
+报告会记录每个地址的内存区域权限、前导字节、首个 64 位值，以及该值是否仍指向
+`GameAssembly.dll`。这一步用于区分真实可执行入口、跳板和只读描述符。
+
 ## 可复现命令
 
 ```powershell
@@ -145,4 +156,3 @@ python tools/index_il2cpp_types.py `
 ```
 
 生成结果位于被忽略的 `data/research-artifacts/`，不提交体积较大的原始 dump 和派生索引。
-

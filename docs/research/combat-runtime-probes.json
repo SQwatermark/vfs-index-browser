@@ -1,0 +1,21 @@
+{
+  "format": "CombatRuntimeProbeSet",
+  "version": 1,
+  "evidenceSet": "combat-1.2.4",
+  "process": "Arknights.exe",
+  "module": "GameAssembly.dll",
+  "probes": [
+    { "id": "ability.try-cast-input", "method": "Beyond.Gameplay.Core.AbilitySystem.TryCastSkill(SkillCastInputView&, CastSkillOptions?)", "rva": "0x037BA110" },
+    { "id": "ability.can-cast-skill", "method": "Beyond.Gameplay.Core.AbilitySystem.CanCastSkill(string, TargetHandleView, bool, bool, bool)", "rva": "0x038672E0" },
+    { "id": "skill.is-available", "method": "Beyond.Gameplay.Core.Skill.IsAvailable()", "rva": "0x06CA7760" },
+    { "id": "skill.check-cooldown", "method": "Beyond.Gameplay.Core.Skill.CheckCd()", "rva": "0x06CA72BC" },
+    { "id": "skill.check-cost", "method": "Beyond.Gameplay.Core.Skill.CheckCost()", "rva": "0x06CA7328" },
+    { "id": "skill.check-tag", "method": "Beyond.Gameplay.Core.Skill.CheckTag()", "rva": "0x03046350" },
+    { "id": "skill.check-state", "method": "Beyond.Gameplay.Core.Skill.CheckState()", "rva": "0x06CA7478" },
+    { "id": "skill.do-cast", "method": "Beyond.Gameplay.Core.Skill.DoCast(...)", "rva": "0x033B1690" },
+    { "id": "skill.apply-cost", "method": "Beyond.Gameplay.Core.Skill._ApplyCost(bool)", "rva": "0x03E2E670" },
+    { "id": "battle.cost-atb", "method": "Beyond.Gameplay.Core.BattleManager.CostAtb(AbilitySystem, float, float&, bool)", "rva": "0x03E2D040" },
+    { "id": "ability.set-ultimate-sp", "method": "Beyond.Gameplay.Core.AbilitySystem.ultimateSp.set", "rva": "0x03418F00" },
+    { "id": "battle.pending-combo", "method": "Beyond.Gameplay.Core.BattleManager.PendingComboSkill(...)", "rva": "0x06D7411C" }
+  ]
+}
