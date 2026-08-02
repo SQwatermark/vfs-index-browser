@@ -155,6 +155,7 @@ Blender 4.3 的 glTF 导入器会把材质 extras 保留为自定义属性。Ble
 - 将 `CharacterNPR_OverlayShadow` 的乘算混合语义近似为透明黑层衰减；这是 Eevee 无法读取目标帧缓冲时的灰度近似，不是原 Shader 的逐通道精确复刻；
 - 建立验证相机、双区域光和 World；传入 `--lighting` 时用角色 Cubemap 和生效的 `HGCharacterVolume` 环境光参数替代硬编码输入；
 - 通过 `--framing full|portrait` 切换全身和上半身验证构图；
+- 将多槽 Action 按动作分段排列到一条同步 NLA 时间线，并为每段建立同名时间线标记；
 - 可选启用 Freestyle 外轮廓，并输出可继续编辑的 `.blend` 和验证 PNG。
 
 模型 API 还为 Prefab 和 AvatarMesh 两类入口提供按需 `.blend` 下载。AvatarMesh 请求
@@ -173,9 +174,15 @@ GET /api/manifest-asset/model-blend?manifestId=451359&assetIndex=<模型>&animat
 指定 `animationAssetIndex` 时，服务复制 ModelDocument，在派生 GLB 中临时附加所选
 Transform 动画，再导入到独立的 `animations/<assetIndex>/model.blend` 缓存。基础 GLB
 和基础 `.blend` 都保持不变。Blender 导入器保留 glTF Action；Blender 4.4 的 Action
-Slot 可分别绑定骨架和辅助对象，并自动把场景起止帧设为所有导入 Action 的并集。
-佩丽卡待机样本 `300024` 已验证为 `A_actor_pelica_idle_loop`，包含 20 个 Action Slot，
-场景范围为 0–48 帧。
+Slot 可分别绑定骨架和辅助对象。直接在 Action Editor 中切换当前骨架的 Action 只会更新
+一个对象，辅助对象仍使用旧动作，会造成整套模型的坐标基准错位。导出器因此清理 glTF
+导入器生成的分散 NLA track，将所有兼容槽按动作排进同一组全局帧区间。使用时在 NLA
+Editor 中选择 `Endfield Actions`，通过时间线同名标记定位动作并播放；不要只修改
+`Bip001` 的 Action 下拉框。原始 Action 数据块仍保留，便于后续编辑和单独导出。
+
+佩丽卡待机样本 `300024` 已验证为 `A_actor_pelica_idle_loop`，包含 20 个 Action Slot。
+莱诺 59 动作批量样本已验证生成 6611 个同步 NLA strip；主骨架仅保留一条
+`Endfield Actions` track，其中包含 58 个适用于该骨架的动作片段。
 
 远程真实样本 `data_npc_avatarmesh_qinjc.asset` 已生成 Blender 4.4 可读取的 20.4 MiB
 文件；其中 9 个材质均保留 `endfieldShaderBackend` 和对应 CharacterNPR/PBR 节点树，证明

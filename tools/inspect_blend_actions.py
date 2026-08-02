@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import bpy
+from mathutils import Vector
 
 
 def action_channelbags(action):
@@ -14,6 +15,24 @@ def action_channelbags(action):
             for channelbag in strip.channelbags:
                 channelbags.append(channelbag)
     return channelbags
+
+
+def scene_mesh_bounds():
+    corners = [
+        item.matrix_world @ Vector(corner)
+        for item in bpy.context.scene.objects
+        if item.type == "MESH" and not item.hide_get()
+        for corner in item.bound_box
+    ]
+    if not corners:
+        return None
+    minimum = Vector(map(min, zip(*corners)))
+    maximum = Vector(map(max, zip(*corners)))
+    return {
+        "minimum": list(minimum),
+        "maximum": list(maximum),
+        "size": list(maximum - minimum),
+    }
 
 
 actions = []
@@ -59,14 +78,23 @@ for action in bpy.data.actions:
 objects = []
 action_switch_probes = []
 pose_motion_probes = []
+orientation_probes = []
+scene = bpy.context.scene
+scene.frame_set(scene.frame_start)
+animated_bounds = scene_mesh_bounds()
+active_actions = {}
 for item in bpy.data.objects:
     if item.type != "ARMATURE":
         continue
     animation_data = item.animation_data
+    active_actions[item.name] = animation_data.action if animation_data else None
     objects.append(
         {
             "name": item.name,
             "boneCount": len(item.data.bones),
+            "location": list(item.location),
+            "rotationEuler": list(item.rotation_euler),
+            "scale": list(item.scale),
             "activeAction": (
                 animation_data.action.name
                 if animation_data is not None and animation_data.action is not None
@@ -132,6 +160,40 @@ for item in bpy.data.objects:
         )
         animation_data.action = original_action
 
+primary_armature = max(
+    (item for item in bpy.data.objects if item.type == "ARMATURE"),
+    key=lambda item: len(item.data.bones),
+    default=None,
+)
+if primary_armature is not None and primary_armature.animation_data is not None:
+    original_action = primary_armature.animation_data.action
+    expected_slot = f"OB{primary_armature.name}"
+    for action in bpy.data.actions:
+        if not any(slot.identifier == expected_slot for slot in action.slots):
+            continue
+        primary_armature.animation_data.action = action
+        scene.frame_set(round(action.frame_range[0]))
+        world_up = primary_armature.matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))
+        orientation_probes.append(
+            {
+                "action": action.name,
+                "rotationQuaternion": list(primary_armature.rotation_quaternion),
+                "worldUp": list(world_up.normalized()),
+            }
+        )
+    primary_armature.animation_data.action = original_action
+    scene.frame_set(scene.frame_start)
+
+for item in bpy.data.objects:
+    if item.type == "ARMATURE" and item.animation_data is not None:
+        item.animation_data.action = None
+scene.frame_set(scene.frame_start)
+rest_bounds = scene_mesh_bounds()
+for item in bpy.data.objects:
+    if item.type == "ARMATURE" and item.animation_data is not None:
+        item.animation_data.action = active_actions[item.name]
+scene.frame_set(scene.frame_start)
+
 print(
     "ENDAXIS_BLEND_ACTION_REPORT="
     + json.dumps(
@@ -142,9 +204,12 @@ print(
                 else None
             ),
             "selectedObjects": [item.name for item in bpy.context.selected_objects],
+            "animatedBounds": animated_bounds,
+            "restBounds": rest_bounds,
             "objects": objects,
             "actionSwitchProbes": action_switch_probes,
             "poseMotionProbes": pose_motion_probes,
+            "orientationProbes": orientation_probes,
             "actions": actions,
         }
     )
