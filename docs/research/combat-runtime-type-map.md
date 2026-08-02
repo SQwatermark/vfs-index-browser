@@ -120,7 +120,10 @@ USP 位于每个 `AbilitySystem`：
 
 ## RVA 的当前限制
 
-当前 dump 的 RVA 来自运行时 `il2cpp_method_get_pointer`，并非可靠的磁盘 PE 函数入口：
+自定义 Dumper 的解析顺序是：先尝试动态查找 `il2cpp_method_get_pointer`，不存在时读取
+`MethodInfo` 对象的第一个指针。当前磁盘 `GameAssembly.dll` 的 393 个导出中没有
+`il2cpp_method_get_pointer`，因此现有 dump 的 RVA 极可能来自 `MethodInfo` 首指针，而
+不是一个标准 IL2CPP 导出 API 的返回值。它仍不是可靠的磁盘 PE 函数入口：
 
 - 部分 RVA 落在磁盘文件的 `.rdata`；
 - 部分落在可执行节中，但不是合法函数边界；
@@ -130,6 +133,8 @@ USP 位于每个 `AbilitySystem`：
 因此当前可以可靠使用类型名、字段 offset、方法签名和运行时返回的地址身份，但不能直接
 对磁盘文件中同 RVA 的字节下反编译结论。下一步需要在游戏运行并完成初始化后读取对应
 进程内存，检查方法指针是实际代码、跳板还是描述符，再决定静态反编译或最小 Hook 路线。
+后续 Dumper 探针还需同时记录 `MethodInfo` 地址、首部若干指针和 RVA 的解析来源，不能只
+保存首指针换算后的 RVA。
 
 批量探针定义在 `combat-runtime-probes.json`。游戏进入可操作场景后可执行：
 
