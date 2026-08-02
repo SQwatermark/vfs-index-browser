@@ -13,13 +13,20 @@ from typing import Any
 from animestudio_humanoid import (
     bake_humanoid_body_tracks,
     bake_humanoid_rotation_tracks,
+    compensate_in_place_root_motion,
 )
 
 ANIMATION_FORMAT = "AnimeStudioAnimationClip"
 ANIMATION_VERSION = "1.1.0"
 MODEL_ANIMATION_FORMAT = "EndfieldModelAnimation"
 MODEL_ANIMATION_VERSION = "1.0.0"
-MODEL_ANIMATION_CACHE_REVISION = "14"
+MODEL_ANIMATION_CACHE_REVISION = "18"
+
+
+class AnimationClipSelectionError(RuntimeError):
+    """AnimeStudio output cannot identify the requested clip uniquely."""
+
+
 GEOMETRY_BUFFER_ID = "buffer:geometry"
 TRANSFORM_PROPERTIES = {
     "translation": ("vec3", 3),
@@ -38,7 +45,7 @@ def load_unique_animation_clip(export_root: Path, expected_name: str) -> tuple[d
         if str(clip.get("name") or "").casefold() == expected_name.casefold():
             matching.append((clip, candidate))
     if len(matching) != 1:
-        raise RuntimeError(
+        raise AnimationClipSelectionError(
             f"AnimeStudio exported {len(candidates)} animation JSON files, "
             f"but {len(matching)} match {expected_name!r}; expected exactly one"
         )
@@ -138,7 +145,14 @@ def bind_animation_clip(
         if track["property"] == "translation"
     }
     humanoid_tracks, consumed_float_curves = ([], set())
+    compensated_accessory_count = 0
     if bake_humanoid:
+        compensated_accessory_count = compensate_in_place_root_motion(
+            document,
+            float_curves,
+            timelines,
+            tracks,
+        )
         rotation_tracks, muscle_curves = bake_humanoid_rotation_tracks(
             document,
             float_curves,
@@ -186,6 +200,18 @@ def bind_animation_clip(
                 "message": (
                     f"{len(consumed_float_curves)} Humanoid curves were baked "
                     f"into {len(humanoid_tracks)} bone transform tracks."
+                ),
+                "objectId": animation_id,
+            }
+        )
+    if compensated_accessory_count:
+        diagnostics.append(
+            {
+                "severity": "info",
+                "code": "ANIMATION_ACCESSORY_ROOT_MOTION_COMPENSATED",
+                "message": (
+                    f"Root motion was applied to {compensated_accessory_count} "
+                    "explicit accessory animation targets for in-place playback."
                 ),
                 "objectId": animation_id,
             }
@@ -241,6 +267,7 @@ def attach_animation_clip(
         source=source,
         bake_humanoid=bake_humanoid,
     )
+    _collapse_constant_tracks(animation)
     timelines = animation["timelines"]
     binary = bytearray(geometry)
     timeline_accessors: dict[int, str] = {}
@@ -325,6 +352,31 @@ def attach_animation_clip(
         )
         _update_geometry_buffer(document, binary, buffer_uri)
     return bytes(binary)
+
+
+def _collapse_constant_tracks(animation: dict[str, Any]) -> None:
+    """Store an exactly constant transform track as a single keyframe."""
+
+    timelines = animation["timelines"]
+    timeline_indexes = {
+        tuple(timeline): index
+        for index, timeline in enumerate(timelines)
+    }
+    for track in animation["tracks"]:
+        values = track["values"]
+        if len(values) <= 1 or any(row != values[0] for row in values[1:]):
+            continue
+        source_timeline = timelines[track["timeline"]]
+        if not source_timeline:
+            continue
+        singleton = (source_timeline[0],)
+        timeline_index = timeline_indexes.get(singleton)
+        if timeline_index is None:
+            timeline_index = len(timelines)
+            timelines.append(list(singleton))
+            timeline_indexes[singleton] = timeline_index
+        track["timeline"] = timeline_index
+        track["values"] = [values[0]]
 
 
 def _index_node_path_hashes(document: Mapping[str, Any]) -> dict[int, set[str]]:

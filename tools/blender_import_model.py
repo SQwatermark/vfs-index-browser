@@ -1250,12 +1250,17 @@ def configure_world(lighting: CharacterLighting | None) -> None:
 
 def configure_armature_viewport() -> int:
     armatures = [obj for obj in bpy.data.objects if obj.type == "ARMATURE"]
+    if not armatures:
+        return 0
+    primary = max(armatures, key=lambda item: len(item.data.bones))
+    bpy.ops.object.select_all(action="DESELECT")
     for armature in armatures:
-        # 骨架仍完整保留供动画编辑使用，但默认不遮挡角色模型。
+        # 主骨架保持可选中，确保 Blender 多槽 Action 默认展示骨骼轨道。
         armature.data.display_type = "STICK"
         armature.show_in_front = False
-        armature.select_set(False)
-        armature.hide_set(True)
+        armature.hide_set(armature != primary)
+    primary.select_set(True)
+    bpy.context.view_layer.objects.active = primary
     return len(armatures)
 
 
@@ -1390,7 +1395,7 @@ def main() -> None:
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    bpy.ops.wm.save_as_mainfile(filepath=str(output_path))
+    bpy.ops.wm.save_as_mainfile(filepath=str(output_path), compress=True)
     if args.render:
         render_path = args.render.resolve()
         render_path.parent.mkdir(parents=True, exist_ok=True)

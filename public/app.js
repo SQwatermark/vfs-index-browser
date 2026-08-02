@@ -597,6 +597,10 @@ function renderModelPreview(data) {
           <button id="modelAnimationClearSelection" type="button" disabled>清空选择</button>
           <a id="modelAnimationBundleLink" class="link-button" hidden title="将模型与所选动画保存到同一个 Blender 文件">导出所选动画</a>
         </div>
+        <details id="modelAnimationExportIssues" class="model-animation-export-issues" hidden>
+          <summary id="modelAnimationExportIssuesSummary"></summary>
+          <ul id="modelAnimationExportIssuesList"></ul>
+        </details>
         <div class="model-animation-pager">
           <button id="modelAnimationPreviousPage" type="button" disabled>上一页</button>
           <span id="modelAnimationPageStatus">1 / 1</span>
@@ -762,12 +766,27 @@ function renderModelPreview(data) {
   const animationSelectSearchResults = $('modelAnimationSelectSearchResults')
   const animationClearSelection = $('modelAnimationClearSelection')
   const animationBundleLink = $('modelAnimationBundleLink')
+  const animationExportIssues = $('modelAnimationExportIssues')
+  const animationExportIssuesSummary = $('modelAnimationExportIssuesSummary')
+  const animationExportIssuesList = $('modelAnimationExportIssuesList')
   const animationPreviousPage = $('modelAnimationPreviousPage')
   const animationNextPage = $('modelAnimationNextPage')
   const animationPageStatus = $('modelAnimationPageStatus')
   const animationCandidateName = (candidate) => (
     candidate?.path?.split('##').pop() || candidate?.name || ''
   )
+  const renderAnimationExportIssues = (issues = []) => {
+    animationExportIssues.hidden = issues.length === 0
+    animationExportIssues.open = issues.length > 0
+    animationExportIssuesSummary.textContent = `未导出 ${issues.length} 个动画`
+    animationExportIssuesList.replaceChildren(...issues.map((issue) => {
+      const item = document.createElement('li')
+      const name = issue.path?.split('##').pop() || issue.path || `#${issue.assetIndex}`
+      item.textContent = `${name}：${issue.message}`
+      item.title = issue.path || ''
+      return item
+    }))
+  }
   if (animationSelectedName && data.animationAsset) {
     animationSelectedName.value = animationCandidateName(data.animationAsset)
     animationSelectedName.title = data.animationAsset.path || ''
@@ -840,6 +859,33 @@ function renderModelPreview(data) {
     })
   }
   syncAnimationBundleLink()
+  animationBundleLink?.addEventListener('click', async (event) => {
+    event.preventDefault()
+    const href = animationBundleLink.getAttribute('href')
+    if (!href) return
+    animationBundleLink.setAttribute('aria-disabled', 'true')
+    animationSelectionStatus.textContent = '正在检查所选动画...'
+    try {
+      const prepareUrl = new URL(href, window.location.origin)
+      prepareUrl.searchParams.set('prepare', '1')
+      const result = await getJson(prepareUrl.toString())
+      renderAnimationExportIssues(result.issues || [])
+      if (!result.downloadUrl) {
+        animationSelectionStatus.textContent = '所选动画均无法导出'
+        return
+      }
+      animationSelectionStatus.textContent = result.issues?.length
+        ? `可导出 ${result.exportedCount} 个，跳过 ${result.issues.length} 个；正在生成 Blender 文件`
+        : `正在生成包含 ${result.exportedCount} 个动画的 Blender 文件`
+      const download = document.createElement('a')
+      download.href = result.downloadUrl
+      download.click()
+    } catch (error) {
+      animationSelectionStatus.textContent = `批量导出准备失败：${error.message || error}`
+    } finally {
+      animationBundleLink.removeAttribute('aria-disabled')
+    }
+  })
   const syncAnimationPager = (loading = false) => {
     animationPreviousPage.disabled = loading || animationCandidatePage <= 1
     animationNextPage.disabled = loading || animationCandidatePage >= animationCandidatePages

@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import server
+from animestudio_animation import AnimationClipSelectionError
 
 
 class ManifestModelBlendTests(unittest.TestCase):
@@ -99,11 +100,12 @@ class ManifestModelBlendTests(unittest.TestCase):
             self.root / "animation.chk",
         )
         handler.resolve_animation_sources = lambda _query: [animation_resolved]
-        handler.ensure_animated_model_glb = lambda _model, animations, *, lod: (
+        handler.ensure_animated_model_glb = lambda _model, animations, *, lod, skip_incompatible: server.AnimatedModelBundle(
             {"asset_index": 7, "path": "assets/model.prefab"},
             [animation[1] for animation in animations],
             model_root / "model-document.json",
             animated_glb,
+            [],
         )
         with (
             patch.object(server, "BLENDER_EXE", self.blender),
@@ -136,13 +138,17 @@ class ManifestModelBlendTests(unittest.TestCase):
         captured = []
         handler.resolve_animation_sources = lambda _query: animations
 
-        def ensure_animations(_model, selected, *, lod):
+        skip_modes = []
+
+        def ensure_animations(_model, selected, *, lod, skip_incompatible):
             captured.extend(int(item[1]["asset_index"]) for item in selected)
-            return (
+            skip_modes.append(skip_incompatible)
+            return server.AnimatedModelBundle(
                 {"asset_index": 7, "path": "assets/model.prefab"},
                 [item[1] for item in selected],
                 model_root / "model-document.json",
                 animated_glb,
+                [],
             )
 
         handler.ensure_animated_model_glb = ensure_animations
@@ -157,7 +163,239 @@ class ManifestModelBlendTests(unittest.TestCase):
             )
 
         self.assertEqual([11, 22], captured)
+        self.assertEqual([True], skip_modes)
         self.assertEqual(b"BLENDER-v404", handler.wfile.getvalue())
+
+    def test_prepares_bundle_with_complete_issue_report_before_download(self):
+        handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        animated_glb = model_root / "animation-sets" / "selection" / "model.glb"
+        animated_glb.parent.mkdir(parents=True)
+        animated_glb.write_bytes(b"animated-glb")
+        animations = [
+            (
+                object(),
+                {"asset_index": index, "path": f"assets/{name}.anim"},
+                {},
+                self.root / f"{name}.chk",
+            )
+            for index, name in ((11, "idle"), (22, "ui"))
+        ]
+        handler.resolve_animation_sources = lambda _query: animations
+        handler.ensure_animated_model_glb = lambda *_args, **_kwargs: server.AnimatedModelBundle(
+            {"asset_index": 7, "path": "assets/model.prefab"},
+            [animations[0][1]],
+            model_root / "model-document.json",
+            animated_glb,
+            [
+                server.AnimationExportIssue(
+                    22,
+                    "assets/ui.anim",
+                    "modelBinding",
+                    "animation has no compatible tracks",
+                )
+            ],
+        )
+        responses = []
+        handler.send_json = lambda payload, status=200, **_kwargs: responses.append(
+            (status, payload)
+        )
+
+        with patch.object(server, "BLENDER_EXE", self.blender):
+            handler.handle_manifest_asset_model_blend(
+                {
+                    "manifestId": ["451359"],
+                    "assetIndex": ["7"],
+                    "animationAssetIndex": ["11", "22"],
+                    "prepare": ["1"],
+                }
+            )
+
+        self.assertEqual(1, len(responses))
+        status, payload = responses[0]
+        self.assertEqual(200, status)
+        self.assertEqual(2, payload["requestedCount"])
+        self.assertEqual(1, payload["exportedCount"])
+        self.assertEqual(22, payload["issues"][0]["assetIndex"])
+        self.assertNotIn("prepare=", payload["downloadUrl"])
+
+    def test_skips_animation_without_compatible_tracks_in_bundle(self):
+        handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        model_document = model_root / "model-document.json"
+        geometry = model_root / "geometry.bin"
+        model_document.write_text("{}", encoding="utf-8")
+        geometry.write_bytes(b"geometry")
+        compatible_clip = self.root / "compatible.animation.json"
+        incompatible_clip = self.root / "incompatible.animation.json"
+        compatible_clip.write_text("{}", encoding="utf-8")
+        incompatible_clip.write_text("{}", encoding="utf-8")
+        model_resolved = (
+            object(),
+            {"asset_index": 7, "path": "assets/model.prefab"},
+            {"id": 1},
+            self.root / "model.chk",
+        )
+        sources = [
+            (
+                object(),
+                {"asset_index": 11, "path": "assets/compatible.anim", "bundle_name": "a"},
+                {},
+                self.root / "compatible.chk",
+            ),
+            (
+                object(),
+                {"asset_index": 22, "path": "assets/ui.anim", "bundle_name": "b"},
+                {},
+                self.root / "incompatible.chk",
+            ),
+        ]
+        handler.ensure_manifest_asset_model_glb = lambda _resolved, *, lod: (
+            model_resolved[1],
+            model_document,
+            model_document,
+        )
+        handler.load_model_glb_inputs = lambda *_args, **_kwargs: (
+            {"animations": [], "images": []},
+            b"geometry",
+            {},
+        )
+        handler.ensure_animation_clip_export = lambda _record, _chunk, asset: (
+            {"compatible": asset["asset_index"] == 11},
+            compatible_clip if asset["asset_index"] == 11 else incompatible_clip,
+            {},
+        )
+
+        def attach(document, binary, clip, **_kwargs):
+            if clip["compatible"]:
+                document["animations"].append({"id": "animation:11"})
+            return binary
+
+        def build_glb(*_args, **_kwargs):
+            return b"animated-glb"
+
+        with (
+            patch.object(server, "attach_animation_clip", new=attach),
+            patch.object(server, "build_glb", new=build_glb),
+            patch.object(server, "SHADER_ARCHIVE_ROOT", self.root / "missing-shaders"),
+        ):
+            bundle = handler.ensure_animated_model_glb(
+                model_resolved,
+                sources,
+                lod=0,
+                skip_incompatible=True,
+            )
+
+        self.assertEqual([11], [asset["asset_index"] for asset in bundle.animations])
+        self.assertEqual([22], [issue.asset_index for issue in bundle.issues])
+        self.assertEqual(b"animated-glb", bundle.glb_path.read_bytes())
+
+    def test_rejects_bundle_when_every_animation_is_incompatible(self):
+        handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        model_document = model_root / "model-document.json"
+        model_document.write_text("{}", encoding="utf-8")
+        source_clip = self.root / "ui.animation.json"
+        source_clip.write_text("{}", encoding="utf-8")
+        model_resolved = (
+            object(),
+            {"asset_index": 7, "path": "assets/model.prefab"},
+            {"id": 1},
+            self.root / "model.chk",
+        )
+        sources = [
+            (
+                object(),
+                {"asset_index": 22, "path": "assets/ui.anim", "bundle_name": "ui"},
+                {},
+                self.root / "ui.chk",
+            )
+        ]
+        handler.ensure_manifest_asset_model_glb = lambda _resolved, *, lod: (
+            model_resolved[1],
+            model_document,
+            model_document,
+        )
+        handler.load_model_glb_inputs = lambda *_args, **_kwargs: (
+            {"animations": [], "images": []},
+            b"geometry",
+            {},
+        )
+        handler.ensure_animation_clip_export = lambda *_args: ({}, source_clip, {})
+
+        with patch.object(
+            server,
+            "attach_animation_clip",
+            new=lambda _document, binary, _clip, **_kwargs: binary,
+        ):
+            bundle = handler.ensure_animated_model_glb(
+                model_resolved,
+                sources,
+                lod=0,
+                skip_incompatible=True,
+            )
+
+        self.assertEqual([], bundle.animations)
+        self.assertEqual([22], [issue.asset_index for issue in bundle.issues])
+
+    def test_skips_unidentifiable_clip_in_bundle(self):
+        handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        model_document = model_root / "model-document.json"
+        model_document.write_text("{}", encoding="utf-8")
+        (model_root / "geometry.bin").write_bytes(b"geometry")
+        compatible_clip = self.root / "compatible.animation.json"
+        compatible_clip.write_text("{}", encoding="utf-8")
+        model_resolved = (
+            object(),
+            {"asset_index": 7, "path": "assets/model.prefab"},
+            {"id": 1},
+            self.root / "model.chk",
+        )
+        sources = [
+            (
+                object(),
+                {"asset_index": index, "path": f"assets/{name}.anim", "bundle_name": name},
+                {},
+                self.root / f"{name}.chk",
+            )
+            for index, name in ((11, "compatible"), (22, "unidentifiable"))
+        ]
+        handler.ensure_manifest_asset_model_glb = lambda _resolved, *, lod: (
+            model_resolved[1],
+            model_document,
+            model_document,
+        )
+        handler.load_model_glb_inputs = lambda *_args, **_kwargs: (
+            {"animations": [], "images": []},
+            b"geometry",
+            {},
+        )
+
+        def ensure_clip(_record, _chunk, asset):
+            if asset["asset_index"] == 22:
+                raise AnimationClipSelectionError("no unique clip")
+            return {}, compatible_clip, {}
+
+        handler.ensure_animation_clip_export = ensure_clip
+
+        def attach(document, binary, _clip, **_kwargs):
+            document["animations"].append({"id": "animation:11"})
+            return binary
+
+        def build_glb(*_args, **_kwargs):
+            return b"animated-glb"
+
+        with (
+            patch.object(server, "attach_animation_clip", new=attach),
+            patch.object(server, "build_glb", new=build_glb),
+            patch.object(server, "SHADER_ARCHIVE_ROOT", self.root / "missing-shaders"),
+        ):
+            bundle = handler.ensure_animated_model_glb(
+                model_resolved,
+                sources,
+                lod=0,
+                skip_incompatible=True,
+            )
+
+        self.assertEqual([11], [asset["asset_index"] for asset in bundle.animations])
+        self.assertEqual([22], [issue.asset_index for issue in bundle.issues])
 
     def test_resolves_repeated_and_comma_separated_animation_indexes(self):
         handler = object.__new__(server.BrowserHandler)

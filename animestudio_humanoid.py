@@ -456,6 +456,122 @@ def bake_humanoid_body_tracks(
     return tracks, consumed if tracks else set()
 
 
+def compensate_in_place_root_motion(
+    document: Mapping[str, Any],
+    float_curves: Iterable[Mapping[str, Any]],
+    timelines: list[list[float]],
+    tracks: list[dict[str, Any]],
+) -> int:
+    """将被移除的 Humanoid 根运动补偿到骨架根节点下的附件轨道。"""
+
+    resolved = _resolve_humanoid_skeleton(document)
+    if resolved is None:
+        return 0
+    _, bones_by_human_name = resolved
+    hips = bones_by_human_name.get("Hips")
+    if not isinstance(hips, Mapping):
+        return 0
+
+    nodes = {
+        node.get("id"): node
+        for node in document.get("nodes", [])
+        if isinstance(node, Mapping) and isinstance(node.get("id"), str)
+    }
+    hips_id = hips.get("id")
+    hips_node = nodes.get(hips_id)
+    if not isinstance(hips_node, Mapping):
+        return 0
+    skeleton_root_id = hips_node.get("parentId")
+    if not isinstance(skeleton_root_id, str):
+        return 0
+
+    body_curves = _collect_body_curves(float_curves, timelines)
+    if body_curves is None:
+        return 0
+    curves_by_name, _ = body_curves
+    timeline_starts = [timeline[0] for timeline in timelines if timeline]
+    if not timeline_starts:
+        return 0
+    reference_time = min(timeline_starts)
+    reference_body_translation, reference_body_rotation = _sample_body_pose(
+        curves_by_name,
+        timelines,
+        reference_time,
+    )
+
+    accessory_ids = {
+        node_id
+        for node_id, node in nodes.items()
+        if node.get("parentId") == skeleton_root_id and node_id != hips_id
+    }
+    compensated_ids = set()
+    for track in tracks:
+        if track.get("targetId") not in accessory_ids:
+            continue
+        property_name = track.get("property")
+        if property_name not in {"translation", "rotation"}:
+            continue
+        timeline_index = track.get("timeline")
+        values = track.get("values")
+        if (
+            not isinstance(timeline_index, int)
+            or not 0 <= timeline_index < len(timelines)
+            or not isinstance(values, list)
+            or len(values) != len(timelines[timeline_index])
+        ):
+            continue
+
+        corrected = []
+        for time, value in zip(timelines[timeline_index], values):
+            motion_translation, motion_rotation = _sample_motion_pose(
+                curves_by_name,
+                timelines,
+                time,
+            )
+            body_translation, body_rotation = _sample_body_pose(
+                curves_by_name,
+                timelines,
+                time,
+            )
+            body_delta_rotation = _normalized_quaternion(
+                _quaternion_multiply(
+                    body_rotation,
+                    _quaternion_inverse(reference_body_rotation),
+                )
+            )
+            body_delta_translation = _vector_subtract(
+                body_translation,
+                _rotate_vector(body_delta_rotation, reference_body_translation),
+            )
+            if property_name == "translation":
+                motion_space_position = _vector_add(
+                    motion_translation,
+                    _rotate_vector(motion_rotation, value),
+                )
+                corrected.append(
+                    _vector_add(
+                        body_delta_translation,
+                        _rotate_vector(body_delta_rotation, motion_space_position),
+                    )
+                )
+            else:
+                motion_space_rotation = _normalized_quaternion(
+                    _quaternion_multiply(motion_rotation, value)
+                )
+                corrected.append(
+                    _normalized_quaternion(
+                        _quaternion_multiply(body_delta_rotation, motion_space_rotation)
+                    )
+                )
+        track["values"] = (
+            _make_quaternions_continuous(corrected)
+            if property_name == "rotation"
+            else corrected
+        )
+        compensated_ids.add(track["targetId"])
+    return len(compensated_ids)
+
+
 def _sample_bone_muscles(axis_curves, timelines, time, consumed):
     muscles = [0.0, 0.0, 0.0]
     for axis, (source_timeline, values, curve_index) in axis_curves.items():
@@ -552,6 +668,19 @@ def _sample_body_pose(curves, timelines, time):
             _vector_subtract(root_translation, motion_translation),
         ),
         _normalized_quaternion(_quaternion_multiply(inverse_motion, root_rotation)),
+    )
+
+
+def _sample_motion_pose(curves, timelines, time):
+    def sample(prefix, axes):
+        return [
+            _sample_linear(timelines[curves[f"{prefix}.{axis}"][2]], curves[f"{prefix}.{axis}"][1], time)
+            for axis in axes
+        ]
+
+    return (
+        sample("MotionT", "xyz"),
+        _normalized_quaternion(sample("MotionQ", "xyzw")),
     )
 
 

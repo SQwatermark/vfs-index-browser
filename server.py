@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterable, Iterator
-from urllib.parse import parse_qs, quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
@@ -97,6 +97,33 @@ except ImportError:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+
+
+@dataclass(frozen=True)
+class AnimationExportIssue:
+    asset_index: int
+    path: str
+    stage: str
+    message: str
+
+    def as_json(self) -> dict:
+        return {
+            "assetIndex": self.asset_index,
+            "path": self.path,
+            "stage": self.stage,
+            "message": self.message,
+        }
+
+
+@dataclass(frozen=True)
+class AnimatedModelBundle:
+    asset: dict
+    animations: list[dict]
+    model_path: Path
+    glb_path: Path
+    issues: list[AnimationExportIssue]
+
+
 DEFAULT_INDEX = (
     PROJECT_ROOT.parent
     / "Endaxis"
@@ -5037,14 +5064,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
         animation_sources: list[tuple[ManifestIndex, dict, dict, Path]],
         *,
         lod: int,
-    ) -> tuple[dict, list[dict], Path, Path]:
+        skip_incompatible: bool = False,
+    ) -> AnimatedModelBundle:
         if not animation_sources:
             raise ValueError("at least one animation is required")
         animation_sources = sorted(
             animation_sources,
             key=lambda item: int(item[1]["asset_index"]),
         )
-        model_asset, model_path, _ = self.ensure_manifest_asset_model_glb(
+        model_asset, model_path, model_glb = self.ensure_manifest_asset_model_glb(
             model_resolved,
             lod=lod,
         )
@@ -5058,33 +5086,75 @@ class BrowserHandler(BaseHTTPRequestHandler):
         animated_document = copy.deepcopy(document)
         animated_geometry = geometry
         animation_assets = []
+        issues = []
         clip_paths = []
         for _, animation_asset, animation_record, animation_chunk in animation_sources:
-            clip, clip_path, _ = self.ensure_animation_clip_export(
-                animation_record,
-                animation_chunk,
-                animation_asset,
-            )
             animation_index = int(animation_asset["asset_index"])
-            previous_count = len(animated_document.get("animations", []))
-            animated_geometry = attach_animation_clip(
-                animated_document,
-                animated_geometry,
-                clip,
-                animation_id=f"animation:{animation_index}",
-                source={
-                    "logicalPath": str(animation_asset["path"]),
-                    "bundle": str(animation_asset["bundle_name"]),
-                },
-                bake_humanoid=True,
-            )
-            if len(animated_document.get("animations", [])) == previous_count:
-                raise RuntimeError(
-                    "animation has no transform tracks compatible with this model: "
-                    f"{animation_asset['path']}"
+            animation_path = str(animation_asset["path"])
+            try:
+                clip, clip_path, _ = self.ensure_animation_clip_export(
+                    animation_record,
+                    animation_chunk,
+                    animation_asset,
                 )
+            except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
+                if skip_incompatible:
+                    issues.append(
+                        AnimationExportIssue(
+                            animation_index,
+                            animation_path,
+                            "clipExport",
+                            str(error),
+                        )
+                    )
+                    continue
+                raise
+
+            candidate_document = copy.deepcopy(animated_document)
+            try:
+                candidate_geometry = attach_animation_clip(
+                    candidate_document,
+                    animated_geometry,
+                    clip,
+                    animation_id=f"animation:{animation_index}",
+                    source={
+                        "logicalPath": animation_path,
+                        "bundle": str(animation_asset["bundle_name"]),
+                    },
+                    bake_humanoid=True,
+                )
+                if len(candidate_document.get("animations", [])) == len(
+                    animated_document.get("animations", [])
+                ):
+                    raise RuntimeError(
+                        "animation has no transform tracks compatible with this model"
+                    )
+            except (KeyError, RuntimeError, ValueError) as error:
+                if skip_incompatible:
+                    issues.append(
+                        AnimationExportIssue(
+                            animation_index,
+                            animation_path,
+                            "modelBinding",
+                            str(error),
+                        )
+                    )
+                    continue
+                raise
+
+            animated_document = candidate_document
+            animated_geometry = candidate_geometry
             animation_assets.append(animation_asset)
             clip_paths.append(clip_path)
+
+        if not animation_assets:
+            return AnimatedModelBundle(
+                model_asset,
+                [],
+                model_path,
+                model_glb,
+                issues,
+            )
 
         animation_indexes = [int(asset["asset_index"]) for asset in animation_assets]
         selection_key = hashlib.sha256(
@@ -5133,7 +5203,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
-        return model_asset, animation_assets, model_path, animated_glb
+        return AnimatedModelBundle(
+            model_asset,
+            animation_assets,
+            model_path,
+            animated_glb,
+            issues,
+        )
 
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_source(query)
@@ -5187,18 +5263,57 @@ class BrowserHandler(BaseHTTPRequestHandler):
             animation_sources = self.resolve_animation_sources(query)
             if animation_sources is None:
                 return
+            animation_issues = []
             if animation_sources:
-                asset, animation_assets, model_path, glb_path = self.ensure_animated_model_glb(
+                bundle = self.ensure_animated_model_glb(
                     resolved,
                     animation_sources,
                     lod=lod,
+                    skip_incompatible=len(animation_sources) > 1,
                 )
+                asset = bundle.asset
+                animation_assets = bundle.animations
+                model_path = bundle.model_path
+                glb_path = bundle.glb_path
+                animation_issues = bundle.issues
             else:
                 asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(
                     resolved,
                     lod=lod,
                 )
                 animation_assets = []
+
+            if query.get("prepare", ["0"])[0] in {"1", "true", "yes"}:
+                download_query = {
+                    key: values
+                    for key, values in query.items()
+                    if key != "prepare"
+                }
+                download_url = (
+                    f"/api/manifest-asset/model-blend?{urlencode(download_query, doseq=True)}"
+                    if animation_assets or not animation_sources
+                    else None
+                )
+                self.send_json(
+                    {
+                        "kind": "modelAnimationBundlePreparation",
+                        "requestedCount": len(animation_sources),
+                        "exportedCount": len(animation_assets),
+                        "issues": [issue.as_json() for issue in animation_issues],
+                        "downloadUrl": download_url,
+                    }
+                )
+                return
+
+            if animation_sources and not animation_assets:
+                self.send_json(
+                    {
+                        "error": "none of the selected animations could be exported",
+                        "issues": [issue.as_json() for issue in animation_issues],
+                    },
+                    status=422,
+                )
+                return
             blend_path = glb_path.with_suffix(".blend")
             material_backend = PROJECT_ROOT / "blender_materials.py"
             material_plan_backend = Path(blender_material_plan.__file__)
@@ -5262,6 +5377,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/x-blender")
         self.send_header("Content-Length", str(blend_path.stat().st_size))
         self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(name)}")
+        self.send_header(
+            "X-Endfield-Skipped-Animation-Count",
+            str(len(animation_issues)),
+        )
         self.send_header("Cache-Control", "private, max-age=3600")
         self.end_headers()
         with blend_path.open("rb") as source:

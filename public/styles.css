@@ -828,6 +828,31 @@ tbody tr[data-file-key].selected {
   padding: 0 10px;
 }
 
+.model-animation-export-issues {
+  grid-column: 1 / -1;
+  max-height: 144px;
+  overflow: auto;
+  padding: 6px 8px;
+  color: #ff9b9b;
+  font-size: 10px;
+  border: 1px solid rgba(255, 94, 94, 0.35);
+  background: rgba(68, 18, 18, 0.35);
+}
+
+.model-animation-export-issues summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.model-animation-export-issues ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.model-animation-export-issues li + li {
+  margin-top: 4px;
+}
+
 .model-animation-pager {
   grid-column: 1 / -1;
   display: flex;

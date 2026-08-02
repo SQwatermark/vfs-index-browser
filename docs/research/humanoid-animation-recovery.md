@@ -9,6 +9,21 @@
 3. Python 根据模型携带的 Avatar 轴、限制、参考四元数和 twist factor，将可用的身体 muscle 曲线烘焙为骨骼局部旋转。
 4. 普通 Transform 曲线与烘焙轨道统一进入 `EndfieldModelAnimation`，供 Three.js 和 Blender 使用。
 
+批量导出现在逐项隔离片段导出和模型绑定错误，成功动画仍会进入同一 GLB/Blender 文件，
+失败动画返回结构化诊断。真实 Liino 样本中 79 个候选有 59 个成功、20 个失败。完全静态
+的 Transform 轨道会无损收缩为一个关键帧，Blender 文件使用原生压缩保存。
+
+这仍未解决密集采样的根因：同一批成功动画仍有约 457 万个采样点。下一阶段应优先恢复
+Unity 原始稀疏关键帧与切线；Humanoid 非线性烘焙曲线再使用可配置、可验证误差上限的
+约简。单纯使用 Blender 压缩只能减少磁盘和下载体积，不能减少内部 FCurve 数量。
+
+Blender 4.4 会把一个 glTF 动画导入为多槽 Action：模型根、主骨架、附件和其他动画对象
+各有独立 Slot。若活动对象是 glTF 根节点，Action Editor 只显示该根节点的整体变换，容易
+误判为骨骼动画丢失。导出器现在取消导入后的全选状态，并将骨骼数最多的 Armature 设为
+唯一活动对象。Liino 批量产物中，普通动作的 `OBBip001` 槽约含 2443 条 FCurve；默认
+动作从起始帧到中间帧可观测到 237 根 PoseBone 发生变化。纯镜头动作
+`A_actor_liino_battle_skill_ult_cam` 没有骨骼 Slot，不能作为骨骼播放验证样本。
+
 ## 根因结论
 
 终末地没有沿用标准 Unity 的 95-muscle 序列。其 `m_IndexArray` 固定为 206 项：
