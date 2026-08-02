@@ -38,6 +38,8 @@ schema、测试或生产代码后，才算正式进入实现路线。
 | `npc_avatar_model.py` | AvatarMesh 通用 NPC 适配 |
 | `gltf_export.py` | ModelDocument 到自包含 GLB 的派生导出 |
 | `blender_materials.py` | Blender 材质节点后端 |
+| `shader_binary_packages.py` | AnimeStudio 编译 Shader 包的严格读取与关键词查询 |
+| `dxbc.py` | DXBC 容器、Shader Stage 和 Shader Model 检查 |
 | `character_lighting.py` | 版本化角色光照输入 |
 | `model_animation.py` | 独立动画文档和节点绑定 |
 | `public/` | 资源浏览和模型/媒体预览前端 |
@@ -75,6 +77,9 @@ schema、测试或生产代码后，才算正式进入实现路线。
 - `tools/inspect_process_rva.py`：检查运行进程中的 RVA。
 
 ## Shader 实验
+
+编译程序与材质语义管线的当前桥接边界见
+[编译 Shader 包桥接层](research/compiled-shader-package-bridge.md)。
 
 `experiments/endfield_blender_shader/` 当前包含两类可复用成果：
 
