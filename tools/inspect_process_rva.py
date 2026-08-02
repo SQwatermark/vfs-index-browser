@@ -50,7 +50,7 @@ class MODULEENTRY32W(ctypes.Structure):
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("process", help="Process executable name, for example Arknights.exe")
+    parser.add_argument("process", help="Process executable name, for example Endfield.exe")
     parser.add_argument("module", help="Module name, for example GameAssembly.dll")
     parser.add_argument("rva", type=lambda value: int(value, 0))
     parser.add_argument("--bytes", type=int, default=1024, dest="byte_count")

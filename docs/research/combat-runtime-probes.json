@@ -2,7 +2,7 @@
   "format": "CombatRuntimeProbeSet",
   "version": 1,
   "evidenceSet": "combat-1.2.4",
-  "process": "Arknights.exe",
+  "process": "Endfield.exe",
   "module": "GameAssembly.dll",
   "probes": [
     { "id": "ability.try-cast-input", "method": "Beyond.Gameplay.Core.AbilitySystem.TryCastSkill(SkillCastInputView&, CastSkillOptions?)", "rva": "0x037BA110" },

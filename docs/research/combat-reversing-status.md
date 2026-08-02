@@ -78,6 +78,9 @@ python tools/inspect_probe_pe.py `
 模块内 RVA 和目标中的二级模块指针。这些字段用来判断 `.rdata` 样本是
 单纯数据、跳板描述符还是指向运行时解密代码的节点。
 
+当前 Windows 客户端进程名是 `Endfield.exe`。高权限游戏进程会拒绝受 UAC
+限制的 SSH 会话读取模块列表，因此运行时探针需在台式机上的提权终端执行。
+
 逆向工具的可选依赖统一位于 `requirements-research.txt`，不加入网页服务的运行依赖。
 
 ## 文档导航
