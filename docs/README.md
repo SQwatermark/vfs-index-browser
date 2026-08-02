@@ -73,6 +73,7 @@ schema、测试或生产代码后，才算正式进入实现路线。
 
 ### 低层研究
 
+- `tools/build_combat_evidence_manifest.py`：固定战斗逆向所用客户端、metadata 与 IL2CPP dump 的版本和哈希。
 - `tools/disassemble_rva.py`：反汇编指定 RVA。
 - `tools/inspect_process_rva.py`：检查运行进程中的 RVA。
 

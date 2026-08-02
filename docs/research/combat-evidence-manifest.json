@@ -1,0 +1,64 @@
+{
+  "format": "EndfieldCombatEvidenceManifest",
+  "version": 1,
+  "generatedAt": "2026-08-02T06:18:07.471859+00:00",
+  "clientVersion": "1.2.4",
+  "artifacts": [
+    {
+      "name": "client.gameAssembly",
+      "path": "Games/Arknights Game/GameAssembly.dll",
+      "size": 212873704,
+      "modifiedAt": "2026-07-22T11:38:39.812859+00:00",
+      "sha256": "5d0ffcb8be5d385e069442f0b3e8ad674cbb707cf796f692657a25e876f181ec"
+    },
+    {
+      "name": "client.globalMetadata",
+      "path": "Games/Arknights Game/Arknights_Data/il2cpp_data/Metadata/global-metadata.dat",
+      "size": 44937472,
+      "modifiedAt": "2026-07-22T11:38:39.691858+00:00",
+      "sha256": "5992e2be0e4280dccf2547065100de573ed48c8761f557b761d62695db82f80c"
+    },
+    {
+      "name": "il2cpp.dumpLog",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPPDump_Log.txt",
+      "size": 44247,
+      "modifiedAt": "2026-07-22T15:14:23.903165+00:00",
+      "sha256": "55197903c78074eb15a647a9cbc417aacb08e3e9bac8c8d34379e7adae77f46f"
+    },
+    {
+      "name": "il2cpp.strings",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_Strings.txt",
+      "size": 331982,
+      "modifiedAt": "2026-07-22T15:14:23.902162+00:00",
+      "sha256": "831c408fe66666417e8d5ef40cfb9caa9399e145a77119a37d8c68da38665c83"
+    },
+    {
+      "name": "il2cpp.types.abilityUnsafe",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_Normal/AbilityUnsafe.Gameplay.Beyond.dll.cs",
+      "size": 13113,
+      "modifiedAt": "2026-07-22T15:14:23.800707+00:00",
+      "sha256": "a027a882dd5905c7a06e2f5e6ac9be66b616988a7d11b7cdb627e543232c4cd3"
+    },
+    {
+      "name": "il2cpp.types.common",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_Normal/Common.Beyond.dll.cs",
+      "size": 4126306,
+      "modifiedAt": "2026-07-22T15:14:21.555809+00:00",
+      "sha256": "ad7412833db68665f26227f29c40717f7dab01471c4967fda6854227140ec719"
+    },
+    {
+      "name": "il2cpp.types.gameplay",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_Normal/Gameplay.Beyond.dll.cs",
+      "size": 25937236,
+      "modifiedAt": "2026-07-22T15:14:19.824410+00:00",
+      "sha256": "c9d3015f017d1b724d0ac246cd7d0c1f1eabf9069d5a631f96daebded7c7b0f1"
+    },
+    {
+      "name": "vfs.indexDatabase",
+      "path": "Projects/vfs-index-browser/data/endfield-vfs-index.sqlite",
+      "size": 1638100992,
+      "modifiedAt": "2026-07-27T16:55:26.797644+00:00",
+      "sha256": "3b6c29101d478d3bb8a21eaba6c94113e3b183dd0b719ebae94c06fade9b9b0b"
+    }
+  ]
+}
