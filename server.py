@@ -4855,6 +4855,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     f"/api/manifest-asset/model-animations?manifestId={manifest_id}"
                     f"&assetIndex={asset_index}{lod_parameter}{animation_query_parameter}"
                 ),
+                "maxBlendAnimationCount": MAX_BLEND_ANIMATION_COUNT,
                 "animationUrl": animation_url,
                 "document": document,
                 "run": {

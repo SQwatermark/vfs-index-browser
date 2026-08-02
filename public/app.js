@@ -561,7 +561,7 @@ function formatAnimationTime(value) {
 }
 
 function renderModelPreview(data) {
-  const maxSelectedAnimations = 100
+  const maxSelectedAnimations = Number(data.maxBlendAnimationCount) || 100
   disposeModelViewer()
   const modelDocument = data.document || {}
   const glbUrl = data.glbUrl
@@ -593,6 +593,7 @@ function renderModelPreview(data) {
         <input id="modelAnimationSelectedName" class="model-animation-selected-name" type="text" readonly aria-label="当前动画名称" placeholder="选择动画后可复制名称" />
         <div class="model-animation-selection-actions">
           <span id="modelAnimationSelectionStatus">未选择导出动画</span>
+          <button id="modelAnimationSelectSearchResults" type="button" disabled>选择全部搜索结果</button>
           <button id="modelAnimationClearSelection" type="button" disabled>清空选择</button>
           <a id="modelAnimationBundleLink" class="link-button" hidden title="将模型与所选动画保存到同一个 Blender 文件">导出所选动画</a>
         </div>
@@ -652,6 +653,8 @@ function renderModelPreview(data) {
   let animationCandidateQuery = null
   let animationCandidatePage = 1
   let animationCandidatePages = 1
+  let animationCandidateTotal = 0
+  let animationSelectionRequestId = 0
   const selectedAnimationCandidates = new Map()
   const clock = new THREE.Clock()
   const renderAnimationTime = (time) => {
@@ -756,6 +759,7 @@ function renderModelPreview(data) {
   const animationCandidateList = $('modelAnimationCandidates')
   const animationSelectedName = $('modelAnimationSelectedName')
   const animationSelectionStatus = $('modelAnimationSelectionStatus')
+  const animationSelectSearchResults = $('modelAnimationSelectSearchResults')
   const animationClearSelection = $('modelAnimationClearSelection')
   const animationBundleLink = $('modelAnimationBundleLink')
   const animationPreviousPage = $('modelAnimationPreviousPage')
@@ -839,7 +843,18 @@ function renderModelPreview(data) {
   const syncAnimationPager = (loading = false) => {
     animationPreviousPage.disabled = loading || animationCandidatePage <= 1
     animationNextPage.disabled = loading || animationCandidatePage >= animationCandidatePages
+    animationSelectSearchResults.disabled = loading || animationCandidateTotal === 0
+    animationSelectSearchResults.textContent = animationCandidateTotal
+      ? `选择全部搜索结果（${animationCandidateTotal}）`
+      : '选择全部搜索结果'
     animationPageStatus.textContent = `${animationCandidatePage} / ${animationCandidatePages}`
+  }
+  const fetchAnimationCandidates = (query, page, pageSize = null) => {
+    const url = new URL(data.animationCandidatesUrl, window.location.origin)
+    if (query != null) url.searchParams.set('q', query)
+    url.searchParams.set('page', String(page))
+    if (pageSize != null) url.searchParams.set('pageSize', String(pageSize))
+    return getJson(url.toString())
   }
   const loadAnimationCandidates = async (query = null, page = 1) => {
     if (!data.animationCandidatesUrl || !animationCandidateList) return
@@ -848,14 +863,12 @@ function renderModelPreview(data) {
     status.textContent = '正在查找动画...'
     animationCandidateList.setAttribute('aria-busy', 'true')
     syncAnimationPager(true)
-    const url = new URL(data.animationCandidatesUrl, window.location.origin)
-    if (query != null) url.searchParams.set('q', query)
-    url.searchParams.set('page', String(page))
-    const result = await getJson(url.toString())
+    const result = await fetchAnimationCandidates(query, page)
     if (!active || requestId !== animationCandidateRequestId) return
     animationCandidateQuery = result.query || ''
     animationCandidatePage = result.page || 1
     animationCandidatePages = result.pages || 1
+    animationCandidateTotal = result.total || 0
     if (query == null) animationQuery.value = result.defaultQuery || animationCandidateQuery
     animationCandidates = result.files || []
     renderAnimationCandidates()
@@ -889,6 +902,45 @@ function renderModelPreview(data) {
       } catch (error) {
         $('modelAnimationSearchStatus').textContent = `动画搜索失败：${error.message || error}`
         syncAnimationPager()
+      }
+    })
+    animationSelectSearchResults.addEventListener('click', async () => {
+      const requestId = ++animationSelectionRequestId
+      animationSelectSearchResults.disabled = true
+      animationSelectionStatus.textContent = '正在选择搜索结果...'
+      try {
+        const result = await fetchAnimationCandidates(
+          animationCandidateQuery || '',
+          1,
+          maxSelectedAnimations,
+        )
+        if (!active || requestId !== animationSelectionRequestId) return
+        if (result.total > maxSelectedAnimations) {
+          animationSelectionStatus.textContent = (
+            `搜索到 ${result.total} 个动画，请缩小范围至 ${maxSelectedAnimations} 个以内`
+          )
+          return
+        }
+        const merged = new Map(selectedAnimationCandidates)
+        for (const candidate of result.files || []) {
+          merged.set(String(candidate.assetIndex), candidate)
+        }
+        if (merged.size > maxSelectedAnimations) {
+          animationSelectionStatus.textContent = (
+            `合并后超过 ${maxSelectedAnimations} 个动画，请先清空或减少已有选择`
+          )
+          return
+        }
+        selectedAnimationCandidates.clear()
+        for (const [assetIndex, candidate] of merged) {
+          selectedAnimationCandidates.set(assetIndex, candidate)
+        }
+        renderAnimationCandidates()
+        syncAnimationBundleLink()
+      } catch (error) {
+        animationSelectionStatus.textContent = `选择搜索结果失败：${error.message || error}`
+      } finally {
+        if (active && requestId === animationSelectionRequestId) syncAnimationPager()
       }
     })
     animationClearSelection.addEventListener('click', () => {
