@@ -194,6 +194,7 @@ def find_blender_executable() -> Path:
 
 BLENDER_EXE = find_blender_executable()
 BLENDER_MODEL_IMPORTER = PROJECT_ROOT / "tools" / "blender_import_model.py"
+BLENDER_ACTION_SWITCHER = PROJECT_ROOT / "tools" / "blender_action_switcher.py"
 
 CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
@@ -208,7 +209,7 @@ AVATAR_MODEL_SNAPSHOT_VERSION = 2
 ANIMATION_CLIP_EXPORT_VERSION = 4
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
-MODEL_BLEND_VERSION = 11
+MODEL_BLEND_VERSION = 12
 MAX_BLEND_ANIMATION_COUNT = 100
 AUDIO_PACKAGE_META_VERSION = 1
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
@@ -5320,6 +5321,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             source_paths = [
                 glb_path,
                 BLENDER_MODEL_IMPORTER,
+                BLENDER_ACTION_SWITCHER,
                 material_backend,
                 material_plan_backend,
                 PROJECT_ROOT / "character_lighting.py",

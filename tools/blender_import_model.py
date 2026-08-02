@@ -30,6 +30,9 @@ from blender_materials import (
 )
 from blender_material_plan import plan_texture_id, plan_value, silk_plan_inputs
 
+
+ACTION_SWITCHER_PATH = Path(__file__).with_name("blender_action_switcher.py")
+ACTION_SWITCHER_TEXT_NAME = "endfield_action_switcher.py"
 DEFAULT_CHARINFO_AMBIENT = AmbientLighting(
     base_intensity=1.0,
     azimuth_degrees=180.0,
@@ -1264,59 +1267,55 @@ def configure_armature_viewport() -> int:
     return len(armatures)
 
 
-def configure_animation_library() -> tuple[int, int]:
-    actions = sorted(bpy.data.actions, key=lambda item: item.name)
+def configure_animation_timeline() -> int:
+    actions = list(bpy.data.actions)
     if not actions:
-        return 0, 0
-
-    # 一个 glTF Action 可能同时驱动骨架和多个辅助对象。Action 下拉框只会
-    # 修改当前对象，因此将全部槽排进同步的 NLA 时间线，避免切换后坐标系错位。
-    scene = bpy.context.scene
-    action_ranges = {}
-    cursor = 0
+        return 0
+    # 未绑定为当前动作的 Action 在保存时会被 Blender 清理。它们属于导出的
+    # 动作库，因此显式保留数据块，不借助 NLA strip 制造隐式引用。
     for action in actions:
-        source_start, source_end = action.frame_range
-        duration = max(1, math.ceil(source_end - source_start))
-        action_ranges[action.name] = (cursor, cursor + duration)
-        scene.timeline_markers.new(action.name, frame=cursor)
-        cursor += duration + 5
+        action.use_fake_user = True
+    frame_starts = [action.frame_range[0] for action in actions]
+    frame_ends = [action.frame_range[1] for action in actions]
+    bpy.context.scene.frame_start = math.floor(min(frame_starts))
+    bpy.context.scene.frame_end = math.ceil(max(frame_ends))
+    bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+    return len(actions)
 
-    strip_count = 0
-    for item in bpy.data.objects:
-        slot_identifier = f"OB{item.name}"
-        compatible = [
-            action
-            for action in actions
-            if any(slot.identifier == slot_identifier for slot in action.slots)
-        ]
-        if not compatible:
-            continue
-        animation_data = item.animation_data_create()
-        animation_data.action = None
-        while animation_data.nla_tracks:
-            animation_data.nla_tracks.remove(animation_data.nla_tracks[0])
-        track = animation_data.nla_tracks.new()
-        track.name = "Endfield Actions"
-        for action in compatible:
-            frame_start, frame_end = action_ranges[action.name]
-            strip = track.strips.new(action.name, frame_start, action)
-            strip.action_frame_start = action.frame_range[0]
-            strip.action_frame_end = action.frame_range[1]
-            strip.frame_end = frame_end
-            strip.extrapolation = "NOTHING"
-            strip_count += 1
 
-    scene["endfield_animation_ranges"] = json.dumps(
-        [
-            {"name": name, "frameStart": start, "frameEnd": end}
-            for name, (start, end) in action_ranges.items()
-        ],
+def embed_action_switcher() -> bool:
+    actions = list(bpy.data.actions)
+    if not actions:
+        return False
+    source = ACTION_SWITCHER_PATH.read_text(encoding="utf-8")
+    text = bpy.data.texts.get(ACTION_SWITCHER_TEXT_NAME)
+    if text is None:
+        text = bpy.data.texts.new(ACTION_SWITCHER_TEXT_NAME)
+    else:
+        text.clear()
+    text.write(source)
+    text.use_module = True
+
+    scene = bpy.context.scene
+    scene["endfield_action_names"] = json.dumps(
+        sorted(action.name for action in actions),
         ensure_ascii=False,
     )
-    scene.frame_start = 0
-    scene.frame_end = max(end for _start, end in action_ranges.values())
-    scene.frame_set(scene.frame_start)
-    return len(actions), strip_count
+    exec(
+        compile(source, ACTION_SWITCHER_TEXT_NAME, "exec"),
+        {"__name__": ACTION_SWITCHER_TEXT_NAME},
+    )
+
+    active_action = next(
+        (
+            item.animation_data.action
+            for item in bpy.data.objects
+            if item.animation_data is not None and item.animation_data.action is not None
+        ),
+        actions[0],
+    )
+    scene.endfield_action_name = active_action.name
+    return True
 
 
 def configure_preview_scene(
@@ -1429,7 +1428,8 @@ def main() -> None:
         configure_overlay_shadow_nodes(material) for material in bpy.data.materials
     )
     configured_armatures = configure_armature_viewport()
-    configured_actions, configured_action_strips = configure_animation_library()
+    configured_actions = configure_animation_timeline()
+    embedded_action_switcher = embed_action_switcher()
     configure_preview_scene(
         args.outline,
         lighting,
@@ -1451,8 +1451,8 @@ def main() -> None:
         f"configured {configured_cloth} Character cloth materials; "
         f"configured {configured_overlays} overlay shadows; "
         f"configured {configured_armatures} hidden armatures; "
-        f"configured {configured_actions} animation actions in "
-        f"{configured_action_strips} synchronized NLA strips; "
+        f"configured {configured_actions} animation actions; "
+        f"action switcher={'embedded' if embedded_action_switcher else 'absent'}; "
         f"lighting={'configured' if lighting is not None else 'fallback'}"
     )
 
