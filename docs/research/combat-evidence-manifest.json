@@ -1,7 +1,7 @@
 {
   "format": "EndfieldCombatEvidenceManifest",
   "version": 1,
-  "generatedAt": "2026-08-02T06:18:07.471859+00:00",
+  "generatedAt": "2026-08-02T08:11:30.492349+00:00",
   "clientVersion": "1.2.4",
   "artifacts": [
     {
@@ -40,6 +40,13 @@
       "sha256": "a027a882dd5905c7a06e2f5e6ac9be66b616988a7d11b7cdb627e543232c4cd3"
     },
     {
+      "name": "il2cpp.types.cinemachine.ai",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_AI/Cinemachine.dll.cs",
+      "size": 207689,
+      "modifiedAt": "2026-07-22T15:14:23.119967+00:00",
+      "sha256": "c5702b016925b996919220aefa0c10e5f351b5617c5f550cfe66da7800ca577a"
+    },
+    {
       "name": "il2cpp.types.common",
       "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_Normal/Common.Beyond.dll.cs",
       "size": 4126306,
@@ -52,6 +59,20 @@
       "size": 25937236,
       "modifiedAt": "2026-07-22T15:14:19.824410+00:00",
       "sha256": "c9d3015f017d1b724d0ac246cd7d0c1f1eabf9069d5a631f96daebded7c7b0f1"
+    },
+    {
+      "name": "il2cpp.types.gameplay.ai",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_AI/Gameplay.Beyond.dll.cs",
+      "size": 23994974,
+      "modifiedAt": "2026-07-22T15:14:20.110577+00:00",
+      "sha256": "e648b4d9c1fc5d6a886775e69041c61ebc0a01477154932072431ae51eaacefe"
+    },
+    {
+      "name": "il2cpp.types.memoryPack.ai",
+      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_AI/MemoryPack.Beyond.dll.cs",
+      "size": 11885491,
+      "modifiedAt": "2026-07-22T15:14:20.964080+00:00",
+      "sha256": "7f0a8bfd2337e9e8c73c920acd1fb9f45198cb0f3b6298de1436ed9ef8ccbbf5"
     },
     {
       "name": "vfs.indexDatabase",
