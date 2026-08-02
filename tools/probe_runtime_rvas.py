@@ -17,6 +17,7 @@ from tools.inspect_process_rva import (
     PROCESS_VM_READ,
     checked_handle,
     configure_kernel32,
+    enable_debug_privilege,
     find_module,
     find_process_id,
 )
@@ -191,6 +192,7 @@ def main() -> None:
         raise SystemExit(f"unsupported probe set: {probe_set.get('format')!r}")
 
     kernel32 = configure_kernel32()
+    enable_debug_privilege(kernel32)
     configure_probe_api(kernel32)
     process_id = find_process_id(kernel32, probe_set["process"])
     module_base, module_size = find_module(kernel32, process_id, probe_set["module"])
