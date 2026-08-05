@@ -1,7 +1,7 @@
 {
   "format": "CombatRuntimeProbeSet",
   "version": 1,
-  "evidenceSet": "combat-1.2.4",
+  "evidenceSet": "combat-1.4.4",
   "process": "Endfield.exe",
   "module": "GameAssembly.dll",
   "probes": [
@@ -16,6 +16,32 @@
     { "id": "skill.apply-cost", "method": "Beyond.Gameplay.Core.Skill._ApplyCost(bool)", "rva": "0x03E2E670" },
     { "id": "battle.cost-atb", "method": "Beyond.Gameplay.Core.BattleManager.CostAtb(AbilitySystem, float, float&, bool)", "rva": "0x03E2D040" },
     { "id": "ability.set-ultimate-sp", "method": "Beyond.Gameplay.Core.AbilitySystem.ultimateSp.set", "rva": "0x03418F00" },
-    { "id": "battle.pending-combo", "method": "Beyond.Gameplay.Core.BattleManager.PendingComboSkill(...)", "rva": "0x06D7411C" }
+    { "id": "action.find-target-execute", "method": "Beyond.Gameplay.Core.FindTargetAction.ExecuteInternal(...)", "rva": "0x02F4F880" },
+    { "id": "action.obtain-usp-normal-skill-execute", "method": "Beyond.Gameplay.Core.ObtainUspInNormalSkill.ExecuteInternal(...)", "rva": "0x04244D40" },
+    { "id": "battle.pending-combo", "method": "Beyond.Gameplay.Core.BattleManager.PendingComboSkill(...)", "rva": "0x06D7411C" },
+    {
+      "id": "formula.attribute-config-object",
+      "description": "Beyond.Cfg.Tables.s_battleConst 指向的 BattleConst 运行时表对象",
+      "rva": "0x0E363F80",
+      "pointerChain": ["0x0", "0xB8", "0xC0"]
+    },
+    {
+      "id": "formula.attribute-config-buffer",
+      "description": "BattleConst 表对象内 SparkBuffer 视图所引用的底层数据缓冲区",
+      "rva": "0x0E363F80",
+      "pointerChain": ["0x0", "0xB8", "0xC0", "0x28", "0x10", "0x20"]
+    },
+    {
+      "id": "formula.damage-scale-config-owner",
+      "description": "_GetDamageScale 读取 allZones 前取得的运行时配置对象；用于后续解析区间顺序与开关",
+      "rva": "0x0E355258",
+      "pointerChain": ["0x0", "0xB8", "0xA0", "0x4D8"]
+    },
+    {
+      "id": "formula.damage-scale-zone-list-candidate",
+      "description": "运行时配置对象偏移 0x18 指向的区间列表候选；需用对象头和元素布局复核",
+      "rva": "0x0E355258",
+      "pointerChain": ["0x0", "0xB8", "0xA0", "0x4D8", "0x18"]
+    }
   ]
 }
