@@ -18,6 +18,12 @@
     { "id": "ability.set-ultimate-sp", "method": "Beyond.Gameplay.Core.AbilitySystem.ultimateSp.set", "rva": "0x03418F00" },
     { "id": "action.find-target-execute", "method": "Beyond.Gameplay.Core.FindTargetAction.ExecuteInternal(...)", "rva": "0x02F4F880" },
     { "id": "action.obtain-usp-normal-skill-execute", "method": "Beyond.Gameplay.Core.ObtainUspInNormalSkill.ExecuteInternal(...)", "rva": "0x04244D40" },
+    { "id": "action.spell-infliction-execute", "method": "Beyond.Gameplay.Core.SpellInfliction.ExecuteInternal(TargetHandleView)", "rva": "0x043839D0" },
+    { "id": "action.spell-infliction-status-buff", "method": "Beyond.Gameplay.Core.SpellInfliction.GetSpellStatusBuff(EnergyShardType, EnergyShardType)", "rva": "0x06D34E3C" },
+    { "id": "ability.energy-shard-attached-buff", "method": "Beyond.Gameplay.Core.AbilitySystemUtils.GetEnergyShardAttachedBuff(EnergyShardType)", "rva": "0x04383950" },
+    { "id": "ability.spell-status-buff", "method": "Beyond.Gameplay.Core.AbilitySystemUtils.GetSpellStatusBuff(EnergyShardType, EnergyShardType)", "rva": "0x06CBF1AC" },
+    { "id": "ability.spell-burst-buff", "method": "Beyond.Gameplay.Core.AbilitySystemUtils.GetSpellBurstBuff(EnergyShardType)", "rva": "0x06CBEDC8" },
+    { "id": "action.spell-infliction-static-init", "method": "Beyond.Gameplay.Core.SpellInfliction..cctor()", "rva": "0x03C6F470" },
     { "id": "battle.pending-combo", "method": "Beyond.Gameplay.Core.BattleManager.PendingComboSkill(...)", "rva": "0x06D7411C" },
     {
       "id": "formula.attribute-config-object",
