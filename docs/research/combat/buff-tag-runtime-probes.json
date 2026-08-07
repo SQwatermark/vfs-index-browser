@@ -1,0 +1,64 @@
+{
+  "format": "CombatRuntimeProbeSet",
+  "version": 1,
+  "evidenceSet": "combat-1.4.4",
+  "process": "Endfield.exe",
+  "module": "GameAssembly.dll",
+  "probes": [
+    {
+      "id": "buff.reset",
+      "method": "Beyond.Gameplay.Core.Buff.Reset(BuffData, AbilitySystem, AbilitySystem, AddBuffOption&)",
+      "rva": "0x037C66E0"
+    },
+    {
+      "id": "buff.on-enable",
+      "method": "Beyond.Gameplay.Core.Buff.OnEnable()",
+      "rva": "0x02F4C850"
+    },
+    {
+      "id": "buff.on-disable",
+      "method": "Beyond.Gameplay.Core.Buff.OnDisable()",
+      "rva": "0x03E98770"
+    },
+    {
+      "id": "buff.on-finish",
+      "method": "Beyond.Gameplay.Core.Buff.OnFinish(FinishReason)",
+      "rva": "0x0427FDB0"
+    },
+    {
+      "id": "buff.add-modifier",
+      "method": "Beyond.Gameplay.Core.Buff._AddModifier()",
+      "rva": "0x03E98C40"
+    },
+    {
+      "id": "buff.remove-modifier",
+      "method": "Beyond.Gameplay.Core.Buff._RemoveModifier()",
+      "rva": "0x03E98860"
+    },
+    {
+      "id": "buff.contains-predefined-tag",
+      "method": "Beyond.Gameplay.Core.Buff.ContainsTag(PredefinedTag)",
+      "rva": "0x06D40A24"
+    },
+    {
+      "id": "buff.contains-gameplay-tag",
+      "method": "Beyond.Gameplay.Core.Buff.ContainsTag(GameplayTag)",
+      "rva": "0x06D40998"
+    },
+    {
+      "id": "buff.contains-tag-id",
+      "method": "Beyond.Gameplay.Core.Buff.ContainsTag(int)",
+      "rva": "0x06D40B0C"
+    },
+    {
+      "id": "entity.add-tag-list-with-handle",
+      "method": "Beyond.Gameplay.Core.Entity.AddTag(IList<GameplayTag>, MultiTagHandle&, bool)",
+      "rva": "0x036AF8C0"
+    },
+    {
+      "id": "entity.remove-tag-list",
+      "method": "Beyond.Gameplay.Core.Entity.RemoveTag(IList<GameplayTag>)",
+      "rva": "0x07070CD0"
+    }
+  ]
+}
