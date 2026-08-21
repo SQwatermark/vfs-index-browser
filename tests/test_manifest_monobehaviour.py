@@ -42,6 +42,10 @@ class ManifestMonoBehaviourDumpTests(unittest.TestCase):
                 export_root.mkdir(parents=True)
                 (export_root / "Profile.txt").write_text("profile", encoding="utf-8")
                 (export_root / "Lighting.txt").write_text("lighting", encoding="utf-8")
+                (export_root / "Projectile.json").write_text(
+                    '{"layout":"Beyond.Gameplay.Core.ProjectileComponentData"}',
+                    encoding="utf-8",
+                )
                 return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
             with (
@@ -59,6 +63,11 @@ class ManifestMonoBehaviourDumpTests(unittest.TestCase):
             dump = first[0].read_text(encoding="utf-8")
             self.assertIn("===== MonoBehaviour/Lighting.txt =====\nlighting", dump)
             self.assertIn("===== MonoBehaviour/Profile.txt =====\nprofile", dump)
+            self.assertIn(
+                "===== MonoBehaviour/Projectile.json =====\n"
+                '{"layout":"Beyond.Gameplay.Core.ProjectileComponentData"}',
+                dump,
+            )
             meta = first[1]
             self.assertEqual(
                 [Path(item["path"]).name for item in meta["source"]["toolArtifacts"]],

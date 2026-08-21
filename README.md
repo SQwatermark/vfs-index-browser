@@ -11,6 +11,7 @@
 - 预览文本、图片、音频和视频，并下载原始或转换后的文件。
 - 按逻辑路径定位 AnimationClip 等 Unity 子资源，并处理无 Container 的命名子资源。
 - 解析 TableCfg/SparkBuffer，并实验性解析 JsonData/MemoryPack 二进制配置。
+- 按 `projectileId` 精确定位并按需解析 ProjectileComponentData 及其 Unity 对象。
 - 按需恢复 Prefab 的组合模型，并以自包含 GLB 在浏览器中预览或下载。
 - 将缓存 GLB 派生为贴图内嵌、可继续编辑的 Blender 文件。
 
@@ -62,7 +63,8 @@ python server.py `
 D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe
 ```
 
-路径可通过 `ANIMESTUDIO_CLI` 覆盖。内部索引和导出缓存位于 `data/internal-cache/`。
+路径可通过 `VFS_BROWSER_ANIMESTUDIO_CLI` 覆盖。内部索引和导出缓存位于
+`data/internal-cache/`。
 
 manifest 中的 `.asset`、`.prefab` 如果无法按常规资源类型导出，服务会按
 container 精确尝试 `MonoBehaviour + Dump`，用于查看 VolumeProfile 等自定义
@@ -74,6 +76,9 @@ $env:ANIMESTUDIO_MONOBEHAVIOUR_CLI =
 ```
 
 两个变量默认指向同一个程序；只有部署中确实使用两种 AnimeStudio 构建时才需拆分。
+若未设置环境变量且打包 CLI 不存在，服务还会自动选择
+`data/research/AnimeStudio/AnimeStudio.CLI/bin/Release/net*-windows/AnimeStudio.CLI.exe`
+中最新构建，便于直接使用本地的终末地 MonoBehaviour 解码器。
 
 manifest 中的 Cubemap 会按 container 精确导出六个面，并在预览区组成可逐面打开、
 下载的画廊。若主 CLI 是模型快照专用的定制构建，可把支持六面导出的标准构建单独配置为：
@@ -102,6 +107,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | --- | --- |
 | `server.py` | VFS SQLite、HTTP API、文件读取以及各容器适配入口 |
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
+| `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `usm.py` | CRI USM 视频处理 |
 | `public/` | 无构建步骤的浏览器前端 |
@@ -116,6 +122,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 GET /api/manifest
 GET /api/list?scope=effective&path=&page=1&pageSize=100
 GET /api/search?scope=effective&q=SkillConditionTable&limit=100
+GET /api/projectile?projectileId=projectile_chr_0030_zhuangfy_attack_sword_1
 GET /api/audio-dialog/list?language=chinese&path=&page=1&pageSize=100
 GET /api/audio-dialog/entry?language=chinese&path=v1d0/story/example.wav
 GET /api/audio-dialog/preview?language=chinese&path=v1d0/story/example.wav
@@ -137,6 +144,20 @@ GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationA
 GET /api/manifest-asset/model-animations?manifestId=123&assetIndex=456&q=pelica
 GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
+
+Projectile API 不走模糊路径搜索。它把 `projectileId` 映射为
+`assets/beyond/dynamicassets/gamedata/projectile/data_<projectileId>.asset`，要求 manifest
+中恰好存在一个匹配，然后只读取所属 AB，以 JSON 模式导出其中的 MonoBehaviour，并按
+`layout + projectileId` 选择唯一组件。
+成功响应包含稳定来源身份 `source.asset`、聚焦结果 `projectileComponentData`，以及拥有该
+组件的完整 `unityObject`。`decode.status` 为 `decoded`、`partial` 或 `unparsed`；当前解码器
+会把尚未完全语义化但已经过字节边界校验的字段标为 `partial`。
+
+错误状态固定为：无效 ID 返回 `400`，manifest 中不存在返回 `404`，Unity 对象无法形成
+唯一组件结果返回 `422`，本地 manifest、AB chunk 或 AnimeStudio CLI 不可用返回 `503`。
+首次请求会构建 manifest SQLite 缓存并导出目标对象，后续请求复用带源文件和工具身份的缓存。
+研究证据和当前解码边界见
+[ProjectileComponentData 本地解析链](docs/research/projectile-component-data.md)。
 
 AudioDialog API 默认读取 `data/audio-dialog-index.sqlite`。可通过
 `VFS_BROWSER_AUDIO_DIALOG_DB` 指定其他位置；索引不存在时，普通 VFS 浏览不受影响，
@@ -176,6 +197,7 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/scan_jsondata_formats.py`：批量统计 JsonData 的真实编码格式。
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema。
+- `tools/extract_memorypack_unions.py`：从已初始化 runtime 快照中的 formatter 注册恢复完整 union tag 映射。
 - `tools/decode_memorypack_json.py`：使用已知 schema 解码二进制配置。
 - `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，根据
   `endfieldSourceMaterial` 与 `endfieldPreview` 自动建立 Eevee CharacterNPR

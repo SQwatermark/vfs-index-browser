@@ -1,13 +1,17 @@
 import json
+import struct
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.probe_runtime_rvas import (
     MEM_COMMIT,
     PAGE_GUARD,
     format_protection,
+    follow_pointer_chain,
     is_readable_region,
     iter_aligned_qwords,
+    parse_offset,
 )
 
 
@@ -36,6 +40,29 @@ class RuntimeRvaProbeTests(unittest.TestCase):
         rvas = [probe["rva"] for probe in probe_set["probes"]]
         self.assertTrue(all(rva.startswith("0x") for rva in rvas))
         self.assertEqual(0x06CA72BC, int(rvas[3], 0))
+
+    def test_follows_mixed_format_pointer_chain(self):
+        pointers = {0x1000: 0x2000, 0x20B8: 0x3000, 0x30C0: 0x4000}
+
+        def fake_read_memory(_kernel32, _process, address, byte_count):
+            self.assertEqual(8, byte_count)
+            return struct.pack("<Q", pointers[address])
+
+        with (
+            patch("tools.probe_runtime_rvas.read_memory", fake_read_memory),
+            patch(
+                "tools.probe_runtime_rvas.query_region",
+                return_value={"state": MEM_COMMIT, "protect": 0x04},
+            ),
+        ):
+            result = follow_pointer_chain(None, None, 0x1000, [0, "0xB8", 0xC0])
+
+        self.assertEqual(0x4000, result["address"])
+        self.assertEqual([0, 0xB8, 0xC0], [step["offset"] for step in result["steps"]])
+
+    def test_parses_decimal_and_hex_offsets(self):
+        self.assertEqual(24, parse_offset(24))
+        self.assertEqual(24, parse_offset("0x18"))
 
 
 if __name__ == "__main__":

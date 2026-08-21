@@ -1,5 +1,7 @@
 # 研究文档索引
 
+- [战斗系统知识库](combat/README.md)：战斗反推的系统总图、专题入口、研究矩阵与证据规范。
+
 - [manifest-hgmmap-format.md](manifest-hgmmap-format.md)：BundleManifest 的头部、Bundle、依赖数组和 AssetInfo 路径格式。
 - [jsondata-binary-json-format.md](jsondata-binary-json-format.md)：JsonData 中非文本 JSON 的格式分类和探测结果。
 - [memorypack-decoder-progress-2026-07-29.md](memorypack-decoder-progress-2026-07-29.md)：MemoryPack schema 提取与解码进展。
@@ -14,6 +16,7 @@
 - [combat-runtime-type-map.md](combat-runtime-type-map.md)：当前客户端中技能、资源账本、连携队列与释放候选链的首批类型证据。
 - [combat-runtime-probes.json](combat-runtime-probes.json)：同版本技能释放、资源扣费与连携入口的批量运行时探针清单。
 - [combat-config-runtime-bridge.md](combat-config-runtime-bridge.md)：二进制 SkillData、干员技能集合、实例创建与运行时刷新的首批桥接证据。
+- [projectile-component-data.md](projectile-component-data.md)：projectileId 到 manifest Unity 对象、VFS Bundle 和 ProjectileComponentData 的本地按需解析链。
 
 Shader 的公式级实验暂位于 `experiments/endfield_blender_shader/`；其中面部与丝袜结论已经
 汇入[资源恢复整合路线](../design/integrated-roadmap.md)，实验目录和工具职责见

@@ -147,6 +147,36 @@ def inspect_pointer_target(
     return result
 
 
+def parse_offset(value: int | str) -> int:
+    return int(value, 0) if isinstance(value, str) else value
+
+
+def follow_pointer_chain(kernel32, process, start_address: int, offsets) -> dict:
+    """逐级读取 ``*(current + offset)``，保留每一步地址便于离线复查。"""
+    current = start_address
+    steps = []
+    for raw_offset in offsets:
+        offset = parse_offset(raw_offset)
+        pointer_address = current + offset
+        value = struct.unpack(
+            "<Q", read_memory(kernel32, process, pointer_address, 8)
+        )[0]
+        steps.append(
+            {
+                "baseAddress": current,
+                "offset": offset,
+                "pointerAddress": pointer_address,
+                "value": value,
+            }
+        )
+        if value == 0:
+            return {"steps": steps, "address": 0, "bytes": ""}
+        current = value
+
+    region = query_region(kernel32, process, current)
+    return {"steps": steps, "address": current, "region": region}
+
+
 def inspect_probe(kernel32, process, module_base, module_size, probe, byte_count):
     rva_value = probe["rva"]
     rva = int(rva_value, 0) if isinstance(rva_value, str) else rva_value
@@ -172,6 +202,15 @@ def inspect_probe(kernel32, process, module_base, module_size, probe, byte_count
         )
         if target is not None:
             result["pointerTargets"].append({"sourceOffset": offset, **target})
+    if "pointerChain" in probe:
+        chain = follow_pointer_chain(
+            kernel32, process, address, probe["pointerChain"]
+        )
+        if chain["address"]:
+            chain["bytes"] = read_memory(
+                kernel32, process, chain["address"], byte_count
+            ).hex()
+        result["pointerChainResult"] = chain
     return result
 
 

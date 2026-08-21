@@ -86,6 +86,14 @@ from skeletal_morph import (
     parse_morph_avatar,
     parse_morph_clip,
 )
+from projectile_data import (
+    ProjectileDecodeError,
+    ProjectileNotFoundError,
+    ProjectileUnavailableError,
+    load_projectile_export,
+    normalize_projectile_id,
+    select_projectile_asset,
+)
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -157,8 +165,29 @@ SHADER_ARCHIVE_ROOT = Path(
 BUNDLED_ANIMESTUDIO_CLI = (
     PROJECT_ROOT / "tools" / "AnimeStudio.CLI-633f30c" / "AnimeStudio.CLI.exe"
 )
+
+
+def default_animestudio_cli() -> Path:
+    """Prefer the packaged CLI, then a local research build with Endfield decoders."""
+
+    if BUNDLED_ANIMESTUDIO_CLI.is_file():
+        return BUNDLED_ANIMESTUDIO_CLI
+    candidates = list(
+        (
+            PROJECT_ROOT
+            / "data"
+            / "research"
+            / "AnimeStudio"
+            / "AnimeStudio.CLI"
+            / "bin"
+            / "Release"
+        ).glob("net*-windows/AnimeStudio.CLI.exe")
+    )
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns) if candidates else BUNDLED_ANIMESTUDIO_CLI
+
+
 ANIMESTUDIO_CLI = Path(
-    os.environ.get("VFS_BROWSER_ANIMESTUDIO_CLI", BUNDLED_ANIMESTUDIO_CLI)
+    os.environ.get("VFS_BROWSER_ANIMESTUDIO_CLI", default_animestudio_cli())
 )
 # 调试时可以分别覆盖特定导出链路，生产环境统一使用已验证的打包构建。
 ANIMESTUDIO_MONOBEHAVIOUR_CLI = Path(
@@ -201,7 +230,7 @@ CHACHA_KEY = bytes.fromhex(
 )
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = 2
-MONOBEHAVIOUR_DUMP_VERSION = 1
+MONOBEHAVIOUR_DUMP_VERSION = 2
 MONOBEHAVIOUR_RAW_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 29
@@ -213,6 +242,8 @@ MODEL_BLEND_VERSION = 12
 MAX_BLEND_ANIMATION_COUNT = 100
 AUDIO_PACKAGE_META_VERSION = 1
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
+MANIFEST_LOGICAL_ID = "BundleManifest/Data/Bundles/Windows/manifest.hgmmap"
+PROJECTILE_API_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
@@ -1307,6 +1338,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/search":
             self.handle_search(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/projectile":
+            self.handle_projectile(parse_qs(parsed.query))
+            return
         if parsed.path == "/api/audio-dialog/list":
             self.handle_audio_dialog_list(parse_qs(parsed.query))
             return
@@ -1645,6 +1679,116 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 )
             ]
         self.send_json({"items": rows, "limit": limit})
+
+    def build_projectile_document(self, projectile_id: str) -> dict:
+        """Resolve and decode one projectile through the local manifest/VFS chain."""
+
+        resolved_manifest = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
+        if resolved_manifest is None:
+            raise ProjectileUnavailableError(
+                f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}"
+            )
+        manifest_record, manifest_chunk = resolved_manifest
+        try:
+            index = self.manifest_index(manifest_record, manifest_chunk)
+            indexed_asset = select_projectile_asset(index, projectile_id)
+            asset, bundle_record, bundle_chunk = self.resolve_index_asset_bundle(
+                index,
+                int(indexed_asset["assetIndex"]),
+            )
+        except ProjectileNotFoundError:
+            raise
+        except FileNotFoundError as error:
+            raise ProjectileUnavailableError(str(error)) from error
+        except (OSError, sqlite3.Error, ValueError) as error:
+            raise ProjectileUnavailableError(f"cannot query the local manifest: {error}") from error
+
+        try:
+            ensured = self.ensure_manifest_monobehaviour_dump(
+                bundle_record,
+                bundle_chunk,
+                asset,
+                export_type="JSON",
+                filter_container=False,
+            )
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as error:
+            raise ProjectileUnavailableError(str(error)) from error
+        if ensured is None:
+            raise ProjectileDecodeError(
+                "AnimeStudio did not export the projectile Unity MonoBehaviour"
+            )
+
+        dump_path, export_meta = ensured
+        exported_files = [str(value) for value in export_meta.get("exportedFiles", [])]
+        parsed = load_projectile_export(
+            dump_path.parent / "exported",
+            exported_files,
+            projectile_id,
+        )
+        component = parsed["component"]
+        if component.get("$unparsed"):
+            decode_status = "unparsed"
+        elif component.get("$partial"):
+            decode_status = "partial"
+        else:
+            decode_status = "decoded"
+
+        return {
+            "apiVersion": PROJECTILE_API_VERSION,
+            "projectileId": projectile_id,
+            "source": {
+                "manifest": {
+                    "recordId": int(manifest_record["id"]),
+                    "source": manifest_record["source"],
+                    "logicalId": manifest_record["logical_id"],
+                },
+                "asset": {
+                    "assetIndex": int(asset["asset_index"]),
+                    "path": asset["path"],
+                    "pathHash": asset["path_hash"],
+                    "size": int(asset["size"]),
+                    "bundleIndex": int(asset["bundle_index"]),
+                    "bundleName": asset["bundle_name"],
+                },
+                "bundle": {
+                    "recordId": int(bundle_record["id"]),
+                    "source": bundle_record["source"],
+                    "logicalId": bundle_record["logical_id"],
+                },
+                "exportedFile": parsed["exportedFile"],
+                "componentPointer": parsed["componentPointer"],
+            },
+            "decode": {
+                "status": decode_status,
+                "idMatchesRequest": parsed["idMatchesRequest"],
+                "layout": component.get("layout"),
+            },
+            "projectileComponentData": component,
+            "unityObject": parsed["unityObject"],
+        }
+
+    def handle_projectile(self, query: dict[str, list[str]]) -> None:
+        raw_projectile_id = query.get("projectileId", [""])[0]
+        try:
+            projectile_id = normalize_projectile_id(raw_projectile_id)
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return
+        try:
+            payload = self.build_projectile_document(projectile_id)
+        except ProjectileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except ProjectileDecodeError as error:
+            self.send_error_json(422, str(error))
+            return
+        except ProjectileUnavailableError as error:
+            self.send_error_json(503, str(error))
+            return
+        except (OSError, sqlite3.Error, RuntimeError, subprocess.SubprocessError) as error:
+            self.send_error_json(500, str(error))
+            return
+        self.send_json(payload, cache_control="private, max-age=3600", compress=True)
 
     def handle_audio_dialog_list(self, query: dict[str, list[str]]) -> None:
         language = query.get("language", ["chinese"])[0]
@@ -3088,6 +3232,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         record: dict,
         chunk_path: Path,
         asset: dict,
+        *,
+        export_type: str = "Dump",
+        filter_container: bool = True,
     ) -> tuple[Path, dict] | None:
         if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
             return None
@@ -3109,6 +3256,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
             "assetIndex": int(asset["asset_index"]),
             "assetPath": str(asset["path"]),
+            "exportType": export_type,
+            "filterContainer": filter_container,
             "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
         }
         if dump_path.is_file() and meta_path.is_file():
@@ -3135,17 +3284,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "ArknightsEndfield",
             "--types",
             "MonoBehaviour",
-            "--containers",
-            f"^{re.escape(normalized_container)}$",
+        ]
+        if filter_container:
+            command.extend(["--containers", f"^{re.escape(normalized_container)}$"])
+        command.extend([
             "--export_type",
-            "Dump",
+            export_type,
             "--group_assets",
             "ByType",
             "--logger_flags",
             "Error",
             "Warning",
             "Info",
-        ]
+        ])
         completed = subprocess.run(
             command,
             cwd=str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.parent),
@@ -3156,7 +3307,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             timeout=180,
             check=False,
         )
-        exported_files = sorted(export_root.rglob("*.txt"))
+        exported_files = sorted(
+            path
+            for path in export_root.rglob("*")
+            if path.is_file() and path.suffix.casefold() in {".json", ".txt"}
+        )
         meta = {
             "version": MONOBEHAVIOUR_DUMP_VERSION,
             "source": source_identity,

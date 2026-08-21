@@ -2,7 +2,7 @@
 
 ## 文档范围
 
-本文记录 `combat-1.2.4` 证据集里已经能从 IL2CPP 类型元数据直接确认的战斗结构，
+本文记录 `combat-1.4.4` 证据集里已经能从 IL2CPP 类型元数据直接确认的战斗结构，
 以及仍需读取运行时函数体才能确认的问题。它是战斗反推的领域词典，不把方法名推测写成
 已经验证的控制流。
 
@@ -141,7 +141,7 @@ USP 位于每个 `AbilitySystem`：
 ```powershell
 python -m tools.probe_runtime_rvas `
   docs/research/combat-runtime-probes.json `
-  --output data/research-artifacts/combat-1.2.4/runtime-probes.json
+  --output data/research-artifacts/combat-1.4.4/runtime-probes.json
 ```
 
 报告会记录每个地址的内存区域权限、前导字节、首个 64 位值，以及该值是否仍指向
@@ -151,12 +151,12 @@ python -m tools.probe_runtime_rvas `
 
 ```powershell
 python tools/index_il2cpp_types.py `
-  data/research-artifacts/combat-1.2.4/dumps/ai/Gameplay.Beyond.dll.cs `
-  --output data/research-artifacts/combat-1.2.4/derived/indexes/gameplay-types-ai.json
+  data/research-artifacts/combat-1.4.4/dumps/ai/Gameplay.Beyond.dll.cs `
+  --output data/research-artifacts/combat-1.4.4/derived/indexes/gameplay-types-ai.json
 
 python tools/index_il2cpp_types.py `
-  data/research-artifacts/combat-1.2.4/dumps/normal/Common.Beyond.dll.cs `
-  --output data/research-artifacts/combat-1.2.4/derived/indexes/common-types.json `
+  data/research-artifacts/combat-1.4.4/dumps/normal/Common.Beyond.dll.cs `
+  --output data/research-artifacts/combat-1.4.4/derived/indexes/common-types.json `
   --match 'CostType|SkillType|Ability'
 ```
 

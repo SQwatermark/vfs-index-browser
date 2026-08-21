@@ -80,6 +80,11 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         default=4,
         help="Maximum depth for following nested MemoryPack wrapper field types. Defaults to 4.",
     )
+    parser.add_argument(
+        "--union-map",
+        type=Path,
+        help="Union 映射 JSON；其中的派生类型会一并纳入 schema。",
+    )
     return parser.parse_args(list(argv))
 
 
@@ -691,7 +696,12 @@ def main(argv: Iterable[str]) -> int:
     lines = read_memorypack_dump_file(args.dump_root)
     wrappers_by_instance = extract_wrappers(lines)
     runtime_classes = parse_runtime_classes(args.dump_root)
-    classes = args.classes or DEFAULT_ROOT_CLASSES
+    classes = list(args.classes or DEFAULT_ROOT_CLASSES)
+    if args.union_map:
+        union_map = json.loads(args.union_map.read_text(encoding="utf-8"))
+        for derived_types in union_map.values():
+            classes.extend(derived_types.values())
+    classes = sorted(set(classes))
     schemas = build_recursive_schema(classes, wrappers_by_instance, runtime_classes, args.max_depth)
     report = {
         "kind": "EndfieldMemoryPackSchema",
