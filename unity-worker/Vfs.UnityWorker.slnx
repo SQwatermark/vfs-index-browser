@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/AnimeStudio.Core/Vfs.AnimeStudio.Core.csproj" />
+  <Project Path="src/Endfield.Extensions/Vfs.Endfield.Extensions.csproj" />
+  <Project Path="src/Vfs.UnityWorker/Vfs.UnityWorker.csproj" />
+  <Project Path="tests/Vfs.UnityWorker.Tests/Vfs.UnityWorker.Tests.csproj" />
+</Solution>

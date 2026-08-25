@@ -62,6 +62,15 @@ class RootDef:
     type_hash2: int | None = None
 
 
+@dataclass(frozen=True)
+class SparkBufferSchema:
+    """SparkBuffer 文件自带的名义类型 schema 与数据区位置。"""
+
+    root: RootDef
+    registry: TypeRegistry
+    data_offset: int
+
+
 class TypeRegistry:
     def __init__(self) -> None:
         self.beans: dict[int, BeanType] = {}
@@ -167,19 +176,11 @@ class SparkReader:
 
 
 def parse_sparkbuffer(data: bytes) -> dict[str, Any]:
+    schema = parse_sparkbuffer_schema(data)
     reader = SparkReader(data)
-    type_def_offset = reader.read_int32()
-    root_def_offset = reader.read_int32()
-    data_offset = reader.read_int32()
-
-    registry = TypeRegistry()
-    reader.seek(type_def_offset)
-    _parse_type_definitions(reader, registry)
-
-    reader.seek(root_def_offset)
-    root_def = _parse_root_def(reader)
-
-    reader.seek(data_offset)
+    reader.seek(schema.data_offset)
+    root_def = schema.root
+    registry = schema.registry
     if root_def.field_type == SparkType.BEAN:
         if root_def.type_hash is None:
             raise SparkBufferError("root bean missing type hash")
@@ -190,6 +191,22 @@ def parse_sparkbuffer(data: bytes) -> dict[str, Any]:
         raise SparkBufferError(f"unsupported root type: {root_def.field_type.name}")
 
     return {"name": root_def.name, "data": value}
+
+
+def parse_sparkbuffer_schema(data: bytes) -> SparkBufferSchema:
+    """只读取类型注册表和根定义，不解析可能很大的数据区。"""
+
+    reader = SparkReader(data)
+    type_def_offset = reader.read_int32()
+    root_def_offset = reader.read_int32()
+    data_offset = reader.read_int32()
+
+    registry = TypeRegistry()
+    reader.seek(type_def_offset)
+    _parse_type_definitions(reader, registry)
+    reader.seek(root_def_offset)
+    root_def = _parse_root_def(reader)
+    return SparkBufferSchema(root_def, registry, data_offset)
 
 
 def _is_enum_or_bean(value: SparkType) -> bool:

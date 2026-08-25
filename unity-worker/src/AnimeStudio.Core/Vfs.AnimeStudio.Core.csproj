@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Vfs.AnimeStudio.Core</AssemblyName>
+    <RootNamespace>AnimeStudio</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 上游源码保持原目录和命名空间；VFS 项目只定义实际进入产品的编译闭包。 -->
+    <Compile Include="..\..\vendor\animestudio\AnimeStudio\**\*.cs"
+             Exclude="..\..\vendor\animestudio\AnimeStudio\**\bin\**;..\..\vendor\animestudio\AnimeStudio\**\obj\**" />
+    <Content Include="..\..\vendor\animestudio\AnimeStudio\CNKeys.json"
+             Link="CNKeys.json"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="K4os.Hash.xxHash" Version="1.0.8" />
+    <PackageReference Include="Kyaru.Texture2DDecoder" Version="0.17.0" />
+    <PackageReference Include="Kyaru.Texture2DDecoder.Windows" Version="0.1.0" />
+    <PackageReference Include="MessagePack" Version="3.1.8" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.6" />
+  </ItemGroup>
+</Project>

@@ -20,14 +20,24 @@ import sys
 import tarfile
 import threading
 import time
+import uuid
 from contextlib import closing
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Callable, Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
+from ability_entity_data import (
+    AbilityEntityDecodeError,
+    AbilityEntityNotFoundError,
+    AbilityEntityUnavailableError,
+    list_ability_entity_ids,
+    normalize_ability_entity_id,
+    parse_ability_entity_template,
+    select_ability_entity_asset,
+)
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
 from wwise_store import (
     get_wwise_bank,
@@ -91,9 +101,12 @@ from projectile_data import (
     ProjectileNotFoundError,
     ProjectileUnavailableError,
     load_projectile_export,
+    list_projectile_ids,
     normalize_projectile_id,
     select_projectile_asset,
 )
+from unity_worker import UnityWorkerClient, UnityWorkerError
+from task_registry import BackgroundTaskRegistry, TaskNotFoundError
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -105,6 +118,7 @@ except ImportError:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+UNITY_WORKER = UnityWorkerClient.discover(PROJECT_ROOT)
 
 
 @dataclass(frozen=True)
@@ -156,6 +170,7 @@ WWISE_DB = Path(
 )
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
+TASKS = BackgroundTaskRegistry(lambda: INTERNAL_CACHE_DIR / "tasks")
 SHADER_ARCHIVE_ROOT = Path(
     os.environ.get(
         "VFS_BROWSER_SHADER_ARCHIVE_ROOT",
@@ -190,9 +205,6 @@ ANIMESTUDIO_CLI = Path(
     os.environ.get("VFS_BROWSER_ANIMESTUDIO_CLI", default_animestudio_cli())
 )
 # 调试时可以分别覆盖特定导出链路，生产环境统一使用已验证的打包构建。
-ANIMESTUDIO_MONOBEHAVIOUR_CLI = Path(
-    os.environ.get("VFS_BROWSER_ANIMESTUDIO_MONOBEHAVIOUR_CLI", ANIMESTUDIO_CLI)
-)
 ANIMESTUDIO_CUBEMAP_CLI = Path(
     os.environ.get("VFS_BROWSER_ANIMESTUDIO_CUBEMAP_CLI", ANIMESTUDIO_CLI)
 )
@@ -204,6 +216,62 @@ VGMSTREAM_CLI = Path(
 )
 USM_CONVERT = Path(os.environ.get("USM_CONVERT", PROJECT_ROOT / "tools" / "usm-convert.exe"))
 FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
+
+
+def executable_diagnostic(name: str, configured: str | Path) -> dict:
+    """解析可选命令，但不启动进程或隐式下载依赖。"""
+
+    raw = str(configured)
+    explicit = Path(raw)
+    resolved = explicit.resolve() if explicit.is_file() else None
+    if resolved is None and explicit.name == raw:
+        discovered = shutil.which(raw)
+        resolved = Path(discovered).resolve() if discovered else None
+    return {
+        "name": name,
+        "configured": raw,
+        "available": resolved is not None,
+        "resolvedPath": str(resolved) if resolved is not None else None,
+    }
+
+
+def build_health_document() -> dict:
+    """汇总运行时能力；可选工具缺失不影响核心服务存活状态。"""
+
+    worker = UNITY_WORKER.diagnose([
+        "decodeProjectileComponent",
+        "exportMonoBehaviourRaw",
+        "exportMonoBehaviourTypeTreeDump",
+        "buildAssetMap",
+    ])
+    return {
+        "apiVersion": 1,
+        "status": "ready" if worker["status"] == "ready" else "degraded",
+        "unityWorker": worker,
+        "optionalTools": [
+            executable_diagnostic("blender", BLENDER_EXE),
+            executable_diagnostic("vgmstream", VGMSTREAM_CLI),
+            executable_diagnostic("usm-convert", USM_CONVERT),
+            executable_diagnostic("ffmpeg", FFMPEG),
+        ],
+        "legacyTools": [
+            {
+                **executable_diagnostic("AnimeStudio.CLI", ANIMESTUDIO_CLI),
+                "requiredByUnmigratedPaths": True,
+            }
+        ],
+    }
+
+
+def unity_worker_is_unavailable(error: UnityWorkerError) -> bool:
+    """区分运行环境不可用与输入或领域数据不可解码。"""
+
+    return error.code in {
+        "worker_not_found",
+        "worker_timeout",
+        "invalid_worker_response",
+        "request_id_mismatch",
+    }
 
 
 def find_blender_executable() -> Path:
@@ -229,9 +297,11 @@ CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
 )
 VFS_PROTO_VERSION = 3
-ASSETBUNDLE_META_VERSION = 2
-MONOBEHAVIOUR_DUMP_VERSION = 2
-MONOBEHAVIOUR_RAW_VERSION = 1
+ASSETBUNDLE_META_VERSION = 3
+ASSETBUNDLE_MAP_VERSION = 1
+MONOBEHAVIOUR_DUMP_VERSION = 3
+MONOBEHAVIOUR_RAW_VERSION = 2
+PROJECTILE_COMPONENT_EXPORT_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
 MODEL_SNAPSHOT_VERSION = 29
 AVATAR_MODEL_SNAPSHOT_VERSION = 2
@@ -980,6 +1050,18 @@ def file_suffix(file_name: str) -> str:
     return Path(file_name).suffix.lower()
 
 
+def is_safe_akedb_name(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z0-9_]+", value) is not None
+
+
+def is_safe_akedb_json_file(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z0-9_.-]+\.json", value) is not None
+
+
+def is_akedb_collection(value: str) -> bool:
+    return value in {"SkillData", "BuffData"}
+
+
 def is_model_entry_path(path: str) -> bool:
     return file_suffix(path) == ".prefab" or is_avatar_mesh_asset_path(path)
 
@@ -1201,6 +1283,81 @@ def safe_relative_path(root: Path, raw_path: str) -> Path | None:
     return candidate
 
 
+def validate_worker_artifacts(export_root: Path, result: object) -> list[Path]:
+    """验证 worker 声明的全部产物，拒绝路径逃逸、重复路径和身份不一致。"""
+
+    artifacts = result.get("artifacts") if isinstance(result, dict) else None
+    if (
+        not isinstance(result, dict)
+        or not isinstance(artifacts, list)
+        or not artifacts
+        or result.get("artifactCount") != len(artifacts)
+        or any(not isinstance(artifact, dict) for artifact in artifacts)
+    ):
+        raise RuntimeError("Unity worker returned an invalid artifact collection")
+
+    paths = []
+    relative_paths = set()
+    for artifact in artifacts:
+        relative = str(artifact.get("relativePath") or "").replace("\\", "/")
+        path = safe_relative_path(export_root, relative)
+        if not relative or relative in relative_paths or path is None or not path.is_file():
+            raise RuntimeError("Unity worker returned an invalid or duplicate artifact path")
+        relative_paths.add(relative)
+        expected_size = artifact.get("byteCount")
+        expected_sha256 = str(artifact.get("sha256") or "").casefold()
+        actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        if (
+            not isinstance(expected_size, int)
+            or expected_size != path.stat().st_size
+            or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256)
+            or expected_sha256 != actual_sha256
+        ):
+            raise RuntimeError("Unity worker artifact identity is inconsistent")
+        paths.append(path)
+    return paths
+
+
+def describe_derived_artifacts(export_root: Path, files: object) -> dict[str, dict]:
+    """把发布前派生文件转换为可在缓存命中时复验的稳定身份。"""
+
+    if not isinstance(files, dict):
+        raise RuntimeError("derived worker artifact list is inconsistent")
+    described = {}
+    for name, relative_value in files.items():
+        relative = str(relative_value).replace("\\", "/")
+        path = safe_relative_path(export_root, relative)
+        if not name or path is None or not path.is_file():
+            raise RuntimeError("derived worker artifact path is inconsistent")
+        described[str(name)] = {
+            "relativePath": relative,
+            "byteCount": path.stat().st_size,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+        }
+    return described
+
+
+def validate_derived_artifacts(export_root: Path, described: object) -> dict[str, Path]:
+    """复验已发布的派生文件，防止半成品或事后损坏继续命中缓存。"""
+
+    if not isinstance(described, dict):
+        raise RuntimeError("cached derived artifact list is inconsistent")
+    paths = {}
+    for name, identity in described.items():
+        if not isinstance(identity, dict):
+            raise RuntimeError("cached derived artifact identity is inconsistent")
+        path = safe_relative_path(export_root, str(identity.get("relativePath") or ""))
+        if (
+            path is None
+            or not path.is_file()
+            or identity.get("byteCount") != path.stat().st_size
+            or identity.get("sha256") != hashlib.sha256(path.read_bytes()).hexdigest()
+        ):
+            raise RuntimeError("cached derived artifact identity is inconsistent")
+        paths[str(name)] = path
+    return paths
+
+
 def posix_relative(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
@@ -1248,6 +1405,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cache_control: str | None = None,
         compress: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         accepted_encodings = self.headers.get("Accept-Encoding", "").casefold()
@@ -1262,11 +1420,30 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_header("Vary", "Accept-Encoding")
         if cache_control:
             self.send_header("Cache-Control", cache_control)
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
     def send_error_json(self, status: int, message: str) -> None:
         self.send_json({"error": message}, status=status)
+
+    def read_json_body(self, *, maximum_bytes: int = 64 * 1024) -> dict:
+        """读取有明确长度的小型 JSON 请求；长任务输入不得藏在无界请求体中。"""
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as error:
+            raise ValueError("invalid Content-Length") from error
+        if length <= 0 or length > maximum_bytes:
+            raise ValueError(f"JSON body length must be between 1 and {maximum_bytes} bytes")
+        try:
+            value = json.loads(self.rfile.read(length))
+        except json.JSONDecodeError as error:
+            raise ValueError("invalid JSON body") from error
+        if not isinstance(value, dict):
+            raise ValueError("JSON body must be an object")
+        return value
 
     def connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
@@ -1329,6 +1506,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/health":
+            self.handle_health()
+            return
+        if parsed.path == "/api/task":
+            self.handle_task_status(parse_qs(parsed.query))
+            return
+        if parsed.path.startswith("/api/akedb-compatible/"):
+            self.handle_akedb_compatible(parsed.path)
+            return
         if parsed.path == "/api/manifest":
             self.handle_manifest()
             return
@@ -1414,6 +1600,314 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.handle_internal_raw(parse_qs(parsed.query))
             return
         self.serve_static(parsed.path)
+
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/tasks/projectile":
+            self.handle_start_projectile_task()
+            return
+        self.send_error_json(404, "API route not found")
+
+    def do_DELETE(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/task":
+            self.handle_cancel_task(parse_qs(parsed.query))
+            return
+        self.send_error_json(404, "API route not found")
+
+    def handle_health(self) -> None:
+        self.send_json(build_health_document(), cache_control="no-store")
+
+    def handle_start_projectile_task(self) -> None:
+        try:
+            body = self.read_json_body()
+            projectile_id = normalize_projectile_id(str(body.get("projectileId") or ""))
+        except ValueError as error:
+            self.send_error_json(400, str(error))
+            return
+
+        # 后台任务不能捕获 HTTP handler；只复制应用服务所需的数据库配置。
+        worker = object.__new__(BrowserHandler)
+        worker.db_path = self.db_path
+        created = TASKS.submit(
+            "projectile",
+            lambda cancel_event: worker.build_projectile_document(
+                projectile_id,
+                cancel_event=cancel_event,
+            ),
+        )
+        self.send_json(created, status=202, cache_control="no-store")
+
+    def handle_task_status(self, query: dict[str, list[str]]) -> None:
+        task_id = query.get("taskId", [""])[0]
+        try:
+            snapshot = TASKS.snapshot(task_id)
+        except (TaskNotFoundError, OSError, json.JSONDecodeError):
+            self.send_error_json(404, "task not found")
+            return
+        self.send_json(snapshot, cache_control="no-store")
+
+    def handle_cancel_task(self, query: dict[str, list[str]]) -> None:
+        task_id = query.get("taskId", [""])[0]
+        try:
+            snapshot = TASKS.cancel(task_id)
+        except (TaskNotFoundError, OSError, json.JSONDecodeError):
+            self.send_error_json(404, "task not found")
+            return
+        status = 202 if snapshot["state"] == "cancelling" else 200
+        self.send_json(snapshot, status=status, cache_control="no-store")
+
+    def handle_akedb_compatible(self, request_path: str) -> None:
+        """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""
+
+        prefix = "/api/akedb-compatible/"
+        logical_path = unquote(request_path[len(prefix) :]).strip("/")
+        parts = logical_path.split("/") if logical_path else []
+        if len(parts) == 2 and re.fullmatch(r"TableCfg-[A-Za-z0-9@._-]+", parts[0]):
+            table_name = parts[1].removesuffix(".json")
+            if not parts[1].endswith(".json") or not is_safe_akedb_name(table_name):
+                self.send_error_json(400, "invalid TableCfg resource name")
+                return
+            self.handle_akedb_compatible_table(table_name)
+            return
+        if len(parts) == 2 and parts[1] == "manifest.json" and is_akedb_collection(parts[0]):
+            self.handle_akedb_compatible_collection_manifest(parts[0])
+            return
+        if len(parts) == 2 and parts[1].endswith(".json") and is_akedb_collection(parts[0]):
+            file_name = parts[1]
+            if not is_safe_akedb_json_file(file_name):
+                self.send_error_json(400, "invalid collection resource name")
+                return
+            self.handle_akedb_compatible_collection_file(parts[0], file_name)
+            return
+        if len(parts) == 2 and parts[0] == "ProjectileData":
+            if parts[1] == "manifest.json":
+                self.handle_akedb_compatible_projectile_manifest()
+                return
+            if parts[1].endswith(".json"):
+                projectile_id = parts[1].removesuffix(".json")
+                try:
+                    projectile_id = normalize_projectile_id(projectile_id)
+                except ValueError as error:
+                    self.send_error_json(400, str(error))
+                    return
+                self.handle_akedb_compatible_projectile_file(projectile_id)
+                return
+        if len(parts) == 2 and parts[0] == "AbilityEntityData":
+            if parts[1] == "manifest.json":
+                self.handle_akedb_compatible_ability_entity_manifest()
+                return
+            if parts[1].endswith(".json"):
+                entity_id = parts[1].removesuffix(".json")
+                try:
+                    entity_id = normalize_ability_entity_id(entity_id)
+                except ValueError as error:
+                    self.send_error_json(400, str(error))
+                    return
+                self.handle_akedb_compatible_ability_entity_file(entity_id)
+                return
+        self.send_error_json(404, "AKEDB-compatible resource not found")
+
+    def handle_akedb_compatible_table(self, table_name: str) -> None:
+        logical_id = f"Table/Data/TableCfg/{table_name}.bytes"
+        resolved = self.resolve_logical_file_source(logical_id)
+        if resolved is None:
+            self.send_error_json(404, f"local VFS resource is unavailable: {logical_id}")
+            return
+        record, chunk_path = resolved
+        try:
+            parsed, _ = self.parse_tablecfg_file(record, chunk_path)
+        except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
+            self.send_error_json(422, f"SparkBuffer parse failed: {error}")
+            return
+        self.send_json(
+            parsed["data"],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_collection_manifest(self, collection: str) -> None:
+        logical_parent = f"JsonData/Data/Json/{collection}"
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT name FROM entries
+                WHERE scope = 'effective' AND type = 'file' AND parent = ?
+                ORDER BY name
+                """,
+                (logical_parent,),
+            ).fetchall()
+        files = sorted(
+            {
+                str(row["name"])
+                for row in rows
+                if is_safe_akedb_json_file(str(row["name"]))
+            }
+        )
+        self.send_json(
+            [
+                {
+                    "contentFile": f"/api/akedb-compatible/{collection}/{file_name}",
+                }
+                for file_name in files
+            ],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_collection_file(self, collection: str, file_name: str) -> None:
+        logical_id = f"JsonData/Data/Json/{collection}/{file_name}"
+        resolved = self.resolve_logical_file_source(logical_id)
+        if resolved is None:
+            self.send_error_json(404, f"local VFS resource is unavailable: {logical_id}")
+            return
+        record, chunk_path = resolved
+        class_name = infer_class(logical_id)
+        if not class_name:
+            self.send_error_json(422, f"MemoryPack class is unknown: {logical_id}")
+            return
+        try:
+            schema, union_map = self.load_memorypack_decoder_inputs()
+            data = self.read_file_slice(record, chunk_path)
+            reader = MemoryPackReader(data)
+            decoder = Decoder(schema, union_map=union_map)
+            value = decoder.decode(reader, class_name)
+        except (DecodeError, RuntimeError, ValueError) as error:
+            self.send_error_json(422, f"MemoryPack decode failed: {error}")
+            return
+        if reader.tell() != len(data):
+            self.send_error_json(
+                422,
+                f"MemoryPack decode was incomplete: consumed {reader.tell()} / {len(data)} bytes",
+            )
+            return
+        self.send_json(
+            value,
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def resolve_installed_manifest_index(self) -> ManifestIndex:
+        """打开当前安装版本的精确 Unity manifest 索引。"""
+
+        resolved = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
+        if resolved is None:
+            raise FileNotFoundError(f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}")
+        record, chunk_path = resolved
+        return self.manifest_index(record, chunk_path)
+
+    def handle_akedb_compatible_projectile_manifest(self) -> None:
+        try:
+            projectile_ids = list_projectile_ids(self.resolve_installed_manifest_index())
+        except (ProjectileDecodeError, OSError, sqlite3.Error) as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            [
+                {
+                    "contentFile": (
+                        f"/api/akedb-compatible/ProjectileData/{projectile_id}.json"
+                    ),
+                }
+                for projectile_id in projectile_ids
+            ],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_projectile_file(self, projectile_id: str) -> None:
+        try:
+            document = self.build_projectile_document(projectile_id)
+        except ProjectileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except ProjectileDecodeError as error:
+            self.send_error_json(422, str(error))
+            return
+        except (ProjectileUnavailableError, OSError, sqlite3.Error) as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            document["projectileComponentData"],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def build_ability_entity_document(self, entity_id: str) -> dict:
+        """从精确 Unity asset 导出并解析能力实体模板的已证实前缀。"""
+
+        resolved_manifest = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
+        if resolved_manifest is None:
+            raise AbilityEntityUnavailableError(
+                f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}"
+            )
+        manifest_record, manifest_chunk = resolved_manifest
+        try:
+            index = self.manifest_index(manifest_record, manifest_chunk)
+            indexed_asset = select_ability_entity_asset(index, entity_id)
+            asset, bundle_record, bundle_chunk = self.resolve_index_asset_bundle(
+                index,
+                int(indexed_asset["assetIndex"]),
+            )
+            raw_path, export_meta = self.ensure_manifest_monobehaviour_raw(
+                bundle_record,
+                bundle_chunk,
+                asset,
+            )
+            template = parse_ability_entity_template(raw_path.read_bytes(), entity_id)
+        except AbilityEntityNotFoundError:
+            raise
+        except AbilityEntityDecodeError:
+            raise
+        except UnityWorkerError as error:
+            if unity_worker_is_unavailable(error):
+                raise AbilityEntityUnavailableError(str(error)) from error
+            raise AbilityEntityDecodeError(f"Unity worker {error.code}: {error}") from error
+        except (FileNotFoundError, OSError, sqlite3.Error, subprocess.SubprocessError) as error:
+            raise AbilityEntityUnavailableError(str(error)) from error
+        except (RuntimeError, ValueError) as error:
+            raise AbilityEntityDecodeError(str(error)) from error
+        return {
+            "apiVersion": 1,
+            "abilityEntityId": entity_id,
+            "source": {
+                "assetPath": asset["path"],
+                "assetIndex": int(asset["asset_index"]),
+                "bundleName": asset["bundle_name"],
+                "rawExport": export_meta.get("exportedFile"),
+            },
+            "abilityEntityTemplateData": template,
+        }
+
+    def handle_akedb_compatible_ability_entity_manifest(self) -> None:
+        try:
+            entity_ids = list_ability_entity_ids(self.resolve_installed_manifest_index())
+        except (AbilityEntityDecodeError, OSError, sqlite3.Error) as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            [
+                {
+                    "contentFile": (
+                        f"/api/akedb-compatible/AbilityEntityData/{entity_id}.json"
+                    ),
+                }
+                for entity_id in entity_ids
+            ],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_ability_entity_file(self, entity_id: str) -> None:
+        try:
+            document = self.build_ability_entity_document(entity_id)
+        except AbilityEntityNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except AbilityEntityDecodeError as error:
+            self.send_error_json(422, str(error))
+            return
+        except AbilityEntityUnavailableError as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            document["abilityEntityTemplateData"],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
 
     def handle_manifest(self) -> None:
         with self.connect() as conn:
@@ -1680,7 +2174,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
             ]
         self.send_json({"items": rows, "limit": limit})
 
-    def build_projectile_document(self, projectile_id: str) -> dict:
+    def build_projectile_document(
+        self,
+        projectile_id: str,
+        *,
+        cancel_event: object | None = None,
+    ) -> dict:
         """Resolve and decode one projectile through the local manifest/VFS chain."""
 
         resolved_manifest = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
@@ -1704,24 +2203,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise ProjectileUnavailableError(f"cannot query the local manifest: {error}") from error
 
         try:
-            ensured = self.ensure_manifest_monobehaviour_dump(
+            ensured = self.ensure_manifest_projectile_component(
                 bundle_record,
                 bundle_chunk,
                 asset,
-                export_type="JSON",
-                filter_container=False,
+                projectile_id,
+                cancel_event=cancel_event,
             )
+        except UnityWorkerError as error:
+            if unity_worker_is_unavailable(error):
+                raise ProjectileUnavailableError(str(error)) from error
+            raise ProjectileDecodeError(f"Unity worker {error.code}: {error}") from error
         except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as error:
             raise ProjectileUnavailableError(str(error)) from error
         if ensured is None:
             raise ProjectileDecodeError(
-                "AnimeStudio did not export the projectile Unity MonoBehaviour"
+                "Unity worker did not export the projectile component"
             )
 
-        dump_path, export_meta = ensured
+        export_root, export_meta = ensured
         exported_files = [str(value) for value in export_meta.get("exportedFiles", [])]
         parsed = load_projectile_export(
-            dump_path.parent / "exported",
+            export_root,
             exported_files,
             projectile_id,
         )
@@ -3072,41 +3575,203 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         return document, run_meta, model_path
 
-    def assetbundle_cache_paths(self, record: dict) -> tuple[Path, Path, Path, Path]:
+    def assetbundle_cache_paths(self, record: dict) -> tuple[Path, Path, Path]:
         cache_root = INTERNAL_CACHE_DIR / str(record["id"])
         source_path = cache_root / "source.ab"
         export_root = cache_root / "exported"
         meta_path = cache_root / "meta.json"
-        map_path = cache_root / "maps" / "asset_map.json"
-        return source_path, export_root, meta_path, map_path
+        return source_path, export_root, meta_path
 
-    def manifest_monobehaviour_dump_paths(
+    def manifest_unity_worker_export_paths(
         self,
         record: dict,
         asset_index: int,
-    ) -> tuple[Path, Path, Path]:
-        root = (
-            INTERNAL_CACHE_DIR
-            / str(record["id"])
-            / "manifest-assets"
-            / str(asset_index)
-            / "monobehaviour"
-        )
-        return root / "exported", root / "dump.txt", root / "meta.json"
-
-    def manifest_monobehaviour_raw_paths(
-        self,
-        record: dict,
-        asset_index: int,
+        export_name: str,
     ) -> tuple[Path, Path]:
+        """返回某类 worker 产物的版本目录和当前版本原子指针。"""
+
         root = (
             INTERNAL_CACHE_DIR
             / str(record["id"])
             / "manifest-assets"
             / str(asset_index)
-            / "monobehaviour-raw"
+            / export_name
         )
-        return root / "exported", root / "meta.json"
+        return root / "runs", root / "meta.json"
+
+    def ensure_manifest_unity_worker_export(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+        *,
+        export_name: str,
+        version: int,
+        identity_extra: dict,
+        invoke: Callable[[Path, Path, str, str, object | None], dict],
+        derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
+        cancel_event: object | None = None,
+    ) -> tuple[Path, list[Path], dict]:
+        """执行 worker 操作，完整校验全部产物后原子发布缓存指针。"""
+
+        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
+            raise ValueError("Unity worker MonoBehaviour export requires an .asset or .prefab")
+
+        runs_root, meta_path = self.manifest_unity_worker_export_paths(
+            record,
+            int(asset["asset_index"]),
+            export_name,
+        )
+        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
+        source_identity = {
+            "recordId": int(record["id"]),
+            "length": int(record["length"]),
+            "offset": int(record["offset"]),
+            "chunkPath": str(record["chunk_path"]),
+            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+            "assetIndex": int(asset["asset_index"]),
+            "assetPath": normalized_container,
+            "toolArtifacts": UNITY_WORKER.artifact_identity(),
+            **identity_extra,
+        }
+
+        def run_export(
+            run_root: Path,
+            export_root: Path,
+            request_id: str,
+            cancel: object | None,
+        ) -> dict:
+            source_path = run_root / "source.ab"
+            self.write_file_slice(record, chunk_path, source_path)
+            return invoke(
+                source_path,
+                export_root,
+                normalized_container,
+                request_id,
+                cancel,
+            )
+
+        return self.ensure_unity_worker_run(
+            runs_root=runs_root,
+            meta_path=meta_path,
+            request_prefix=f"{export_name}-{int(asset['asset_index'])}",
+            version=version,
+            source_identity=source_identity,
+            invoke=run_export,
+            derive=derive,
+            cancel_event=cancel_event,
+        )
+
+    def ensure_unity_worker_run(
+        self,
+        *,
+        runs_root: Path,
+        meta_path: Path,
+        request_prefix: str,
+        version: int,
+        source_identity: dict,
+        invoke: Callable[[Path, Path, str, object | None], dict],
+        derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
+        cancel_event: object | None = None,
+    ) -> tuple[Path, list[Path], dict]:
+        """校验并原子发布任意 worker run；输入布局由具体能力负责。"""
+
+        # meta.json 是唯一已发布指针；缓存读取不能扫描尚未完成或已经过期的 run。
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                run_name = str(meta.get("selectedRun") or "")
+                selected_run = safe_relative_path(runs_root, run_name)
+                export_root = selected_run / "exported" if selected_run is not None else None
+                if (
+                    meta.get("version") == version
+                    and meta.get("source") == source_identity
+                    and export_root is not None
+                    and export_root.is_dir()
+                ):
+                    cached_artifacts = validate_worker_artifacts(
+                        export_root,
+                        meta.get("workerResult"),
+                    )
+                    expected_files = [path.relative_to(export_root).as_posix() for path in cached_artifacts]
+                    if meta.get("exportedFiles") != expected_files:
+                        raise RuntimeError("cached worker artifact list is inconsistent")
+                    validate_derived_artifacts(export_root, meta.get("derivedFiles", {}))
+                    return export_root, cached_artifacts, meta
+            except (OSError, json.JSONDecodeError, TypeError, RuntimeError):
+                pass
+
+        request_id = f"{request_prefix}-{time.time_ns()}-{uuid.uuid4().hex}"
+        run_root = runs_root / request_id
+        export_root = run_root / "exported"
+        result = invoke(run_root, export_root, request_id, cancel_event)
+        artifact_paths = validate_worker_artifacts(export_root, result)
+        derived_files = describe_derived_artifacts(
+            export_root,
+            derive(export_root, artifact_paths) if derive is not None else {},
+        )
+
+        meta = {
+            "version": version,
+            "source": source_identity,
+            "selectedRun": request_id,
+            "exportedFiles": [path.relative_to(export_root).as_posix() for path in artifact_paths],
+            "derivedFiles": derived_files,
+            "workerResult": result,
+            "builtAtEpoch": int(time.time()),
+        }
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_meta = meta_path.with_name(f".{meta_path.name}.{uuid.uuid4().hex}.tmp")
+        temporary_meta.write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_meta, meta_path)
+        return export_root, artifact_paths, meta
+
+    def ensure_manifest_projectile_component(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+        projectile_id: str,
+        *,
+        cancel_event: object | None = None,
+    ) -> tuple[Path, dict] | None:
+        """通过共用原子导出框架生成一个聚焦 Projectile 组件。"""
+
+        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
+            return None
+
+        try:
+            export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
+                record,
+                chunk_path,
+                asset,
+                export_name="projectile-component",
+                version=PROJECTILE_COMPONENT_EXPORT_VERSION,
+                identity_extra={"projectileId": projectile_id},
+                invoke=lambda source, output, container, request_id, cancel: (
+                    UNITY_WORKER.decode_projectile_component(
+                        input_path=source,
+                        output_directory=output,
+                        container=container,
+                        projectile_id=projectile_id,
+                        request_id=request_id,
+                        cancel_event=cancel,
+                    )
+                ),
+                cancel_event=cancel_event,
+            )
+        except UnityWorkerError:
+            raise
+        except RuntimeError as error:
+            raise ProjectileDecodeError(str(error)) from error
+        if len(artifact_paths) != 1:
+            raise ProjectileDecodeError(
+                f"expected one projectile artifact, found {len(artifact_paths)}"
+            )
+        return export_root, meta
 
     def manifest_cubemap_export_paths(
         self,
@@ -3137,7 +3802,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             record,
             int(asset["asset_index"]),
         )
-        source_path, _, _, _ = self.assetbundle_cache_paths(record)
+        source_path, _, _ = self.assetbundle_cache_paths(record)
         source_identity = {
             "recordId": int(record["id"]),
             "length": int(record["length"]),
@@ -3233,109 +3898,50 @@ class BrowserHandler(BaseHTTPRequestHandler):
         chunk_path: Path,
         asset: dict,
         *,
-        export_type: str = "Dump",
-        filter_container: bool = True,
+        cancel_event: object | None = None,
     ) -> tuple[Path, dict] | None:
+        """导出精确 container 的全部 TypeTree 文本，并生成稳定的合并预览。"""
+
         if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
             return None
-        if not ANIMESTUDIO_MONOBEHAVIOUR_CLI.exists():
-            raise FileNotFoundError(
-                f"AnimeStudio MonoBehaviour CLI not found: {ANIMESTUDIO_MONOBEHAVIOUR_CLI}"
-            )
 
-        export_root, dump_path, meta_path = self.manifest_monobehaviour_dump_paths(
+        def build_combined_dump(export_root: Path, artifacts: list[Path]) -> dict[str, str]:
+            sections = []
+            for path in artifacts:
+                relative = path.relative_to(export_root).as_posix()
+                text = path.read_text(encoding="utf-8", errors="replace").rstrip()
+                sections.append(f"===== {relative} =====\n{text}")
+            combined = export_root / "combined-dump.txt"
+            combined.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
+            return {"combinedDump": combined.relative_to(export_root).as_posix()}
+
+        export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
             record,
-            int(asset["asset_index"]),
+            chunk_path,
+            asset,
+            export_name="monobehaviour-typetree",
+            version=MONOBEHAVIOUR_DUMP_VERSION,
+            identity_extra={},
+            invoke=lambda source, output, container, request_id, cancel: (
+                UNITY_WORKER.export_monobehaviour_typetree_dump(
+                    input_path=source,
+                    output_directory=output,
+                    container=container,
+                    request_id=request_id,
+                    cancel_event=cancel,
+                )
+            ),
+            derive=build_combined_dump,
+            cancel_event=cancel_event,
         )
-        source_path, _, _, _ = self.assetbundle_cache_paths(record)
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "assetIndex": int(asset["asset_index"]),
-            "assetPath": str(asset["path"]),
-            "exportType": export_type,
-            "filterContainer": filter_container,
-            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
-        }
-        if dump_path.is_file() and meta_path.is_file():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if (
-                    meta.get("version") == MONOBEHAVIOUR_DUMP_VERSION
-                    and meta.get("source") == source_identity
-                    and meta.get("returncode") == 0
-                ):
-                    return dump_path, meta
-            except (OSError, json.JSONDecodeError):
-                pass
-
-        self.write_file_slice(record, chunk_path, source_path)
-        shutil.rmtree(export_root, ignore_errors=True)
-        export_root.mkdir(parents=True, exist_ok=True)
-        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
-        command = [
-            str(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
-            str(source_path),
-            str(export_root),
-            "--game",
-            "ArknightsEndfield",
-            "--types",
-            "MonoBehaviour",
-        ]
-        if filter_container:
-            command.extend(["--containers", f"^{re.escape(normalized_container)}$"])
-        command.extend([
-            "--export_type",
-            export_type,
-            "--group_assets",
-            "ByType",
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
-        ])
-        completed = subprocess.run(
-            command,
-            cwd=str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.parent),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=180,
-            check=False,
-        )
-        exported_files = sorted(
-            path
-            for path in export_root.rglob("*")
-            if path.is_file() and path.suffix.casefold() in {".json", ".txt"}
-        )
-        meta = {
-            "version": MONOBEHAVIOUR_DUMP_VERSION,
-            "source": source_identity,
-            "command": command,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "builtAtEpoch": int(time.time()),
-            "exportedFiles": [
-                str(path.relative_to(export_root)).replace("\\", "/")
-                for path in exported_files
-            ],
-        }
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        if completed.returncode != 0 or not exported_files:
+        if not artifact_paths:
             return None
-
-        sections = []
-        for path in exported_files:
-            relative = str(path.relative_to(export_root)).replace("\\", "/")
-            text = path.read_text(encoding="utf-8", errors="replace").rstrip()
-            sections.append(f"===== {relative} =====\n{text}")
-        dump_path.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
+        dump_path = safe_relative_path(
+            export_root,
+            str(meta["derivedFiles"]["combinedDump"]["relativePath"]),
+        )
+        if dump_path is None or not dump_path.is_file():
+            raise RuntimeError("published TypeTree combined dump is unavailable")
         return dump_path, meta
 
     def ensure_manifest_monobehaviour_raw(
@@ -3343,237 +3949,123 @@ class BrowserHandler(BaseHTTPRequestHandler):
         record: dict,
         chunk_path: Path,
         asset: dict,
+        *,
+        cancel_event: object | None = None,
     ) -> tuple[Path, dict]:
-        """Export one MonoBehaviour's serialized bytes without TypeTree decoding."""
+        """通过 VFS worker 导出一个精确 container 的 MonoBehaviour 原始字节。"""
 
         if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
             raise ValueError("raw MonoBehaviour export requires an .asset or .prefab")
-        if not ANIMESTUDIO_MONOBEHAVIOUR_CLI.exists():
-            raise FileNotFoundError(
-                f"AnimeStudio MonoBehaviour CLI not found: {ANIMESTUDIO_MONOBEHAVIOUR_CLI}"
-            )
-
-        export_root, meta_path = self.manifest_monobehaviour_raw_paths(
+        _export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
             record,
-            int(asset["asset_index"]),
+            chunk_path,
+            asset,
+            export_name="monobehaviour-raw",
+            version=MONOBEHAVIOUR_RAW_VERSION,
+            identity_extra={},
+            invoke=lambda source, output, container, request_id, cancel: (
+                UNITY_WORKER.export_monobehaviour_raw(
+                    input_path=source,
+                    output_directory=output,
+                    container=container,
+                    request_id=request_id,
+                    cancel_event=cancel,
+                )
+            ),
+            cancel_event=cancel_event,
         )
-        source_path, _, _, _ = self.assetbundle_cache_paths(record)
+        if len(artifact_paths) != 1:
+            raise RuntimeError(
+                f"expected one raw MonoBehaviour artifact, found {len(artifact_paths)}"
+            )
+        # 保留既有调用方读取的字段名；它现在指向选定 run 的相对产物。
+        meta["exportedFile"] = meta["exportedFiles"][0]
+        return artifact_paths[0], meta
+
+    def assetbundle_worker_map_paths(self, record: dict) -> tuple[Path, Path]:
+        root = INTERNAL_CACHE_DIR / str(record["id"]) / "asset-map"
+        return root / "runs", root / "meta.json"
+
+    def ensure_assetbundle_map(
+        self,
+        record: dict,
+        chunk_path: Path,
+        emit_errors: bool = True,
+        *,
+        cancel_event: object | None = None,
+    ) -> dict | None:
+        """通过 worker 建立单 Bundle AssetMap；不在此处混入 CABMap。"""
+
+        runs_root, meta_path = self.assetbundle_worker_map_paths(record)
+        source_label = str(record.get("logical_id") or f"record:{int(record['id'])}")
         source_identity = {
             "recordId": int(record["id"]),
             "length": int(record["length"]),
             "offset": int(record["offset"]),
             "chunkPath": str(record["chunk_path"]),
             "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "assetIndex": int(asset["asset_index"]),
-            "assetPath": str(asset["path"]),
-            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
+            "exportTypes": list(ASSETBUNDLE_EXPORT_TYPES),
+            "sourceLabel": source_label,
+            "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
-        if meta_path.is_file():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                cached = export_root / str(meta.get("exportedFile") or "")
-                if (
-                    meta.get("version") == MONOBEHAVIOUR_RAW_VERSION
-                    and meta.get("source") == source_identity
-                    and meta.get("returncode") == 0
-                    and cached.is_file()
-                ):
-                    return cached, meta
-            except (OSError, json.JSONDecodeError):
-                pass
 
-        self.write_file_slice(record, chunk_path, source_path)
-        shutil.rmtree(export_root, ignore_errors=True)
-        export_root.mkdir(parents=True, exist_ok=True)
-        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
-        command = [
-            str(ANIMESTUDIO_MONOBEHAVIOUR_CLI),
-            str(source_path),
-            str(export_root),
-            "--game",
-            "ArknightsEndfield",
-            "--types",
-            "MonoBehaviour",
-            "--containers",
-            f"^{re.escape(normalized_container)}$",
-            "--export_type",
-            "Raw",
-            "--group_assets",
-            "ByType",
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
-        ]
-        completed = subprocess.run(
-            command,
-            cwd=str(ANIMESTUDIO_MONOBEHAVIOUR_CLI.parent),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=180,
-            check=False,
-        )
-        expected_stem = Path(normalized_container).stem.casefold()
-        matching = [
-            path
-            for path in sorted(export_root.rglob("*.dat"))
-            if path.stem.casefold() == expected_stem
-        ]
-        relative = (
-            str(matching[0].relative_to(export_root)).replace("\\", "/")
-            if len(matching) == 1
-            else None
-        )
-        meta = {
-            "version": MONOBEHAVIOUR_RAW_VERSION,
-            "source": source_identity,
-            "command": command,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "builtAtEpoch": int(time.time()),
-            "exportedFile": relative,
-        }
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"AnimeStudio raw MonoBehaviour export failed: {completed.stderr[-2000:]}"
+        def run_export(
+            run_root: Path,
+            export_root: Path,
+            request_id: str,
+            cancel: object | None,
+        ) -> dict:
+            source_path = run_root / "source.ab"
+            self.write_file_slice(record, chunk_path, source_path)
+            return UNITY_WORKER.build_asset_map(
+                input_path=source_path,
+                output_directory=export_root,
+                source_label=source_label,
+                included_types=ASSETBUNDLE_EXPORT_TYPES,
+                request_id=request_id,
+                cancel_event=cancel,
             )
-        if len(matching) != 1:
-            raise RuntimeError(
-                f"expected one raw MonoBehaviour named {expected_stem!r}, found {len(matching)}"
-            )
-        return matching[0], meta
 
-    def assetbundle_map_command(self, source_path: Path, map_path: Path) -> list[str]:
-        return [
-            str(ANIMESTUDIO_CLI),
-            str(source_path),
-            str(map_path.parent),
-            "--game",
-            "ArknightsEndfield",
-            "--types",
-            *ASSETBUNDLE_EXPORT_TYPES,
-            "--map_op",
-            "AssetMap",
-            "--map_type",
-            "JSON",
-            "--map_name",
-            map_path.with_suffix("").name,
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
-        ]
-
-    def cached_assetbundle_map_meta(self, record: dict) -> dict | None:
-        _, _, meta_path, _ = self.assetbundle_cache_paths(record)
-        if not meta_path.exists():
-            return None
         try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return None
-        if (
-            meta.get("version") == ASSETBUNDLE_META_VERSION
-            and meta.get("mapReturncode") == 0
-            and assetbundle_export_types_match(meta)
-        ):
-            return meta
-        return None
-
-    def build_assetbundle_map_meta(
-        self,
-        map_command: list[str],
-        map_returncode: int,
-        asset_entries: list[dict],
-        map_stdout: str = "",
-        map_stderr: str = "",
-    ) -> dict:
-        return {
-            "version": ASSETBUNDLE_META_VERSION,
-            "command": None,
-            "mapCommand": map_command,
-            "returncode": None,
-            "mapReturncode": map_returncode,
-            "stdout": "",
-            "stderr": "",
-            "mapStdout": map_stdout,
-            "mapStderr": map_stderr,
-            "builtAtEpoch": int(time.time()),
-            "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
-            "assetEntries": asset_entries,
-        }
-
-    def write_assetbundle_map_meta(self, record: dict, meta: dict) -> None:
-        _, _, meta_path, _ = self.assetbundle_cache_paths(record)
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    def ensure_assetbundle_map(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> dict | None:
-        source_path, _, _, map_path = self.assetbundle_cache_paths(record)
-        cached_meta = self.cached_assetbundle_map_meta(record)
-        if cached_meta is not None:
-            return cached_meta
-
-        if not ANIMESTUDIO_CLI.exists():
-            if emit_errors:
-                self.send_json(
-                    {
-                        "kind": "assetBundle",
-                        "status": "toolMissing",
-                        "message": f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}",
-                    }
+            export_root, artifact_paths, worker_meta = self.ensure_unity_worker_run(
+                runs_root=runs_root,
+                meta_path=meta_path,
+                request_prefix=f"asset-map-{int(record['id'])}",
+                version=ASSETBUNDLE_MAP_VERSION,
+                source_identity=source_identity,
+                invoke=run_export,
+                cancel_event=cancel_event,
+            )
+            if len(artifact_paths) != 1:
+                raise RuntimeError(
+                    f"expected one AssetMap artifact, found {len(artifact_paths)}"
                 )
-            return None
-
-        self.write_file_slice(record, chunk_path, source_path)
-        map_path.parent.mkdir(parents=True, exist_ok=True)
-        map_command = self.assetbundle_map_command(source_path, map_path)
-        map_completed = subprocess.run(
-            map_command,
-            cwd=str(ANIMESTUDIO_CLI.parent),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=180,
-            check=False,
-        )
-        asset_entries = []
-        if map_path.exists():
-            try:
-                asset_map = json.loads(map_path.read_text(encoding="utf-8"))
-                asset_entries = asset_map.get("AssetEntries") or []
-            except (OSError, json.JSONDecodeError):
-                asset_entries = []
-        meta = self.build_assetbundle_map_meta(
-            map_command,
-            map_completed.returncode,
-            asset_entries,
-            map_completed.stdout,
-            map_completed.stderr,
-        )
-        self.write_assetbundle_map_meta(record, meta)
-        if map_completed.returncode != 0:
+            asset_map = json.loads(artifact_paths[0].read_text(encoding="utf-8-sig"))
+            asset_entries = asset_map.get("AssetEntries")
+            if not isinstance(asset_entries, list):
+                raise RuntimeError("worker AssetMap is missing AssetEntries")
+        except (UnityWorkerError, OSError, json.JSONDecodeError, RuntimeError) as error:
             if emit_errors:
                 self.send_json(
                     {
                         "kind": "assetBundle",
                         "status": "mapFailed",
-                        "message": "AnimeStudio failed to map this AssetBundle.",
-                        "meta": meta,
+                        "message": str(error),
                     },
                     status=500,
                 )
             return None
-        return meta
+
+        return {
+            **worker_meta,
+            "mapReturncode": 0,
+            "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
+            "assetEntries": asset_entries,
+            "assetMapFile": artifact_paths[0].relative_to(export_root).as_posix(),
+        }
 
     def ensure_assetbundle_export(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> tuple[Path, dict] | None:
-        source_path, export_root, meta_path, map_path = self.assetbundle_cache_paths(record)
+        source_path, export_root, meta_path = self.assetbundle_cache_paths(record)
         if export_root.exists() and meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
@@ -3599,18 +4091,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         self.write_file_slice(record, chunk_path, source_path)
         export_root.mkdir(parents=True, exist_ok=True)
-        map_path.parent.mkdir(parents=True, exist_ok=True)
-        map_command = self.assetbundle_map_command(source_path, map_path)
-        map_completed = subprocess.run(
-            map_command,
-            cwd=str(ANIMESTUDIO_CLI.parent),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=180,
-            check=False,
-        )
+        map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=emit_errors)
+        if map_meta is None:
+            return None
 
         export_command = [
             str(ANIMESTUDIO_CLI),
@@ -3637,26 +4120,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
             timeout=180,
             check=False,
         )
-        asset_entries = []
-        if map_path.exists():
-            try:
-                asset_map = json.loads(map_path.read_text(encoding="utf-8"))
-                asset_entries = asset_map.get("AssetEntries") or []
-            except (OSError, json.JSONDecodeError):
-                asset_entries = []
         meta = {
             "version": ASSETBUNDLE_META_VERSION,
             "command": export_command,
-            "mapCommand": map_command,
+            "mapCommand": None,
             "returncode": export_completed.returncode,
-            "mapReturncode": map_completed.returncode,
+            "mapReturncode": 0,
             "stdout": export_completed.stdout,
             "stderr": export_completed.stderr,
-            "mapStdout": map_completed.stdout,
-            "mapStderr": map_completed.stderr,
+            "mapRun": map_meta,
             "builtAtEpoch": int(time.time()),
             "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
-            "assetEntries": asset_entries,
+            "assetEntries": map_meta["assetEntries"],
         }
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         if export_completed.returncode != 0:

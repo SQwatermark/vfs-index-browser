@@ -9,3 +9,9 @@ experiments/**/*.blend
 experiments/**/*.blend1
 experiments/**/*.png
 tools/AnimeStudio.CLI*/
+unity-worker/**/bin/
+unity-worker/**/obj/
+unity-worker/artifacts/
+unity-worker/.deps/
+unity-worker/vendor/animestudio/AnimeStudio.ACLNative/ThirdParty/acl/
+unity-worker/vendor/animestudio/AnimeStudio.ACLNative/ThirdParty/rtm/

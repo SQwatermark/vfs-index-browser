@@ -1,8 +1,10 @@
+import hashlib
 import json
 import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.request import urlopen
 
 import server
@@ -10,6 +12,7 @@ from projectile_data import (
     ProjectileDecodeError,
     ProjectileNotFoundError,
     load_projectile_export,
+    list_projectile_ids,
     normalize_projectile_id,
     projectile_asset_path,
     select_projectile_asset,
@@ -22,6 +25,10 @@ class FakeManifestIndex:
         self.paths = []
 
     def assets_by_path(self, path):
+        self.paths.append(path)
+        return self.matches
+
+    def assets_in_directory(self, path):
         self.paths.append(path)
         return self.matches
 
@@ -64,6 +71,20 @@ class ProjectileDataTests(unittest.TestCase):
                 FakeManifestIndex([{"assetIndex": 1}, {"assetIndex": 2}]),
                 "projectile_duplicate",
             )
+
+    def test_lists_only_canonical_projectile_assets(self):
+        index = FakeManifestIndex(
+            [
+                {"name": "data_projectile_b.asset"},
+                {"name": "README.txt"},
+                {"name": "data_projectile_a.asset"},
+            ]
+        )
+
+        self.assertEqual(
+            ["projectile_a", "projectile_b"],
+            list_projectile_ids(index),
+        )
 
     def test_loads_nested_component_and_owning_unity_object(self):
         projectile_id = "projectile_chr_0030_zhuangfy_attack_sword_1"
@@ -119,7 +140,7 @@ class ProjectileDataTests(unittest.TestCase):
 
 
 class ProjectileServerTests(unittest.TestCase):
-    def test_build_document_uses_manifest_bundle_and_json_export(self):
+    def test_build_document_uses_manifest_bundle_and_focused_worker_export(self):
         projectile_id = "projectile_chr_0030_zhuangfy_attack_sword_1"
         manifest_record = {
             "id": 451359,
@@ -173,16 +194,16 @@ class ProjectileServerTests(unittest.TestCase):
                 encoding="utf-8",
             )
             dump_path = root / "dump.txt"
-            export_options = []
+            export_requests = []
 
-            def ensure_export(_record, _chunk, _asset, **options):
-                export_options.append(options)
+            def ensure_export(_record, _chunk, _asset, requested_id, **_options):
+                export_requests.append(requested_id)
                 return (
-                    dump_path,
+                    export_root,
                     {"exportedFiles": ["MonoBehaviour/projectile.json"]},
                 )
 
-            handler.ensure_manifest_monobehaviour_dump = ensure_export
+            handler.ensure_manifest_projectile_component = ensure_export
 
             payload = handler.build_projectile_document(projectile_id)
 
@@ -193,10 +214,122 @@ class ProjectileServerTests(unittest.TestCase):
             projectile_id,
             payload["projectileComponentData"]["id"],
         )
-        self.assertEqual(
-            [{"export_type": "JSON", "filter_container": False}],
-            export_options,
-        )
+        self.assertEqual([projectile_id], export_requests)
+
+    def test_projectile_worker_cache_publishes_one_complete_run_atomically(self):
+        projectile_id = "projectile_chr_0030_zhuangfy_attack_sword_1"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            chunk = root / "bundle.chk"
+            chunk.write_bytes(b"bundle")
+            record = {
+                "id": 123,
+                "length": 6,
+                "offset": 0,
+                "chunk_path": str(chunk),
+            }
+            asset = {
+                "asset_index": 149277,
+                "path": projectile_asset_path(projectile_id),
+            }
+            calls = []
+
+            class FakeWorker:
+                def artifact_identity(self):
+                    return [{"path": "worker.exe", "size": 1, "mtimeNs": 2}]
+
+                def decode_projectile_component(self, **arguments):
+                    calls.append(arguments)
+                    output = arguments["output_directory"]
+                    output.mkdir(parents=True)
+                    content = json.dumps({"id": projectile_id}).encode("utf-8")
+                    (output / "projectile-component.json").write_bytes(content)
+                    return {
+                        "artifactCount": 1,
+                        "artifacts": [{
+                            "relativePath": "projectile-component.json",
+                            "byteCount": len(content),
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                        }],
+                    }
+
+            handler = object.__new__(server.BrowserHandler)
+
+            def write_slice(_record, _chunk, target):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"bundle")
+
+            handler.write_file_slice = write_slice
+            with (
+                patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
+                patch.object(server, "UNITY_WORKER", FakeWorker()),
+            ):
+                cancel_event = threading.Event()
+                first = handler.ensure_manifest_projectile_component(
+                    record,
+                    chunk,
+                    asset,
+                    projectile_id,
+                    cancel_event=cancel_event,
+                )
+                second = handler.ensure_manifest_projectile_component(
+                    record, chunk, asset, projectile_id
+                )
+
+            self.assertEqual(first, second)
+            self.assertEqual(1, len(calls))
+            self.assertIs(cancel_event, calls[0]["cancel_event"])
+            export_root, meta = first
+            self.assertTrue((export_root / "projectile-component.json").is_file())
+            self.assertEqual(export_root.name, "exported")
+            self.assertEqual(export_root.parent.name, meta["selectedRun"])
+            self.assertTrue(
+                (root / "cache" / "123" / "manifest-assets" / "149277"
+                 / "projectile-component" / "meta.json").is_file()
+            )
+
+    def test_projectile_worker_failure_does_not_publish_cache_pointer(self):
+        projectile_id = "projectile_failure"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            chunk = root / "bundle.chk"
+            chunk.write_bytes(b"bundle")
+            record = {
+                "id": 12,
+                "length": 6,
+                "offset": 0,
+                "chunk_path": str(chunk),
+            }
+            asset = {"asset_index": 3, "path": projectile_asset_path(projectile_id)}
+
+            class BrokenWorker:
+                def artifact_identity(self):
+                    return []
+
+                def decode_projectile_component(self, **_arguments):
+                    return {"artifactCount": 0, "artifacts": []}
+
+            handler = object.__new__(server.BrowserHandler)
+
+            def write_slice(_record, _chunk, target):
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"bundle")
+
+            handler.write_file_slice = write_slice
+            with (
+                patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
+                patch.object(server, "UNITY_WORKER", BrokenWorker()),
+                self.assertRaises(ProjectileDecodeError),
+            ):
+                handler.ensure_manifest_projectile_component(
+                    record, chunk, asset, projectile_id
+                )
+
+            meta_path = (
+                root / "cache" / "12" / "manifest-assets" / "3"
+                / "projectile-component" / "meta.json"
+            )
+            self.assertFalse(meta_path.exists())
 
     def test_handler_maps_validation_and_lookup_errors(self):
         handler = object.__new__(server.BrowserHandler)

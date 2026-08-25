@@ -57,28 +57,16 @@ python server.py `
   --rebuild
 ```
 
-`.ab` 按需导出默认调用：
+MonoBehaviour Raw、TypeTree Dump、Projectile 领域解码和单 Bundle AssetMap 由仓库内
+`unity-worker/` 提供；开发构建可通过 `VFS_BROWSER_UNITY_WORKER` 显式覆盖。内部索引和
+导出缓存位于 `data/internal-cache/`，每次 worker 操作写入独占 run，校验后才原子发布
+当前指针。
 
-```text
-D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe
-```
+尚未迁移的 CABMap、通用对象/AssetBundle、模型、动画和 Cubemap 导出暂时仍使用旧 CLI，可通过
+`VFS_BROWSER_ANIMESTUDIO_CLI` 覆盖。其存在状态可在 `/api/health` 的 `legacyTools` 中查看。
 
-路径可通过 `VFS_BROWSER_ANIMESTUDIO_CLI` 覆盖。内部索引和导出缓存位于
-`data/internal-cache/`。
-
-manifest 中的 `.asset`、`.prefab` 如果无法按常规资源类型导出，服务会按
-container 精确尝试 `MonoBehaviour + Dump`，用于查看 VolumeProfile 等自定义
-Unity 组件。模型快照使用的定制 CLI 若不支持完整 TypeTree Dump，可单独设置：
-
-```powershell
-$env:ANIMESTUDIO_MONOBEHAVIOUR_CLI =
-  "D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe"
-```
-
-两个变量默认指向同一个程序；只有部署中确实使用两种 AnimeStudio 构建时才需拆分。
-若未设置环境变量且打包 CLI 不存在，服务还会自动选择
-`data/research/AnimeStudio/AnimeStudio.CLI/bin/Release/net*-windows/AnimeStudio.CLI.exe`
-中最新构建，便于直接使用本地的终末地 MonoBehaviour 解码器。
+manifest 中的 `.asset`、`.prefab` 如果无法按常规资源类型导出，服务会让 VFS worker 按
+精确 container 尝试 TypeTree Dump，用于查看 VolumeProfile 等自定义 Unity 组件。
 
 manifest 中的 Cubemap 会按 container 精确导出六个面，并在预览区组成可逐面打开、
 下载的画廊。若主 CLI 是模型快照专用的定制构建，可把支持六面导出的标准构建单独配置为：
@@ -106,6 +94,9 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | 路径 | 职责 |
 | --- | --- |
 | `server.py` | VFS SQLite、HTTP API、文件读取以及各容器适配入口 |
+| `unity_worker.py` | VFS 自有 Unity worker 的唯一 Python 进程适配器与健康诊断 |
+| `unity-worker/` | 可独立构建和发布的 .NET Unity 资源 worker |
+| `task_registry.py` | 任务状态落盘、原子结果发布与当前进程取消控制 |
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
@@ -117,6 +108,26 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `docs/research/` | 已验证的格式研究记录 |
 
 ## API
+
+运行时诊断不会触发资源导出：
+
+```text
+GET /api/health
+```
+
+响应会列出 Unity worker 的协议、版本和能力，以及 Blender、ffmpeg 等可选工具和仍被
+未迁移链路使用的旧工具。可选工具缺失不影响核心服务的 `ready` 状态。
+
+Projectile 同时提供可取消的长任务入口：
+
+```text
+POST   /api/tasks/projectile
+GET    /api/task?taskId=<id>
+DELETE /api/task?taskId=<id>
+```
+
+创建请求体为 `{"projectileId":"projectile_..."}`。任务结果写入独占缓存目录，成功后才由
+原子状态文件发布；`DELETE` 会实际终止对应的独占 worker 进程，而不只是改变前端状态。
 
 ```text
 GET /api/manifest
@@ -133,6 +144,15 @@ GET /api/internal/list?id=123&path=assets&page=1&pageSize=100
 GET /api/internal/preview?id=123&path=Texture2D/example.png
 GET /api/internal/raw?id=123&path=Texture2D/example.png
 GET /api/tablecfg/json?id=123
+GET /api/akedb-compatible/TableCfg-1.4.4@9433094-12/CharacterTable.json
+GET /api/akedb-compatible/SkillData/manifest.json
+GET /api/akedb-compatible/SkillData/chr_0004_pelica_attack1.json
+GET /api/akedb-compatible/BuffData/manifest.json
+GET /api/akedb-compatible/BuffData/buff_chr_0004_example.json
+GET /api/akedb-compatible/ProjectileData/manifest.json
+GET /api/akedb-compatible/ProjectileData/projectile_chr_0004_example.json
+GET /api/akedb-compatible/AbilityEntityData/manifest.json
+GET /api/akedb-compatible/AbilityEntityData/abilityentity_chr_0004_example.json
 GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
 GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
@@ -144,6 +164,23 @@ GET /api/manifest-asset/model-animation?manifestId=123&assetIndex=456&animationA
 GET /api/manifest-asset/model-animations?manifestId=123&assetIndex=456&q=pelica
 GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
+
+`/api/akedb-compatible/` 是给 Endaxis 下载器使用的精确资源接口，不做模糊搜索。TableCfg 名称映射到
+`Table/Data/TableCfg/<name>.bytes`，集合文件映射到
+`JsonData/Data/Json/<collection>/<file>.json`；两者都只读取 Effective 逻辑文件。TableCfg 经
+SparkBuffer 解码，SkillData/BuffData 经 MemoryPack schema 完整解码，存在未消费字节时返回 `422`，
+不会输出不完整 JSON。集合 manifest 只枚举该集合的直接文件。
+
+兼容边界是“Endaxis 可用同一个逻辑路径和 source schema 消费解码结果”，并非与 AKEDB 的 JSON 文本
+逐字节相同；空白、字段顺序以及已知的新旧曲线表示可以不同。响应包含
+`X-Endaxis-Source: vfs-index-browser`，供下载器记录逐文件来源。AKEDB 仍由 Endaxis 作为首选提供者，
+此接口只在其资源尚未更新或不可用时补齐。
+
+ProjectileData 和 AbilityEntityData 不是 AKEDB 当前已有的数据集，而是为同一批量下载协议提供的
+VFS-only 集合。两者的 manifest 只枚举 canonical Unity asset 目录的直接子项。ProjectileData
+通过精确 projectile asset path 导出 `ProjectileComponentData`；AbilityEntityData 通过精确
+abilityentity asset path 的 Raw MonoBehaviour，只解析已由静态证据和样本共同确认的
+`AbilityEntityTemplateData` 前缀。未知组件字段不会被猜测或静默解释为“无行为”。
 
 Projectile API 不走模糊路径搜索。它把 `projectileId` 映射为
 `assets/beyond/dynamicassets/gamedata/projectile/data_<projectileId>.asset`，要求 manifest
@@ -193,6 +230,10 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 
 - `tools/parse_hgmmap.py`：离线验证 BundleManifest 结构。
 - `tools/extract_indexed_file.py`：按 VFS 文件 ID 提取并解密文件。
+- `tools/analyze_sparkbuffer_schema_ownership.py`：以 SparkBuffer type hash 为名义类型身份，从多个
+  schema 根递归生成领域私有/共享类型归属；支持已解密文件和 VFS logical ID 两种输入。
+- `tools/validate_schema_reference_edges.py`：校验人工取证的跨 schema 字符串 ID 边确实来自报告中的
+  type hash、字段和 owner，并强制附带证据；不会按 `skillId`、`buffId` 等字段名猜目标类型。
 - `tools/build_audio_dialog_index.py`：从 AudioDialog JSON 和现有 PCK 元数据构建逻辑语音 SQLite 索引。
 - `tools/scan_jsondata_formats.py`：批量统计 JsonData 的真实编码格式。
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
@@ -202,6 +243,28 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，根据
   `endfieldSourceMaterial` 与 `endfieldPreview` 自动建立 Eevee CharacterNPR
   预览材质、相机、灯光和可选轮廓。
+
+例如直接分析 VFS 索引中的多个 TableCfg 根：
+
+```powershell
+python tools/analyze_sparkbuffer_schema_ownership.py `
+  --vfs-db data/endfield-vfs-index.sqlite `
+  --logical-root operator=Table/Data/TableCfg/CharacterTable.bytes `
+  --logical-root operator=Table/Data/TableCfg/CharGrowthTable.bytes `
+  --logical-root equipment=Table/Data/TableCfg/EquipTable.bytes `
+  --logical-root weapon=Table/Data/TableCfg/WeaponBasicTable.bytes `
+  --output schema-ownership.json
+```
+
+同一 owner 可以重复指定多个根。工具不会按名称或字段形状合并类型；同一 hash 若出现不同名称、
+kind 或字段/枚举签名会直接失败。
+
+字符串 ID 指向 MemoryPack/JsonData 等另一种 schema 时，先把目标和原生证据写入
+`GameDataReferenceGraph` 版本 1，再运行：
+
+```powershell
+python tools/validate_schema_reference_edges.py schema-ownership.json reference-graph.json
+```
 
 Blender 脚本必须由 Blender 自带的 Python 执行：
 

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "dependencies": [
+    {
+      "id": "acl",
+      "source": "https://github.com/nfrechette/acl",
+      "commit": "3ee568542eca4428e1041908b4a644b98e7885bd",
+      "archiveUrl": "https://github.com/nfrechette/acl/archive/3ee568542eca4428e1041908b4a644b98e7885bd.zip",
+      "sha256": "aa848f283eebc1ef9b863c30cb04ebea1f86a4f87a23de3f41c1243eb7cc3ee6",
+      "license": "MIT"
+    },
+    {
+      "id": "rtm",
+      "source": "https://github.com/nfrechette/rtm",
+      "commit": "d046447cfa67d94e1ed15b465fd9cb6fec75e1cb",
+      "archiveUrl": "https://github.com/nfrechette/rtm/archive/d046447cfa67d94e1ed15b465fd9cb6fec75e1cb.zip",
+      "sha256": "930afe88c42ea7564b740231a3816a88b8c54268691685b5a08eb5654998f6f4",
+      "license": "MIT"
+    }
+  ]
+}
