@@ -1,6 +1,6 @@
 # ShiyumeMeguri 相关仓库研究
 
-本文记录截至 2026-08-02 对 [ShiyumeMeguri](https://github.com/ShiyumeMeguri) 公开仓库的结构性调研。目标是学习可验证的数据结构、坐标变换和资源组装流程，不复制 AGPL/GPL 实现。
+本文记录截至 2026-07-30 对 [ShiyumeMeguri](https://github.com/ShiyumeMeguri) 公开仓库的结构性调研。目标是学习可验证的数据结构、坐标变换和资源组装流程，不复制 AGPL/GPL 实现。
 
 ## 模型恢复主链
 
@@ -9,10 +9,6 @@
 [RuriRipperImporter](https://github.com/ShiyumeMeguri/RuriRipperImporter) 将 Unity YAML 中的 Prefab、Mesh、骨架、蒙皮、材质和动画组装为 Blender 对象。其组装顺序值得参考：建立资源数据库、恢复 Transform 层级、发现 Renderer、处理 LOD 与静态合批窗口、解码 Mesh、应用 Bind Pose、绑定材质，最后从 AnimatorController 发现并绑定动画。
 
 它还显式诊断“Prefab 只引用二进制 FBX、自身没有几何”的情况。我们的恢复器也不能把空模型误报为成功。
-
-2026-08-02 对照作者的[终末地 Blender 直读演示](https://www.bilibili.com/video/BV1SnKg6cEkQ)与最新代码后，确认其 Humanoid 路线已经发生重要变化：肌肉曲线不再留给 Blender 侧临时解释，而是在 C# 资产处理阶段结合 Avatar referential、swing-twist、TwistSolve 和根运动语义转换为普通逐骨骼 Transform 曲线。Blender 导入层只消费统一后的 generic clip。这说明我们此前把 Humanoid 解算混入最终导出层的路线边界过重；后续应把“原始曲线解码”和“Avatar 相关的肌肉重定向”放在宿主无关层，并以普通骨骼曲线作为 GLB/Blender 的稳定输入。
-
-演示中的终末地 AssetBundle 直读依赖未公开的游戏专用 Hook，不能替代本项目已经实现的本地 VFS、解密和按需读取。公开仓库仍可作为动画数学、资源闭包与导出结果的独立对照。
 
 ### RuriRipperPyBridge
 
@@ -44,12 +40,6 @@
 [Ruri.ShaderDecompiler](https://github.com/ShiyumeMeguri/Ruri.ShaderDecompiler) 将 DXBC、DXIL 或 SPIR-V 统一到 SPIR-V 中间层，再把 Unity/UE 元数据中的符号映射注入中间表示。
 
 Shader 恢复因此需要两类证据：GPU 字节码描述运算，Unity Shader/Material 元数据提供变量名和绑定槽。我们的材质模型应保留 Shader 名称、原始属性、纹理槽和程序身份，为后续符号化反编译留出接口。
-
-### Ruri.RipperHook
-
-[Ruri.RipperHook](https://github.com/FractalTools/Ruri.RipperHook) 的公开部分把 AssetRipper 作为只读上游，通过 AOP Hook 插入自定义 VFS、TypeTree、Humanoid 转换和 Shader 导出步骤。与本项目当前 Shader 副线直接相关的实现包括 Unity 编译程序包读取、Endfield 特有的平台/绑定索引处理、DXBC/DXIL/SPIR-V 识别以及 ShaderLab 元数据与 GPU 字节码的重新关联。
-
-它验证了当前“先严格提取原始程序，再建立 Pass/Stage/keyword/资源绑定语义 IR，最后转换为 Blender 材质”的顺序。由于仓库采用 AGPL，项目仅对照公开格式、输入输出和独立验证结果，不复制实现；终末地专用解密 Hook 也不在公开源码中。
 
 ### FractalMiner 的终末地 Shader 归档
 

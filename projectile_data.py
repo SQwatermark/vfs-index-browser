@@ -48,6 +48,32 @@ def projectile_asset_path(projectile_id: str) -> str:
     return f"{PROJECTILE_ASSET_ROOT}/data_{normalized}.asset"
 
 
+def list_projectile_ids(index) -> list[str]:
+    """List projectile identities backed by exact assets in the canonical directory."""
+
+    prefix = "data_"
+    suffix = ".asset"
+    identities: list[str] = []
+    seen: set[str] = set()
+    for asset in index.assets_in_directory(PROJECTILE_ASSET_ROOT):
+        name = str(asset.get("name", ""))
+        folded = name.casefold()
+        if not folded.startswith(prefix) or not folded.endswith(suffix):
+            continue
+        candidate = folded[len(prefix) : -len(suffix)]
+        try:
+            projectile_id = normalize_projectile_id(candidate)
+        except ValueError:
+            continue
+        if projectile_id in seen:
+            raise ProjectileDecodeError(
+                f"projectile identity {projectile_id!r} has duplicate manifest assets"
+            )
+        seen.add(projectile_id)
+        identities.append(projectile_id)
+    return sorted(identities)
+
+
 def select_projectile_asset(index, projectile_id: str) -> dict:
     """Resolve exactly one projectile asset without substring/fuzzy search."""
 

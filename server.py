@@ -28,6 +28,15 @@ from typing import Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
+from ability_entity_data import (
+    AbilityEntityDecodeError,
+    AbilityEntityNotFoundError,
+    AbilityEntityUnavailableError,
+    list_ability_entity_ids,
+    normalize_ability_entity_id,
+    parse_ability_entity_template,
+    select_ability_entity_asset,
+)
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
 from wwise_store import (
     get_wwise_bank,
@@ -91,6 +100,7 @@ from projectile_data import (
     ProjectileNotFoundError,
     ProjectileUnavailableError,
     load_projectile_export,
+    list_projectile_ids,
     normalize_projectile_id,
     select_projectile_asset,
 )
@@ -980,6 +990,18 @@ def file_suffix(file_name: str) -> str:
     return Path(file_name).suffix.lower()
 
 
+def is_safe_akedb_name(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z0-9_]+", value) is not None
+
+
+def is_safe_akedb_json_file(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z0-9_.-]+\.json", value) is not None
+
+
+def is_akedb_collection(value: str) -> bool:
+    return value in {"SkillData", "BuffData"}
+
+
 def is_model_entry_path(path: str) -> bool:
     return file_suffix(path) == ".prefab" or is_avatar_mesh_asset_path(path)
 
@@ -1248,6 +1270,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cache_control: str | None = None,
         compress: bool = False,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         accepted_encodings = self.headers.get("Accept-Encoding", "").casefold()
@@ -1262,6 +1285,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_header("Vary", "Accept-Encoding")
         if cache_control:
             self.send_header("Cache-Control", cache_control)
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(data)
 
@@ -1329,6 +1354,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/akedb-compatible/"):
+            self.handle_akedb_compatible(parsed.path)
+            return
         if parsed.path == "/api/manifest":
             self.handle_manifest()
             return
@@ -1414,6 +1442,254 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.handle_internal_raw(parse_qs(parsed.query))
             return
         self.serve_static(parsed.path)
+
+    def handle_akedb_compatible(self, request_path: str) -> None:
+        """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""
+
+        prefix = "/api/akedb-compatible/"
+        logical_path = unquote(request_path[len(prefix) :]).strip("/")
+        parts = logical_path.split("/") if logical_path else []
+        if len(parts) == 2 and re.fullmatch(r"TableCfg-[A-Za-z0-9@._-]+", parts[0]):
+            table_name = parts[1].removesuffix(".json")
+            if not parts[1].endswith(".json") or not is_safe_akedb_name(table_name):
+                self.send_error_json(400, "invalid TableCfg resource name")
+                return
+            self.handle_akedb_compatible_table(table_name)
+            return
+        if len(parts) == 2 and parts[1] == "manifest.json" and is_akedb_collection(parts[0]):
+            self.handle_akedb_compatible_collection_manifest(parts[0])
+            return
+        if len(parts) == 2 and parts[1].endswith(".json") and is_akedb_collection(parts[0]):
+            file_name = parts[1]
+            if not is_safe_akedb_json_file(file_name):
+                self.send_error_json(400, "invalid collection resource name")
+                return
+            self.handle_akedb_compatible_collection_file(parts[0], file_name)
+            return
+        if len(parts) == 2 and parts[0] == "ProjectileData":
+            if parts[1] == "manifest.json":
+                self.handle_akedb_compatible_projectile_manifest()
+                return
+            if parts[1].endswith(".json"):
+                projectile_id = parts[1].removesuffix(".json")
+                try:
+                    projectile_id = normalize_projectile_id(projectile_id)
+                except ValueError as error:
+                    self.send_error_json(400, str(error))
+                    return
+                self.handle_akedb_compatible_projectile_file(projectile_id)
+                return
+        if len(parts) == 2 and parts[0] == "AbilityEntityData":
+            if parts[1] == "manifest.json":
+                self.handle_akedb_compatible_ability_entity_manifest()
+                return
+            if parts[1].endswith(".json"):
+                entity_id = parts[1].removesuffix(".json")
+                try:
+                    entity_id = normalize_ability_entity_id(entity_id)
+                except ValueError as error:
+                    self.send_error_json(400, str(error))
+                    return
+                self.handle_akedb_compatible_ability_entity_file(entity_id)
+                return
+        self.send_error_json(404, "AKEDB-compatible resource not found")
+
+    def handle_akedb_compatible_table(self, table_name: str) -> None:
+        logical_id = f"Table/Data/TableCfg/{table_name}.bytes"
+        resolved = self.resolve_logical_file_source(logical_id)
+        if resolved is None:
+            self.send_error_json(404, f"local VFS resource is unavailable: {logical_id}")
+            return
+        record, chunk_path = resolved
+        try:
+            parsed, _ = self.parse_tablecfg_file(record, chunk_path)
+        except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
+            self.send_error_json(422, f"SparkBuffer parse failed: {error}")
+            return
+        self.send_json(
+            parsed["data"],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_collection_manifest(self, collection: str) -> None:
+        logical_parent = f"JsonData/Data/Json/{collection}"
+        with closing(self.connect()) as conn:
+            rows = conn.execute(
+                """
+                SELECT name FROM entries
+                WHERE scope = 'effective' AND type = 'file' AND parent = ?
+                ORDER BY name
+                """,
+                (logical_parent,),
+            ).fetchall()
+        files = sorted(
+            {
+                str(row["name"])
+                for row in rows
+                if is_safe_akedb_json_file(str(row["name"]))
+            }
+        )
+        self.send_json(
+            [
+                {
+                    "contentFile": f"/api/akedb-compatible/{collection}/{file_name}",
+                }
+                for file_name in files
+            ],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_collection_file(self, collection: str, file_name: str) -> None:
+        logical_id = f"JsonData/Data/Json/{collection}/{file_name}"
+        resolved = self.resolve_logical_file_source(logical_id)
+        if resolved is None:
+            self.send_error_json(404, f"local VFS resource is unavailable: {logical_id}")
+            return
+        record, chunk_path = resolved
+        class_name = infer_class(logical_id)
+        if not class_name:
+            self.send_error_json(422, f"MemoryPack class is unknown: {logical_id}")
+            return
+        try:
+            schema, union_map = self.load_memorypack_decoder_inputs()
+            data = self.read_file_slice(record, chunk_path)
+            reader = MemoryPackReader(data)
+            decoder = Decoder(schema, union_map=union_map)
+            value = decoder.decode(reader, class_name)
+        except (DecodeError, RuntimeError, ValueError) as error:
+            self.send_error_json(422, f"MemoryPack decode failed: {error}")
+            return
+        if reader.tell() != len(data):
+            self.send_error_json(
+                422,
+                f"MemoryPack decode was incomplete: consumed {reader.tell()} / {len(data)} bytes",
+            )
+            return
+        self.send_json(
+            value,
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def resolve_installed_manifest_index(self) -> ManifestIndex:
+        """打开当前安装版本的精确 Unity manifest 索引。"""
+
+        resolved = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
+        if resolved is None:
+            raise FileNotFoundError(f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}")
+        record, chunk_path = resolved
+        return self.manifest_index(record, chunk_path)
+
+    def handle_akedb_compatible_projectile_manifest(self) -> None:
+        try:
+            projectile_ids = list_projectile_ids(self.resolve_installed_manifest_index())
+        except (ProjectileDecodeError, OSError, sqlite3.Error) as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            [
+                {
+                    "contentFile": (
+                        f"/api/akedb-compatible/ProjectileData/{projectile_id}.json"
+                    ),
+                }
+                for projectile_id in projectile_ids
+            ],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_projectile_file(self, projectile_id: str) -> None:
+        try:
+            document = self.build_projectile_document(projectile_id)
+        except ProjectileNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except ProjectileDecodeError as error:
+            self.send_error_json(422, str(error))
+            return
+        except (ProjectileUnavailableError, OSError, sqlite3.Error) as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            document["projectileComponentData"],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def build_ability_entity_document(self, entity_id: str) -> dict:
+        """从精确 Unity asset 导出并解析能力实体模板的已证实前缀。"""
+
+        resolved_manifest = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
+        if resolved_manifest is None:
+            raise AbilityEntityUnavailableError(
+                f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}"
+            )
+        manifest_record, manifest_chunk = resolved_manifest
+        try:
+            index = self.manifest_index(manifest_record, manifest_chunk)
+            indexed_asset = select_ability_entity_asset(index, entity_id)
+            asset, bundle_record, bundle_chunk = self.resolve_index_asset_bundle(
+                index,
+                int(indexed_asset["assetIndex"]),
+            )
+            raw_path, export_meta = self.ensure_manifest_monobehaviour_raw(
+                bundle_record,
+                bundle_chunk,
+                asset,
+            )
+            template = parse_ability_entity_template(raw_path.read_bytes(), entity_id)
+        except AbilityEntityNotFoundError:
+            raise
+        except AbilityEntityDecodeError:
+            raise
+        except (FileNotFoundError, OSError, sqlite3.Error, subprocess.SubprocessError) as error:
+            raise AbilityEntityUnavailableError(str(error)) from error
+        except (RuntimeError, ValueError) as error:
+            raise AbilityEntityDecodeError(str(error)) from error
+        return {
+            "apiVersion": 1,
+            "abilityEntityId": entity_id,
+            "source": {
+                "assetPath": asset["path"],
+                "assetIndex": int(asset["asset_index"]),
+                "bundleName": asset["bundle_name"],
+                "rawExport": export_meta.get("exportedFile"),
+            },
+            "abilityEntityTemplateData": template,
+        }
+
+    def handle_akedb_compatible_ability_entity_manifest(self) -> None:
+        try:
+            entity_ids = list_ability_entity_ids(self.resolve_installed_manifest_index())
+        except (AbilityEntityDecodeError, OSError, sqlite3.Error) as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            [
+                {
+                    "contentFile": (
+                        f"/api/akedb-compatible/AbilityEntityData/{entity_id}.json"
+                    ),
+                }
+                for entity_id in entity_ids
+            ],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_akedb_compatible_ability_entity_file(self, entity_id: str) -> None:
+        try:
+            document = self.build_ability_entity_document(entity_id)
+        except AbilityEntityNotFoundError as error:
+            self.send_error_json(404, str(error))
+            return
+        except AbilityEntityDecodeError as error:
+            self.send_error_json(422, str(error))
+            return
+        except AbilityEntityUnavailableError as error:
+            self.send_error_json(503, str(error))
+            return
+        self.send_json(
+            document["abilityEntityTemplateData"],
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
 
     def handle_manifest(self) -> None:
         with self.connect() as conn:

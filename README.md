@@ -197,7 +197,6 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/scan_jsondata_formats.py`：批量统计 JsonData 的真实编码格式。
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema。
-- `tools/extract_memorypack_unions.py`：从已初始化 runtime 快照中的 formatter 注册恢复完整 union tag 映射。
 - `tools/decode_memorypack_json.py`：使用已知 schema 解码二进制配置。
 - `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，根据
   `endfieldSourceMaterial` 与 `endfieldPreview` 自动建立 Eevee CharacterNPR

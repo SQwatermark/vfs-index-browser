@@ -298,6 +298,26 @@ class ManifestIndex:
             """, (name,)).fetchall()
         return [dict(row) for row in rows]
 
+    def assets_in_directory(self, path: str) -> list[dict]:
+        """Return every immediate asset in one exact manifest directory.
+
+        资源集合端点需要完整、稳定地枚举一个目录，不能依赖分页 UI，也不能用
+        模糊路径搜索。这里只返回直接子文件，调用方再按自身的命名规则筛选身份。
+        """
+
+        path = _normal_path(path).strip("/")
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT a.asset_index AS assetIndex, a.path, a.parent, a.name,
+                       a.bundle_index AS bundleIndex, b.name AS bundleName,
+                       a.size, a.path_hash AS pathHash
+                FROM assets a
+                JOIN bundles b ON b.bundle_index = a.bundle_index
+                WHERE a.parent = ? COLLATE NOCASE
+                ORDER BY a.name COLLATE NOCASE, a.asset_index
+            """, (path,)).fetchall()
+        return [dict(row) for row in rows]
+
     def search_animation_assets(
         self,
         query: str,

@@ -1,8 +1,8 @@
 {
   "format": "EndfieldCombatEvidenceManifest",
   "version": 1,
-  "generatedAt": "2026-08-02T10:30:00+00:00",
-  "clientVersion": "1.4.4",
+  "generatedAt": "2026-08-02T06:18:07.471859+00:00",
+  "clientVersion": "1.2.4",
   "artifacts": [
     {
       "name": "client.gameAssembly",
@@ -16,18 +16,7 @@
       "path": "Games/Arknights Game/Arknights_Data/il2cpp_data/Metadata/global-metadata.dat",
       "size": 44937472,
       "modifiedAt": "2026-07-22T11:38:39.691858+00:00",
-      "sha256": "5992e2be0e4280dccf2547065100de573ed48c8761f557b761d62695db82f80c",
-      "validationStatus": "rejected",
-      "validationReason": "文件内容为 Torappu.* 类型体系，属于《明日方舟》metadata，不能与 Beyond.Gameplay.* 的终末地运行时快照配套。"
-    },
-    {
-      "name": "client.globalMetadata.endfieldCandidate",
-      "path": "Hypergryph Launcher/games/Endfield Game/Endfield_Data/il2cpp_data/Metadata/global-metadata.dat",
-      "size": 62925560,
-      "modifiedAt": "2026-07-11T10:59:40+00:00",
-      "sha256": "90c58e26e87c7227a85dda3fedf6ce5ed0b06dc1f76e0abbe75ab20750adf97e",
-      "validationStatus": "structurally-compatible-unpaired",
-      "validationReason": "包含 Beyond.Gameplay.* 类型并可解析 AbilitySystem.Event；OnAfterSkillApplyCost=0x8f 与 1.4.4 运行时立即数吻合，但尚未证明它与当前运行时快照来自同一客户端构建。"
+      "sha256": "5992e2be0e4280dccf2547065100de573ed48c8761f557b761d62695db82f80c"
     },
     {
       "name": "il2cpp.dumpLog",
@@ -51,13 +40,6 @@
       "sha256": "a027a882dd5905c7a06e2f5e6ac9be66b616988a7d11b7cdb627e543232c4cd3"
     },
     {
-      "name": "il2cpp.types.cinemachine.ai",
-      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_AI/Cinemachine.dll.cs",
-      "size": 207689,
-      "modifiedAt": "2026-07-22T15:14:23.119967+00:00",
-      "sha256": "c5702b016925b996919220aefa0c10e5f351b5617c5f550cfe66da7800ca577a"
-    },
-    {
       "name": "il2cpp.types.common",
       "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_Normal/Common.Beyond.dll.cs",
       "size": 4126306,
@@ -72,34 +54,11 @@
       "sha256": "c9d3015f017d1b724d0ac246cd7d0c1f1eabf9069d5a631f96daebded7c7b0f1"
     },
     {
-      "name": "il2cpp.types.gameplay.ai",
-      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_AI/Gameplay.Beyond.dll.cs",
-      "size": 23994974,
-      "modifiedAt": "2026-07-22T15:14:20.110577+00:00",
-      "sha256": "e648b4d9c1fc5d6a886775e69041c61ebc0a01477154932072431ae51eaacefe"
-    },
-    {
-      "name": "il2cpp.types.memoryPack.ai",
-      "path": "Projects/IL2CPP-Dumper/x64/Release/IL2CPP_Dump_AI/MemoryPack.Beyond.dll.cs",
-      "size": 11885491,
-      "modifiedAt": "2026-07-22T15:14:20.964080+00:00",
-      "sha256": "7f0a8bfd2337e9e8c73c920acd1fb9f45198cb0f3b6298de1436ed9ef8ccbbf5"
-    },
-    {
       "name": "vfs.indexDatabase",
       "path": "Projects/vfs-index-browser/data/endfield-vfs-index.sqlite",
       "size": 1638100992,
       "modifiedAt": "2026-07-27T16:55:26.797644+00:00",
       "sha256": "3b6c29101d478d3bb8a21eaba6c94113e3b183dd0b719ebae94c06fade9b9b0b"
-    },
-    {
-      "name": "il2cpp.runtimeModuleSnapshot",
-      "path": "combat-runtime-dumps/1.4.4/IL2CPP_GameAssembly.runtime.bin",
-      "size": 283627520,
-      "sha256": "7e7377fb52d82b925d010bef1b66c1441ebded94bb9711f632c5ad87eef82038",
-      "layout": "virtual-rva",
-      "dumpedRegions": 186,
-      "probeByteMatch": "88/88"
     }
   ]
 }

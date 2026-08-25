@@ -10,6 +10,7 @@ from projectile_data import (
     ProjectileDecodeError,
     ProjectileNotFoundError,
     load_projectile_export,
+    list_projectile_ids,
     normalize_projectile_id,
     projectile_asset_path,
     select_projectile_asset,
@@ -22,6 +23,10 @@ class FakeManifestIndex:
         self.paths = []
 
     def assets_by_path(self, path):
+        self.paths.append(path)
+        return self.matches
+
+    def assets_in_directory(self, path):
         self.paths.append(path)
         return self.matches
 
@@ -64,6 +69,20 @@ class ProjectileDataTests(unittest.TestCase):
                 FakeManifestIndex([{"assetIndex": 1}, {"assetIndex": 2}]),
                 "projectile_duplicate",
             )
+
+    def test_lists_only_canonical_projectile_assets(self):
+        index = FakeManifestIndex(
+            [
+                {"name": "data_projectile_b.asset"},
+                {"name": "README.txt"},
+                {"name": "data_projectile_a.asset"},
+            ]
+        )
+
+        self.assertEqual(
+            ["projectile_a", "projectile_b"],
+            list_projectile_ids(index),
+        )
 
     def test_loads_nested_component_and_owning_unity_object(self):
         projectile_id = "projectile_chr_0030_zhuangfy_attack_sword_1"

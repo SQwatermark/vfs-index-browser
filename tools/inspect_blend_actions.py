@@ -188,7 +188,7 @@ for item in bpy.data.objects:
     if item.type == "ARMATURE" and item.animation_data is not None:
         item.animation_data.action = None
 scene.frame_set(scene.frame_start)
-rest_bounds = scene_mesh_bounds()
+restBounds = scene_mesh_bounds()
 for item in bpy.data.objects:
     if item.type == "ARMATURE" and item.animation_data is not None:
         item.animation_data.action = active_actions[item.name]
@@ -205,7 +205,7 @@ print(
             ),
             "selectedObjects": [item.name for item in bpy.context.selected_objects],
             "animatedBounds": animated_bounds,
-            "restBounds": rest_bounds,
+            "restBounds": restBounds,
             "objects": objects,
             "actionSwitchProbes": action_switch_probes,
             "poseMotionProbes": pose_motion_probes,

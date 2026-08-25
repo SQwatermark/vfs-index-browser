@@ -25,8 +25,6 @@ MODEL_ANIMATION_CACHE_REVISION = "18"
 
 class AnimationClipSelectionError(RuntimeError):
     """AnimeStudio output cannot identify the requested clip uniquely."""
-
-
 GEOMETRY_BUFFER_ID = "buffer:geometry"
 TRANSFORM_PROPERTIES = {
     "translation": ("vec3", 3),

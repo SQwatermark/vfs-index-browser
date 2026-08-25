@@ -265,8 +265,6 @@ def map_audio_dialog_records(
                 (
                     entry
                     for entry in media_by_id.get(record.media_id, ())
-                    # Language-specific PCKs classify streamed voice media as
-                    # Wwise SFX; the containing package supplies its language.
                     if entry.language in {None, "sfx", record.language}
                 ),
                 key=_media_sort_key,

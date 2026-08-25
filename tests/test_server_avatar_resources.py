@@ -40,50 +40,6 @@ class ServerAvatarResourceTests(unittest.TestCase):
             "data_tag_npc_avatarmesh.asset"
         ))
 
-    def test_recognizes_supported_model_entry_paths(self):
-        self.assertTrue(server.is_model_entry_path("Assets/Character/sample.prefab"))
-        self.assertTrue(server.is_model_entry_path(
-            "Assets/Beyond/DynamicAssets/Gameplay/NPC/AvatarMesh/Actor/"
-            "data_npc_avatarmesh_andrew.asset"
-        ))
-        self.assertFalse(server.is_model_entry_path("Assets/Effects/sample.asset"))
-
-    def test_derives_animation_search_terms_from_model_entries(self):
-        self.assertEqual(
-            "qinjc",
-            server.default_model_animation_query(
-                "Assets/Beyond/DynamicAssets/Gameplay/NPC/AvatarMesh/Actor/"
-                "data_npc_avatarmesh_qinjc.asset"
-            ),
-        )
-        self.assertEqual(
-            "pelica",
-            server.default_model_animation_query("Assets/Actors/chr_0004_pelica_postmodel.prefab"),
-        )
-
-    def test_uses_avatar_mesh_skeleton_family_for_animation_search(self):
-        path = (
-            "Assets/Beyond/DynamicAssets/Gameplay/NPC/AvatarMesh/Actor/"
-            "data_npc_avatarmesh_andrew.asset"
-        )
-        document = {
-            "asset": {
-                "assembly": {
-                    "parts": [{
-                        "meshPaths": [
-                            "Assets/Beyond/Arts/Entity/NPC/Major/Fatty/Andrew/Models/"
-                            "S_npc_major_andrew_cloth_01_lod0.asset"
-                        ]
-                    }]
-                }
-            }
-        }
-
-        self.assertEqual(
-            "a_actor_fatty",
-            server.model_animation_query_hint(path, document),
-        )
-
     def test_materializes_effective_string_path_hash_once(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

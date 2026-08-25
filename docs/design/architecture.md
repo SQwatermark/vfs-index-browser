@@ -39,7 +39,7 @@ Prefab 模型恢复使用 AnimeStudio 的版本化 `ObjectJSON` 协议。AnimeSt
 
 Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
 
-AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 并从本地 VFS 的 effective `StringPathHash.bin` 恢复引用候选，`npc_avatar_resources.py` 再通过 manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和 Bundle。HTTP API `/api/manifest-asset/avatar-plan` 暴露中间计划用于诊断；`/api/manifest-asset/model` 则展开依赖闭包并把精确对象组装为同一个 ModelDocument。资源计划不是第二种公开模型格式，后续 GLB、纹理和网页预览继续复用[角色材质恢复管线](material-pipeline.md)。
+AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 并从本地 VFS 的 effective `StringPathHash.bin` 恢复引用候选，`npc_avatar_resources.py` 再通过 manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和 Bundle。HTTP API `/api/manifest-asset/avatar-plan` 暂时暴露这份中间计划以便真实样本验证；它不是第二种公开模型格式。对象提取完成后仍进入同一个 ModelDocument 和[角色材质恢复管线](material-pipeline.md)。
 
 ## 关键约束
 

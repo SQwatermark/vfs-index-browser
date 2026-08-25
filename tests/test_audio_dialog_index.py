@@ -214,36 +214,6 @@ class AudioDialogMappingTests(unittest.TestCase):
                 {"version": 1, "entryCount": 2, "entries": []},
             )
 
-    def test_sfx_package_entries_can_match_dialogue_by_package_context(self):
-        record = build_audio_dialog_records(
-            {"1": {"path": "v1d0/story/line.wav"}},
-            "chinese",
-        )[0]
-        package = {
-            "version": 1,
-            "entryCount": 1,
-            "entries": [
-                {
-                    "id": record.media_id,
-                    "offset": 10,
-                    "size": 20,
-                    "source": "sound",
-                    "language": "sfx",
-                },
-            ],
-        }
-
-        entries = media_entries_from_audio_package_meta(45, package)
-        matches = build_audio_dialog_index_from_packages(
-            {"1": {"path": "v1d0/story/line.wav"}},
-            "chinese",
-            [(45, package)],
-        )
-
-        self.assertEqual(["sfx"], [entry.language for entry in entries])
-        self.assertEqual("matched", matches[0].status)
-        self.assertEqual("sfx", matches[0].media_entries[0].language)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -77,19 +77,10 @@ record、chunk 修改时间、assetIndex、asset path，以及 AnimeStudio EXE/C
 枚举和哈希含义仍是诊断表示，因此返回的组件通常带 `$partial: true`，API 对应报告
 `decode.status = "partial"`，不会把它伪装成完全语义化结果。
 
-2026-08-02 已在部署主机上对庄方易两个 AB 完成实时端到端验证。两次请求都唯一定位目标
-asset 和组件，`idMatchesRequest` 为 `true`，并恢复出相同的球形碰撞体（半径 `0.3`）、
-结束时长 `2`、结束距离 `11`（同时引用 `EntityBB_max_dist`）、单个移动分段和 `Default`
-移动模式。该模式的结构化后缀给出基础速度 `100` 及速度曲线。
-
-初次验证还暴露并修复了两类集成错误：普通 `Dump` 导出不会进入 managed-reference 专用
-解码器，projectile AB 上的 container 过滤也会错误排除目标，因此该 API 固定使用无 container
-过滤的 JSON 导出。随后依据同版本 IL2CPP 元数据补齐 `TargetFilter.filterObjectType`、
-`TargetFilter.objectType`、碰撞检测时机、检测延迟、到达后追踪以及移动分段的
-`skipHitAndBlockDetection` 字段，避免后续字段整体错位。
-
-当前两个样本均返回 `decode.status = "partial"` 而非 `unparsed`。其核心运动参数已经可读；
-尾部特效、声音及少数 MoveModeData 变体仍保留诊断信息，尚不能宣称全部字段完成语义化。
+本次会话中索引指向的 `D:\Hypergryph Launcher\games\Endfield Game` chunk 路径已不在当前
+主机上，所以无法对庄方易两个 AB 再做一次实时端到端导出。实现与测试覆盖了精确身份查询、
+按需资源链、JSON managed-reference 选择、歧义处理和 HTTP 状态；部署主机只要恢复索引所指的
+本地游戏 chunk，并提供带该解码器的 AnimeStudio CLI，即可直接得到实际组件数据。
 
 ## 后续验证
 

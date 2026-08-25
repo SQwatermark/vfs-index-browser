@@ -60,9 +60,16 @@ MEMBER_TYPE_OVERRIDES = {
     ("Beyond.Blackboard.BlackboardInt", "value"): "System.Int32",
     ("Beyond.Blackboard.BlackboardString", "value"): "System.String",
     ("Beyond.Gameplay.Core.BlackboardImpactValue", "value"): "System.Int32",
-    ("Beyond.Gameplay.Core.BlackboardSuperArmorValue", "value"): "System.Int32",
-    # BlackboardBuffId 继承 BlackboardString，运行时字段类型在反编译输出中会退化为泛型形参。
+    ("Beyond.Gameplay.Core.BlackboardSuperArmorValue", "value"): "System.Single",
     ("Beyond.Gameplay.Core.Conditions.BlackboardBuffId", "value"): "System.String",
+    (
+        "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContext.Data",
+        "buffIdList",
+    ): "System.Collections.Generic.List<Beyond.Gameplay.Core.Conditions.BlackboardBuffId>",
+    (
+        "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContextAdvanced.Data",
+        "buffIdList",
+    ): "System.Collections.Generic.List<Beyond.Gameplay.Core.Conditions.BlackboardBuffId>",
 }
 
 TYPE_OVERRIDES = {
@@ -77,11 +84,9 @@ TYPE_ALIASES = {}
 
 RAW_GAMEPLAY_TAG_FIELDS = {
     ("Beyond.Gameplay.Core.HitStopAction.Data", "timeDilationPriority"),
-    ("Beyond.Gameplay.Core.ObtainCostAction.Data", "uspRecoverTag"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "slot"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "timeDilationPriority"),
     ("Beyond.Gameplay.Core.UltimateTimeAction.Data", "timeDilationPriority"),
-    ("Beyond.Gameplay.AI.EnemyCheckAIMarker.EnemyCheckAIMarkerInfo", "marker"),
 }
 
 RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
@@ -89,13 +94,6 @@ RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
 }
 
 UNMANAGED_STRUCT_LAYOUTS = {
-    "Beyond.Gameplay.AI.EnemyCheckAIMarker.EnemyCheckAIMarkerInfo": {
-        "size": 8,
-        "fields": [
-            {"name": "invert", "type": "System.Boolean", "offset": 0},
-            {"name": "marker", "type": "Beyond.Gameplay.Core.GameplayTag", "offset": 4},
-        ],
-    },
     "Beyond.Gameplay.Core.DispelConfig": {
         "size": 8,
         "fields": [

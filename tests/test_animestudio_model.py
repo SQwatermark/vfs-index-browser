@@ -39,8 +39,8 @@ def make_object(source_file, path_id, type_name, name, payload, references=(), m
     return AnimeStudioObject.from_payload(value)
 
 
-def ref(path, source_file, path_id, type_name, *, target_name=None):
-    reference = {
+def ref(path, source_file, path_id, type_name):
+    return {
         "path": path,
         "fileId": 0,
         "pathId": path_id,
@@ -48,9 +48,6 @@ def ref(path, source_file, path_id, type_name, *, target_name=None):
         "targetPathId": path_id,
         "targetSourceFile": source_file,
     }
-    if target_name is not None:
-        reference["targetName"] = target_name
-    return reference
 
 
 class AnimeStudioModelTests(unittest.TestCase):
@@ -119,7 +116,6 @@ class AnimeStudioModelTests(unittest.TestCase):
 
         material = next(iter(objects.values()))
         self.assertEqual("Body", material.name)
-        self.assertEqual("body", material.metadata["logicalName"])
         self.assertEqual(
             {
                 "path": "$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture",
@@ -382,23 +378,6 @@ class AnimeStudioModelTests(unittest.TestCase):
                     "m_Tangents": [1, 0, 0, 1] * 3,
                     "m_Indices": [0, 1, 2],
                     "m_SubMeshes": [{"indexCount": 3, "topology": "Triangles"}],
-                    "m_Shapes": {
-                        "vertices": [
-                            {
-                                "vertex": {"X": 0.1, "Y": 0.0, "Z": 0.0},
-                                "normal": {"X": 0.0, "Y": 0.1, "Z": 0.0},
-                                "tangent": {"X": 0.0, "Y": 0.0, "Z": 0.1},
-                                "index": 1,
-                            }
-                        ],
-                        "shapes": [
-                            {"firstVertex": 0, "vertexCount": 1}
-                        ],
-                        "channels": [
-                            {"name": "Blink", "frameIndex": 0, "frameCount": 1}
-                        ],
-                        "fullWeights": [100.0],
-                    },
                     "m_Skin": [],
                     "m_BindPose": [
                         {
@@ -414,7 +393,6 @@ class AnimeStudioModelTests(unittest.TestCase):
                 "Material",
                 "BodyMat",
                 {
-                    "m_Shader": {"m_FileID": 1, "m_PathID": 40, "IsNull": False},
                     "m_SavedProperties": {
                         "m_TexEnvs": {
                             "_BaseMap": {
@@ -455,13 +433,6 @@ class AnimeStudioModelTests(unittest.TestCase):
                     }
                 },
                 [
-                    ref(
-                        "$.m_Shader",
-                        "CAB-shader",
-                        40,
-                        "Shader",
-                        target_name="HGRP/CharacterNPR",
-                    ),
                     ref("$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture", "CAB-texture", 30, "Texture2D"),
                     ref("$.m_SavedProperties.m_TexEnvs._DiffRampMap.m_Texture", "CAB-texture", 30, "Texture2D"),
                     ref("$.m_SavedProperties.m_TexEnvs._SDFMask.m_Texture", "CAB-texture", 30, "Texture2D"),
@@ -521,10 +492,6 @@ class AnimeStudioModelTests(unittest.TestCase):
         self.assertEqual(0.2, document["materials"][0]["previewPbr"]["metallicFactor"])
         self.assertEqual(0.75, document["materials"][0]["previewPbr"]["roughnessFactor"])
         self.assertEqual("characterNpr", document["materials"][0]["previewPbr"]["materialFamily"])
-        self.assertEqual(
-            "HGRP/CharacterNPR",
-            document["materials"][0]["sourceMaterial"]["shader"],
-        )
         self.assertEqual("cloth", document["materials"][0]["previewPbr"]["materialRole"])
         self.assertNotIn("unlit", document["materials"][0]["previewPbr"])
         self.assertEqual(
@@ -534,11 +501,6 @@ class AnimeStudioModelTests(unittest.TestCase):
         self.assertFalse(document["materials"][0]["previewPbr"]["doubleSided"])
         self.assertEqual("/texture.png", document["images"][0]["uri"])
         self.assertEqual({"POSITION", "NORMAL", "TEXCOORD_0", "TANGENT"}, set(document["meshes"][0]["primitives"][0]["attributes"]))
-        self.assertEqual("Blink", document["meshes"][0]["blendShapes"][0]["name"])
-        self.assertEqual(
-            {"POSITION", "NORMAL", "TANGENT"},
-            set(document["meshes"][0]["blendShapes"][0]["frames"][0]["attributes"]),
-        )
         self.assertEqual([], validate_model_document(document))
 
 

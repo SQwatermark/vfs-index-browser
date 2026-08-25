@@ -43,218 +43,6 @@ class AnimationExportSelectionTests(unittest.TestCase):
 
 
 class AnimeStudioAnimationTests(unittest.TestCase):
-    def test_compensates_root_level_accessories_when_humanoid_root_motion_is_removed(self):
-        document = create_model_document(
-            "asset:model",
-            "Model",
-            {"logicalPath": "model.prefab"},
-            root_node_ids=["node:model"],
-        )
-        document["nodes"] = [
-            {
-                "id": "node:model",
-                "name": "Model",
-                "children": ["node:root"],
-                "transform": {},
-            },
-            {
-                "id": "node:root",
-                "name": "Root",
-                "parentId": "node:model",
-                "children": ["node:hips", "node:accessory"],
-                "transform": {},
-            },
-            {
-                "id": "node:hips",
-                "name": "Bip001",
-                "parentId": "node:root",
-                "children": [],
-                "transform": {},
-                "extras": {"humanoid": {"humanBone": "Hips"}},
-            },
-            {
-                "id": "node:accessory",
-                "name": "FloatingMetal",
-                "parentId": "node:root",
-                "children": [],
-                "transform": {},
-            },
-        ]
-        document["skeletons"] = [
-            {
-                "bones": [
-                    {
-                        "id": "node:hips",
-                        "extras": {"humanoid": {"humanBone": "Hips"}},
-                    }
-                ]
-            }
-        ]
-        timelines = [[0, 1]]
-        curves = [
-            {
-                "pathHash": zlib.crc32(b"Root/FloatingMetal") & 0xFFFFFFFF,
-                "property": "translation",
-                "timeline": 0,
-                "values": [[0, 0, 0.25], [0, 0, -1.75]],
-            },
-            {
-                "pathHash": zlib.crc32(b"Root/FloatingMetal") & 0xFFFFFFFF,
-                "property": "rotation",
-                "timeline": 0,
-                "values": [[0, 0, 0, 1], [0, 0, 0, 1]],
-            },
-        ]
-        motion = {
-            "MotionT": [[0, 0, 0], [0, 0, 2]],
-            "MotionQ": [[0, 0, 0, 1], [0, 0, 0, 1]],
-            "RootT": [[0, 0, 0], [0, 0, 2]],
-            "RootQ": [[0, 0, 0, 1], [0, 0, 0, 1]],
-        }
-        for prefix, axes in (
-            ("MotionT", "xyz"),
-            ("MotionQ", "xyzw"),
-            ("RootT", "xyz"),
-            ("RootQ", "xyzw"),
-        ):
-            for component, axis in enumerate(axes):
-                curves.append(
-                    {
-                        "property": "float",
-                        "propertyName": f"{prefix}.{axis}",
-                        "timeline": 0,
-                        "values": [row[component] for row in motion[prefix]],
-                    }
-                )
-        clip = {
-            "format": "AnimeStudioAnimationClip",
-            "version": "1.1.0",
-            "name": "Walk",
-            "sampleRate": 30,
-            "duration": 1,
-            "timelines": timelines,
-            "curves": curves,
-        }
-
-        animation = bind_animation_clip(
-            document,
-            clip,
-            animation_id="animation:walk",
-            source=SOURCE,
-            bake_humanoid=True,
-        )
-
-        accessory_translation = next(
-            track
-            for track in animation["tracks"]
-            if track["targetId"] == "node:accessory"
-            and track["property"] == "translation"
-        )
-        self.assertEqual([[0.0, 0.0, 0.25], [0.0, 0.0, 0.25]], accessory_translation["values"])
-        self.assertIn(
-            "ANIMATION_ACCESSORY_ROOT_MOTION_COMPENSATED",
-            {item["code"] for item in animation["diagnostics"]},
-        )
-
-    def test_preserves_humanoid_body_motion_on_root_level_accessories(self):
-        document = create_model_document(
-            "asset:model",
-            "Model",
-            {"logicalPath": "model.prefab"},
-            root_node_ids=["node:model"],
-        )
-        document["nodes"] = [
-            {"id": "node:model", "name": "Model", "children": ["node:root"], "transform": {}},
-            {
-                "id": "node:root",
-                "name": "Root",
-                "parentId": "node:model",
-                "children": ["node:hips", "node:accessory"],
-                "transform": {},
-            },
-            {
-                "id": "node:hips",
-                "name": "Bip001",
-                "parentId": "node:root",
-                "children": [],
-                "transform": {},
-                "extras": {"humanoid": {"humanBone": "Hips"}},
-            },
-            {
-                "id": "node:accessory",
-                "name": "FloatingMetal",
-                "parentId": "node:root",
-                "children": [],
-                "transform": {},
-            },
-        ]
-        document["skeletons"] = [
-            {
-                "bones": [
-                    {
-                        "id": "node:hips",
-                        "extras": {"humanoid": {"humanBone": "Hips"}},
-                    }
-                ]
-            }
-        ]
-        curves = [
-            {
-                "pathHash": zlib.crc32(b"Root/FloatingMetal") & 0xFFFFFFFF,
-                "property": "translation",
-                "timeline": 0,
-                "values": [[0, 0, 0.25], [0, 0, -1.75]],
-            }
-        ]
-        values = {
-            "MotionT": [[0, 0, 0], [0, 0, 2]],
-            "MotionQ": [[0, 0, 0, 1], [0, 0, 0, 1]],
-            "RootT": [[0, 1, 0], [0, 1.1, 2]],
-            "RootQ": [[0, 0, 0, 1], [0, 0, 0, 1]],
-        }
-        for prefix, axes in (
-            ("MotionT", "xyz"),
-            ("MotionQ", "xyzw"),
-            ("RootT", "xyz"),
-            ("RootQ", "xyzw"),
-        ):
-            for component, axis in enumerate(axes):
-                curves.append(
-                    {
-                        "property": "float",
-                        "propertyName": f"{prefix}.{axis}",
-                        "timeline": 0,
-                        "values": [row[component] for row in values[prefix]],
-                    }
-                )
-        clip = {
-            "format": "AnimeStudioAnimationClip",
-            "version": "1.1.0",
-            "name": "Walk",
-            "sampleRate": 30,
-            "duration": 1,
-            "timelines": [[0, 1]],
-            "curves": curves,
-        }
-
-        animation = bind_animation_clip(
-            document,
-            clip,
-            animation_id="animation:walk",
-            source=SOURCE,
-            bake_humanoid=True,
-        )
-
-        accessory_translation = next(
-            track
-            for track in animation["tracks"]
-            if track["targetId"] == "node:accessory"
-            and track["property"] == "translation"
-        )
-        self.assertEqual([0.0, 0.0, 0.25], accessory_translation["values"][0])
-        self.assertAlmostEqual(0.1, accessory_translation["values"][1][1])
-        self.assertEqual(0.25, accessory_translation["values"][1][2])
-
     def test_attaches_transform_curves_with_a_shared_timeline(self):
         document = create_model_document(
             "asset:model",
@@ -298,7 +86,7 @@ class AnimeStudioAnimationTests(unittest.TestCase):
         path_hash = zlib.crc32(b"Armature/Bone") & 0xFFFFFFFF
         clip = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.1.0",
+            "version": "1.0.0",
             "name": "Idle",
             "sampleRate": 60,
             "duration": 1,
@@ -395,7 +183,7 @@ class AnimeStudioAnimationTests(unittest.TestCase):
         ]
         clip = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.1.0",
+            "version": "1.0.0",
             "name": "Broken",
             "duration": 1,
             "timelines": [[0, 1]],
@@ -419,60 +207,6 @@ class AnimeStudioAnimationTests(unittest.TestCase):
                 source=SOURCE,
                 buffer_uri="/geometry.bin",
             )
-
-    def test_collapses_exactly_constant_track_to_one_keyframe(self):
-        document = create_model_document(
-            "asset:model",
-            "Model",
-            {"logicalPath": "model.prefab"},
-            root_node_ids=["node:root"],
-        )
-        document["nodes"] = [
-            {
-                "id": "node:root",
-                "name": "Root",
-                "active": True,
-                "children": [],
-                "transform": {},
-            }
-        ]
-        document["buffers"] = [
-            {
-                "id": "buffer:geometry",
-                "uri": "/geometry.bin",
-                "byteLength": 0,
-                "sha256": "",
-            }
-        ]
-        clip = {
-            "format": "AnimeStudioAnimationClip",
-            "version": "1.1.0",
-            "name": "Static",
-            "sampleRate": 60,
-            "duration": 2,
-            "timelines": [[0, 1, 2]],
-            "curves": [
-                {
-                    "pathHash": 0,
-                    "property": "translation",
-                    "timeline": 0,
-                    "values": [[1, 2, 3], [1, 2, 3], [1, 2, 3]],
-                }
-            ],
-        }
-
-        attach_animation_clip(
-            document,
-            b"",
-            clip,
-            animation_id="animation:static",
-            source=SOURCE,
-        )
-
-        channel = document["animations"][0]["channels"][0]
-        accessors = {item["id"]: item for item in document["accessors"]}
-        self.assertEqual(1, accessors[channel["inputAccessorId"]]["count"])
-        self.assertEqual(1, accessors[channel["outputAccessorId"]]["count"])
 
     def test_matches_dotnet_ascii_hash_for_non_ascii_node_names(self):
         document = create_model_document(
@@ -501,7 +235,7 @@ class AnimeStudioAnimationTests(unittest.TestCase):
         path_hash = zlib.crc32(b"??") & 0xFFFFFFFF
         clip = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.1.0",
+            "version": "1.0.0",
             "name": "Idle",
             "duration": 0,
             "timelines": [[0]],

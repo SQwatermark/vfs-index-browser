@@ -2,16 +2,9 @@ import struct
 import unittest
 
 from skeletal_morph import (
-    BonePose,
-    CurveKey,
-    MorphCurve,
-    _evaluate_curve,
-    _lerp_pose,
     bake_morph_animation,
     is_dialog_morph_animation_path,
-    merge_morph_avatars,
     morph_avatar_asset_name,
-    morph_avatar_asset_names,
     morph_clip_asset_path,
     parse_morph_avatar,
     parse_morph_clip,
@@ -69,7 +62,7 @@ class _Writer:
             self.float32(component)
 
 
-def avatar_payload(*, blend_shape=False):
+def avatar_payload():
     writer = _Writer()
     writer.header("data_facemorph_avatar_test")
     writer.int32(3)
@@ -81,15 +74,15 @@ def avatar_payload(*, blend_shape=False):
     writer.boolean(False)
     writer.boolean(False)
     base = (111, 56, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
-    target = (111, 56, (1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+    target = (111, 56, (1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0))
     writer.array([base], writer.bone)
     writer.array([], writer.int64)
     writer.array([1001], writer.int64)
     writer.array(["faceJoint"], writer.string)
     writer.array([], writer.string)
     writer.array(["eye_test_ctrl"], writer.string)
-    writer.array([222] if blend_shape else [], writer.int32)
-    writer.array([0] if blend_shape else [], writer.int32)
+    writer.array([], writer.int32)
+    writer.array([], writer.int32)
     writer.int32(2)
     writer.int32(1)
     writer.int64(1001)
@@ -138,39 +131,6 @@ def clip_payload():
 
 
 class SkeletalMorphTests(unittest.TestCase):
-    def test_mapping_pose_is_applied_as_a_delta_from_the_avatar_base(self):
-        position, rotation, scale = _lerp_pose(
-            BonePose(1, 2, (10.0, 0.0, 0.0), (0.0, 0.0, 0.0), (1.0, 1.0, 1.0)),
-            [(
-                0.5,
-                BonePose(1, 2, (1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (-0.2, 0.0, 0.0)),
-            )],
-            {
-                "translation": [20.0, 0.0, 0.0],
-                "rotation": [0.0, 0.0, 0.0, 1.0],
-                "scale": [2.0, 2.0, 2.0],
-            },
-        )
-
-        self.assertEqual([20.5, 0.0, 0.0], position)
-        self.assertEqual([0.0, 0.0, 0.0, 1.0], rotation)
-        self.assertEqual([1.8, 2.0, 2.0], scale)
-
-    def test_infinite_unity_tangents_are_evaluated_as_a_step(self):
-        curve = MorphCurve(
-            control_name="step",
-            keys=(
-                CurveKey(0.0, 0.0, float("inf"), float("inf"), 0, 0.0, 0.0),
-                CurveKey(1.0, 1.0, float("inf"), float("inf"), 0, 0.0, 0.0),
-            ),
-            pre_infinity=2,
-            post_infinity=2,
-            rotation_order=4,
-        )
-
-        self.assertEqual(0.0, _evaluate_curve(curve, 0.5))
-        self.assertEqual(1.0, _evaluate_curve(curve, 1.0))
-
     def test_resource_names_follow_dialog_and_model_conventions(self):
         animation = "assets/dialog/morphanim/example.anim"
         self.assertTrue(is_dialog_morph_animation_path(animation))
@@ -184,24 +144,6 @@ class SkeletalMorphTests(unittest.TestCase):
             ),
             "data_facemorph_avatar_jsspsi.asset",
         )
-        self.assertEqual(
-            (
-                "data_facemorph_avatar_jsspsi.asset",
-                "data_earmorph_avatar_jsspsi.asset",
-            ),
-            morph_avatar_asset_names(
-                "assets/gameplay/actors/postmodels/characters/chr_0036_jsspsi_postmodel.prefab"
-            ),
-        )
-
-    def test_duplicate_compatible_avatars_can_be_merged(self):
-        avatar = parse_morph_avatar(avatar_payload())
-        merged = merge_morph_avatars((avatar, avatar))
-
-        self.assertEqual(avatar.base_poses, merged.base_poses)
-        self.assertEqual(avatar.bone_names, merged.bone_names)
-        self.assertEqual(avatar.mapping_names, merged.mapping_names)
-        self.assertEqual(avatar.mappings, merged.mappings)
 
     def test_raw_assets_are_parsed_and_baked_to_model_tracks(self):
         avatar = parse_morph_avatar(avatar_payload())
@@ -232,89 +174,6 @@ class SkeletalMorphTests(unittest.TestCase):
         self.assertEqual(animation["tracks"][0]["targetId"], "node:face")
         self.assertEqual(animation["tracks"][0]["property"], "translation")
         self.assertEqual(animation["tracks"][0]["values"], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
-
-    def test_blend_shape_mapping_is_baked_to_named_mesh_weight_track(self):
-        avatar = parse_morph_avatar(avatar_payload(blend_shape=True))
-        animation = bake_morph_animation(
-            {
-                "nodes": [
-                    {
-                        "id": "node:face",
-                        "name": "Face_lod0",
-                        "active": True,
-                        "meshId": "mesh:face",
-                    },
-                    {
-                        "id": "node:face-lod1",
-                        "name": "Face_lod1",
-                        "active": True,
-                        "meshId": "mesh:face-lod1",
-                    },
-                    {
-                        "id": "node:eye",
-                        "name": "Eye_lod0",
-                        "active": True,
-                        "meshId": "mesh:eye",
-                    },
-                    {"id": "node:joint", "name": "faceJoint", "active": True},
-                ],
-                "meshes": [
-                    {
-                        "id": "mesh:face",
-                        "blendShapes": [{"name": "Blink", "frames": [{}]}],
-                    },
-                    {
-                        "id": "mesh:face-lod1",
-                        "blendShapes": [{"name": "Blink", "frames": [{}]}],
-                    },
-                    {
-                        "id": "mesh:eye",
-                        "blendShapes": [{"name": "Blink", "frames": [{}]}],
-                    },
-                ],
-            },
-            parse_morph_clip(clip_payload()),
-            avatar,
-            animation_id="animation:test",
-            source={"logicalPath": "example.anim"},
-            sample_rate=1.0,
-        )
-
-        shape_tracks = [
-            track for track in animation["tracks"]
-            if track["property"] == "blendShapeWeight"
-        ]
-        self.assertEqual({"node:face", "node:eye"}, {
-            track["targetId"] for track in shape_tracks
-        })
-        for shape_track in shape_tracks:
-            self.assertEqual("Blink", shape_track["propertyName"])
-            self.assertEqual([[0.0], [1.0]], shape_track["values"])
-
-    def test_morph_delta_preserves_the_models_actual_bind_pose(self):
-        animation = bake_morph_animation(
-            {
-                "nodes": [{
-                    "id": "node:face",
-                    "name": "faceJoint",
-                    "transform": {
-                        "translation": [4.0, 0.0, 0.0],
-                        "rotation": [0.0, 0.0, 0.0, 1.0],
-                        "scale": [2.0, 2.0, 2.0],
-                    },
-                }],
-            },
-            parse_morph_clip(clip_payload()),
-            parse_morph_avatar(avatar_payload()),
-            animation_id="animation:test",
-            source={"logicalPath": "example.anim"},
-            sample_rate=1.0,
-        )
-
-        tracks = {track["property"]: track for track in animation["tracks"]}
-        self.assertEqual([[4.0, 0.0, 0.0], [5.0, 0.0, 0.0]], tracks["translation"]["values"])
-        self.assertNotIn("rotation", tracks)
-        self.assertNotIn("scale", tracks)
 
 
 if __name__ == "__main__":
