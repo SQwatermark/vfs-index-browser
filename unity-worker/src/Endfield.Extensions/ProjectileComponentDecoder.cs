@@ -95,6 +95,26 @@ public static class ProjectileComponentDecoder
                 ["length"] = entry.DataOffset + entry.DataLength - prefix.TailOffset,
             },
         };
+        var abilitySystemEntries = ManagedReferenceRegistryScanner.FindCandidates(rawData)
+            .SelectMany(registry => registry.Entries)
+            .Where(candidate =>
+                candidate.ClassName == "AbilitySystemData" &&
+                candidate.Namespace == "Beyond.Gameplay.Core" &&
+                candidate.AssemblyName == "Gameplay.Beyond")
+            .ToList();
+        if (abilitySystemEntries.Count != 1)
+        {
+            throw new MonoBehaviourExportException(
+                "projectile_ability_system_not_unique",
+                $"Raw 中应有且仅有一个 AbilitySystemData，实际为 {abilitySystemEntries.Count} 个。");
+        }
+        var entityBlackboard = ProjectileAbilitySystemBlackboardDecoder.Decode(
+            rawData,
+            abilitySystemEntries[0]);
+        if (entityBlackboard is not null)
+        {
+            component["entityBlackboard"] = entityBlackboard;
+        }
         return new ProjectileComponentDecodeResult(
             component,
             entry.DataOffset,

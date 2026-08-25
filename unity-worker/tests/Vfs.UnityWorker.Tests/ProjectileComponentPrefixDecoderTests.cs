@@ -46,4 +46,34 @@ public sealed class ProjectileComponentPrefixDecoderTests
 
         StringAssert.Contains(exception.Message, "ProjectileComponentData");
     }
+
+    [TestMethod]
+    public void ReadsUniqueProjectileAbilitySystemEntityBlackboardList()
+    {
+        var bytes = new byte[96];
+        BitConverter.GetBytes(1).CopyTo(bytes, 16);
+        BitConverter.GetBytes(18).CopyTo(bytes, 20);
+        "EntityBB_first_hit"u8.CopyTo(bytes.AsSpan(24));
+        BitConverter.GetBytes(2.5d).CopyTo(bytes, 44);
+        BitConverter.GetBytes(0).CopyTo(bytes, 52);
+        BitConverter.GetBytes(1).CopyTo(bytes, 56);
+        var entry = new ManagedReferenceEntry(
+            1,
+            "AbilitySystemData",
+            "Beyond.Gameplay.Core",
+            "Gameplay.Beyond",
+            0,
+            0,
+            bytes.Length,
+            false);
+
+        var result = ProjectileAbilitySystemBlackboardDecoder.Decode(bytes, entry);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(1, result.Count);
+        Assert.AreEqual("EntityBB_first_hit", result[0]["key"]);
+        Assert.AreEqual(2.5d, result[0]["valueDouble"]);
+        Assert.AreEqual(string.Empty, result[0]["valueStr"]);
+        Assert.AreEqual(true, result[0]["isDynamic"]);
+    }
 }
