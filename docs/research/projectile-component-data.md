@@ -2,6 +2,20 @@
 
 ## 结论
 
+> 产品化状态（2026-08-25）：下述聚焦解码能力曾在部署主机验证，但其实现目前只存在于
+> 被 Git 忽略的研究副本提交 `03336c4` 中，并叠加了 `Exporter.cs` 的 85 行未提交修正。
+> 权威 AnimeStudio 提交 `8cdec963` 的通用 `JSON` 只导出 MonoBehaviour 外壳，`Convert`
+> 也没有恢复 managed-reference 内部数据。新 `Vfs.UnityWorker 0.3.0` 已将可证明的聚焦
+> 解码迁入 `Endfield.Extensions`，并声明 `decodeProjectileComponent`；该操作明确输出
+> partial 组件，不再依赖旧通用 JSON。
+> 这一区别是可复现性边界，不否定下述 manifest 身份链和历史样本结论。
+>
+> 新 worker 当前已恢复 managed-reference registry 和 Projectile 固定前缀。汤汤三段攻击
+> 样本中组件 payload 为 `[1560, 4988)`；前缀精确消费到 2032，余下 2956 字节的
+> `moveModeDict` 已继续消费至 2548，主特效结束条件消费至 2564。当前还剩 2424 字节的
+> 特效、声音和最终距离/倍率尾部保留为 Raw words。公开 capability 已可提供这一诚实的
+> partial 结果，但不能把 Raw tail 解释成已完成语义化。
+
 当前 manifest 和 VFS 索引已经包含投射物配置，不需要从 AKEDB 或其他远程服务补数据。
 `ProjectileComponentData` 不是 JsonData 中以 projectileId 命名的文件，而是 Unity
 `data_<projectileId>.asset` 对象中的 managed reference。稳定身份链为：
@@ -71,7 +85,8 @@ record、chunk 修改时间、assetIndex、asset path，以及 AnimeStudio EXE/C
 
 ## 解码边界
 
-本地定制 AnimeStudio 已包含 `Beyond.Gameplay.Core.ProjectileComponentData` 的聚焦解码器。
+旧研究工作树中的本地定制 AnimeStudio 包含
+`Beyond.Gameplay.Core.ProjectileComponentData` 的聚焦解码器。
 当前已按 IL2CPP 字段顺序和精确消费边界恢复 ID、结束条件、碰撞形状、目标过滤、命中限制、
 移动分段、MoveModeData、特效列表、声音哈希和尾部距离/倍率等结构。部分 Blackboard 包装、
 枚举和哈希含义仍是诊断表示，因此返回的组件通常带 `$partial: true`，API 对应报告

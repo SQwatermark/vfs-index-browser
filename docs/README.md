@@ -3,10 +3,14 @@
 ## 从哪里开始
 
 1. [系统架构](design/architecture.md)：VFS、manifest、容器解析和聚合资源的总体数据流。
-2. [资源恢复整合路线](design/integrated-roadmap.md)：当前能力、优先级、并行边界和验收标准。
-3. [组合模型恢复](design/model-recovery.md)：ModelDocument、GLB、动画和 Blender 的详细链路。
-4. [角色材质管线](design/material-pipeline.md)：Prefab 与 AvatarMesh 共享的材质恢复流程。
-5. [音频语义索引](design/audio-index.md)：AudioDialog 虚拟目录和其他 Wwise 音频的组织方式。
+2. [VFS 产品化与 AnimeStudio 内嵌计划](design/vfs-productization.md)：当前产品化主线的架构规则、阶段门禁和交接状态。
+3. [当前工作线与待办](design/current-workstreams.md)：主线、支线、已完成能力和各方向待办。
+4. [战斗系统反推计划](research/combat-system-reversing-plan.md)：战斗证据、阶段与验收方式。
+5. [资源恢复整合路线](design/integrated-roadmap.md)：资源工具形成过程中的架构与接口背景。
+6. [组合模型恢复](design/model-recovery.md)：ModelDocument、GLB、动画和 Blender 的详细链路。
+7. [角色材质管线](design/material-pipeline.md)：Prefab 与 AvatarMesh 共享的材质恢复流程。
+8. [音频语义索引](design/audio-index.md)：AudioDialog 虚拟目录和其他 Wwise 音频的组织方式。
+9. [Wwise 关系索引](design/wwise-index.md)：PCK/HIRC 数据结构、网页虚拟目录和构建方式。
 
 ## 文档分工
 
@@ -46,6 +50,10 @@ schema、测试或生产代码后，才算正式进入实现路线。
 
 - `tools/parse_hgmmap.py`：解析并验证 Bundle manifest。
 - `tools/extract_indexed_file.py`：按 VFS 索引提取单文件。
+- `tools/analyze_sparkbuffer_schema_ownership.py`：按 type hash 和根可达性分析 SparkBuffer schema
+  的领域私有/共享类型归属。
+- `tools/validate_schema_reference_edges.py`：校验显式跨 schema ID 边的来源字段、owner 和证据类别；
+  目标类型仍须由反编译或可重复工件连接给出。
 - `tools/scan_jsondata_formats.py`：统计二进制 JSON 的编码类型。
 - `tools/probe_binary_json.py`：探测单个二进制 JSON。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP 信息提取 MemoryPack schema。

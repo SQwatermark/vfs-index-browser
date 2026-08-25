@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>Vfs.Endfield.Extensions</AssemblyName>
+    <RootNamespace>Vfs.Endfield.Extensions</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AnimeStudio.Core\Vfs.AnimeStudio.Core.csproj" />
+  </ItemGroup>
+</Project>

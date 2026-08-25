@@ -1,0 +1,469 @@
+# VFS 产品化与 AnimeStudio 内嵌计划
+
+本文是 VFS 产品化工作的主交接文档。它同时约束目标架构、迁移边界、阶段门禁和当前
+进度。涉及产品化的代码改动必须同步更新本文的“实施状态”和“变更记录”；未写入本文、
+自动化测试或其他稳定设计文档的口头约定，不视为已经进入架构。
+
+## 目标
+
+把当前依赖特定开发机环境的研究工具整理为可独立部署、接口明确、结构清晰的 Windows
+产品，并将 VFS 实际使用的 AnimeStudio 能力以内嵌源码和内部 worker 的形式纳入同一仓库、
+同一构建和同一发布过程。
+
+最终产物必须满足：
+
+- 从干净的 VFS checkout 可以构建完整产品，不依赖另一份 AnimeStudio 源码目录；
+- 发布包包含运行所需的 Unity 读取能力，不要求用户另外安装 AnimeStudio；
+- Python 服务只依赖 VFS 自有的版本化 worker 协议，不了解 AnimeStudio 内部类型；
+- 外部原生工具和可选能力均在启动诊断中显式报告，不通过开发机路径碰运气；
+- HTTP、索引、格式解析、任务编排和 Unity 读取各有清晰归属；
+- 真实样本等价验证通过后，才允许删除旧调用路径或弃用独立 AnimeStudio 仓库。
+
+## 非目标
+
+- 不把 AnimeStudio GUI 整体搬进 VFS；VFS 只保留产品所需能力。
+- 不在本轮重写已经验证可靠的 Unity 序列化、纹理、动画或 Shader 解码算法。
+- 不让 Python 直接加载 .NET 程序集。进程边界用于隔离崩溃、原生依赖和长任务。
+- 不以“一次能跑”为完成标准；可构建、可诊断、可测试、可发布缺一不可。
+- 不在迁移过程中顺手改变游戏数据语义。解析行为变化必须有样本证据和独立测试。
+
+## 当前证据基线
+
+截至 2026-08-25：
+
+- VFS 当前提交为 `9a549f1`，工作树已有大量用户进行中的改动；产品化不得清理、覆盖或
+  回退这些改动。
+- 台式机 AnimeStudio 当前提交为 `8cdec963c4e187ea0a4a339b8969844a9574638b`，分支包含
+  终末地 ACL、对象快照、Shader 二进制包与资源绑定等定制能力。
+- VFS 内 `data/research/AnimeStudio` 是被 `.gitignore` 排除的研究副本，提交为 `03336c4`，
+  且带有未提交修改；它不是可复现的生产依赖，也不是本次导入的权威来源。
+- `server.py` 目前直接持有 AnimeStudio 可执行文件路径，并分散调用 AssetMap、CABMap、
+  ObjectJSON、纹理、MonoBehaviour、Cubemap、模型、动画和通用 AssetBundle 导出。
+- 当前启动说明暴露 `D:\Projects\AnimeStudio` 等开发机路径；这类路径只可作为迁移期的
+  显式调试覆盖，不能出现在最终默认行为中。
+- Blender、vgmstream、usm-convert、ffmpeg 等也是外部能力。它们可以保持可选，但必须被
+  统一的能力检查、错误模型和文档覆盖。
+
+## 目标架构
+
+```text
+浏览器 / API 客户端
+        |
+        v
+HTTP 请求层
+        |
+        v
+应用服务与后台任务  ----->  缓存、进度、取消、结果清单
+        |
+        +-----> VFS / manifest / TableCfg / PCK 等独立格式模块
+        |
+        +-----> UnityWorkerClient（唯一进程适配器）
+                       |
+                       v
+                Vfs.UnityWorker
+                       |
+             +---------+----------+
+             |                    |
+      AnimeStudio.Core     Endfield.Extensions
+      Unity/AB 通用读取     ACL/Shader/专用组件
+```
+
+建议仓库布局：
+
+```text
+vfs-index-browser/
+  server/                    Python HTTP、应用服务和基础设施
+  unity-worker/
+    src/
+      AnimeStudio.Core/      内嵌并逐步裁剪的通用 Unity 读取实现
+      Endfield.Extensions/   终末地专用扩展
+      Vfs.UnityWorker/       VFS 自有命令入口和协议实现
+    tests/
+    THIRD_PARTY_NOTICES.md
+    README.md
+  public/
+  tests/
+  docs/
+```
+
+目录名表达最终边界，不要求首次导入时立即完成物理裁剪。首次导入可以保留较完整的上游
+源码以降低行为变化风险，但 VFS 自有入口、协议和构建必须从第一天独立存在；后续只能沿
+目标边界收敛，不能继续让 Python 直接拼 AnimeStudio 命令行。
+
+## 强制架构规则
+
+### 1. 单一 Unity worker 边界
+
+Python 侧只允许一个 `UnityWorkerClient`（名称可调整）知道 worker 的位置、启动方式、超时
+和协议。HTTP handler、模型模块、动画模块及资源解析器不得自行执行 worker 或寻找 EXE。
+
+### 2. VFS 拥有协议
+
+协议属于 VFS，不以 AnimeStudio CLI 参数作为公共接口。协议至少包含：
+
+- `handshake`：协议版本、构建版本、提交来源和能力集合；
+- 请求 ID、操作名、输入文件与输出目录；
+- 结构化成功结果、产物清单、诊断、进度和错误；
+- 可区分的输入错误、数据不兼容、能力缺失、超时、取消和内部崩溃；
+- 向后兼容规则和显式协议版本。
+
+初期可用单次进程 JSON 请求，稳定后再按性能证据选择 JSON Lines 常驻 worker 或本地管道。
+不得在没有测量的情况下把生命周期优化与语义迁移绑在一起。
+
+首版单次请求通过 `Vfs.UnityWorker request <request.json>` 调用：
+
+```json
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "调用方生成的稳定 ID",
+  "operation": "exportMonoBehaviourRaw",
+  "arguments": {
+    "inputPath": "绝对或调用目录下的 Bundle 路径",
+    "outputDirectory": "本次请求独占的新输出目录",
+    "container": "可选的精确 Unity container"
+  }
+}
+```
+
+worker 只能写入本次请求的新目录，不覆盖旧结果；成功响应返回每个产物的相对路径、
+source file、PathID、container、长度和 SHA-256。`container` 使用精确匹配，不在 worker
+中猜逻辑资源名。第一项能力只导出 Raw 对象字节，不夹带 TypeTree、程序集恢复或 Python
+专用 Projectile/AbilityEntity 解码。
+
+### 3. 源码与许可证可追溯
+
+- 导入必须记录上游仓库、精确提交和导入日期；
+- AnimeStudio 的 MIT 许可证及所有随源码进入的第三方许可证必须保留；
+- 原生 DLL 必须能追溯来源、架构和用途，不得只提交一个来历不明的二进制目录；
+- 上游同步应通过可重复脚本或明确流程完成，不能手工覆盖后再凭记忆挑文件。
+- VFS 或定制 AnimeStudio 源码随仓库保存；未修改且明确开源的第三方依赖可以在项目初始化
+  时按锁定提交/版本下载源码或二进制，不要求全部 vendor。下载项必须有校验和、许可证和
+  本地缓存，服务正常运行时不得隐式联网；发布包仍须自包含运行时依赖。
+
+### 4. 能力而非机器路径
+
+默认运行时只查找发布包或仓库构建输出中的 worker。开发期覆盖必须使用一个明确变量，
+并在启动诊断中标为 override。禁止扫描 `data/research`、相邻仓库或固定盘符寻找最新版。
+
+### 5. 迁移保持结果等价
+
+每类能力迁移前固定代表性输入、旧结果和诊断；迁移后比较结构化输出，而不是只比较进程
+退出码。未知 Unity 类型、损坏 Bundle、缺少依赖和版本不兼容必须继续显式失败。
+
+### 6. 文档是阶段门禁
+
+每个阶段开始前记录预期边界和验收项，完成后记录证据、测试命令和遗留问题。代码与本文
+不一致时，该阶段不得标为完成。
+
+## 迁移顺序
+
+### P0：文档与依赖盘点
+
+- [x] 建立产品化主文档和持续交接规则。
+- [x] 建立 Python 调用点、CLI 操作、原生库、NuGet 包和可选工具的初始清单。
+- [x] 固定 AnimeStudio 权威提交、许可证清单和源码导入方法。
+- [x] 定义干净机器、构建、协议和结果等价的验收矩阵。
+
+完成门禁：任何接手者只阅读本文和文档索引，就能解释为何内嵌、内嵌什么、如何迁移、
+如何判定成功，以及当前下一步是什么。
+
+### P1：源码导入与 worker 骨架
+
+- [x] 从台式机权威提交导入所需源码和许可证，不使用现有研究副本充当来源。
+- [x] 建立只包含生产所需项目的 solution/project。
+- [x] 实现 `handshake`，输出协议版本、构建身份、运行平台和能力集合。
+- [x] 添加 worker 契约测试及一条仓库内构建命令。
+
+完成门禁：在 VFS 仓库内无需 AnimeStudio 外部目录即可构建 worker，并通过握手测试。
+
+### P2：Python 调用收口
+
+- [x] 实现唯一 worker 定位、调用、超时和错误翻译适配器。
+- [x] 实现 worker 进程级取消，并以 Projectile 建立首条 HTTP 任务创建/查询/取消链路。
+- [ ] 先让旧命令通过适配器转发，消除 `server.py` 中的直接 subprocess 调用。
+- [ ] 删除源码目录自动探测；保留显式开发 override，直至 P3 等价验证完成。
+- [x] 提供 `/api/health`，显示 worker 协议/能力、可选工具及尚未迁移的旧工具依赖。
+
+完成门禁：除适配器测试外，Python 生产代码中不存在 AnimeStudio 路径或直接调用。
+
+### P3：能力分批迁移
+
+按以下顺序迁移，每批独立验证和可回退：
+
+1. 原始/TypeTree MonoBehaviour、Projectile、AbilityEntity；
+2. AssetMap、CABMap、ObjectJSON 和通用 AssetBundle 导出；
+3. Texture2D、Sprite、Cubemap、模型层级和 AvatarMesh；
+4. AnimationClip、Humanoid、ACL；
+5. Shader 二进制包、程序映射和反汇编输入。
+
+完成门禁：旧入口已无生产调用者，代表性真实样本和合成错误样本全部通过等价测试。
+
+### P4：服务端产品化
+
+- [ ] 将单体 `server.py` 拆成请求层、应用服务、任务系统、缓存和基础设施适配器。
+- [ ] 长任务具备 ID、进度、取消、原子结果发布和结构化失败。
+- [ ] 配置、缓存版本、日志、端口和数据根目录有统一入口。
+- [ ] 可选外部工具通过能力注册表接入，不散落路径判断。
+
+完成门禁：handler 不包含二进制格式细节或 subprocess 编排，长任务不会发布半成品状态。
+
+### 长任务与取消边界
+
+worker 采用“一次请求一个子进程”。取消不能只是修改 UI 状态：Python 适配器必须终止该
+请求的独占进程、等待进程退出，并返回稳定的 `worker_cancelled`。HTTP 层通过持久化任务
+记录控制取消事件；内存中只保存小型控制句柄，任务结果写入独占目录，完成后由原子状态
+文件指向结果，禁止把大结果只保存在全局变量中。
+
+首个任务化入口使用以下协议，保留原同步查询供现有调用者兼容：
+
+- `POST /api/tasks/projectile`：校验 `projectileId` 后创建任务；
+- `GET /api/task?taskId=...`：读取原子状态，成功时可包含已发布结果；
+- `DELETE /api/task?taskId=...`：设置取消事件；只有实际运行中的本机任务可进入
+  `cancelling`，终止完成后转为 `cancelled`。
+
+任务状态至少区分 `pending`、`running`、`cancelling`、`succeeded`、`failed`、
+`cancelled`。取消或失败不得写入成功结果指针，服务重启后遗留的非终态任务必须明确标为
+中断，不能永远伪装为仍在运行。
+
+### P5：发布与弃用
+
+- [ ] 构建 Windows 自包含发布包并在干净环境验证。
+- [ ] 完成安装、升级、故障诊断、开发和发布文档。
+- [ ] 验证没有固定盘符、相邻源码仓库或用户目录依赖。
+- [ ] 归档独立 AnimeStudio 仓库，并在 VFS 中记录最后同步点。
+
+完成门禁：新机器仅凭发布包和游戏数据即可使用已声明能力。
+
+## 验收矩阵
+
+| 维度 | 必须验证 |
+| --- | --- |
+| 构建 | 干净 checkout、锁定 SDK/NuGet、x64 Release、可重复命令 |
+| 协议 | 版本握手、能力发现、未知操作、超时、取消、worker 崩溃 |
+| 数据 | 正常 Bundle、跨 Bundle PPtr、未知类型、损坏输入、缺失依赖 |
+| 等价 | 对象身份、container、PathID、结构化载荷、文件哈希或容许差异 |
+| 部署 | 无 AnimeStudio 外部目录、无固定盘符、原生 DLL 随包且架构正确 |
+| 运维 | 健康检查、结构化日志、缓存身份、错误可定位、长任务无半成品发布 |
+
+## 实施状态
+
+当前阶段：**P2 Python 调用收口**。P0 已完成，P1 的首个领域能力已经形成可调用闭环。
+
+正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
+`Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
+`exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap` 和
+`buildCabMap`，worker 版本已升至 `0.5.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
+主特效结束条件；未知尾部完整保留为 Raw words，公开结果明确为 `partial`。下一项代码工作
+已用 Python 唯一 `UnityWorkerClient` 把 Projectile 和共用 MonoBehaviour Raw 调用切换到
+新 worker。Projectile、Raw 和 TypeTree Dump 复用同一个多产物原子导出框架：每次构建
+写入独占 run 目录，所有产物的路径、大小与 SHA-256 全部校验完成，且同一 run 内的派生
+预览已经生成后，才通过原子替换元数据指针一次性发布。AbilityEntity、骨骼形变配置和
+AvatarMesh TypeTree 因此不再通过旧 CLI 获取这些输入。Projectile 已具备落盘任务状态、
+HTTP 创建/查询/取消入口及进程级终止，结果不保存在全局变量中。单 Bundle AssetMap 也已
+迁移到相同原子 run 框架，输出中的 `Source` 被规范化为稳定逻辑标识，不携带临时路径。
+跨 Bundle CABMap 已有无机器路径的 VFS JSON 契约和 worker 构建能力；下一步让对象导出
+在同一请求内显式消费该契约，替换旧 `UseCABMap`。不能把权威提交中只包含
+对象外壳的通用 `JSON` 冒充领域解码能力，也不能复制旧 CLI 的全局 `Maps/` 隐式状态。
+
+### 当前调用与依赖清单
+
+Python 当前直接使用的 AnimeStudio 操作如下：
+
+| 能力组 | CLI 操作/类型 | 当前调用位置 | 迁移批次 |
+| --- | --- | --- | --- |
+| 组件原始数据 | MonoBehaviour + `Raw`/`Dump`/`JSON` | `server.py` | P3.1 |
+| 资源映射 | `AssetMap` 已迁移；`BuildCABMap` worker 已实现；`UseCABMap` 待迁移 | `server.py`、`avatar_mesh_snapshot.py` | P3.2 |
+| 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar、LODGroup + `ObjectJSON` | `server.py` | P3.2/P3.3 |
+| 通用资源 | Texture2D、Sprite、TextAsset、AudioClip、VideoClip、AnimationClip + `Convert` | `server.py` | P3.2/P3.3 |
+| 纹理身份 | Texture2D + `IdentifiedTexture` | `server.py`、`avatar_mesh_snapshot.py` | P3.3 |
+| Cubemap | Cubemap + `Convert` | `server.py` | P3.3 |
+| 动画 | AnimationClip + `AnimationJSON` | `server.py` | P3.4 |
+| Shader | Shader 二进制包及终末地扩展 | AnimeStudio 定制源码、离线工具 | P3.5 |
+
+外部可选工具为 Blender、vgmstream、usm-convert 和 ffmpeg。它们不属于 Unity worker，
+后续进入统一能力注册表。当前 Blender 仍会扫描 `C:\Program Files`，其他工具可由环境变量
+覆盖；这些均属于 P4 待收口项。
+
+权威 AnimeStudio 工程依赖初步分为：
+
+- 通用托管核心：`AnimeStudio`；
+- 导出与终末地扩展：当前混在 `AnimeStudio.CLI`、`AnimeStudio.Utility` 中，导入后需按
+  VFS 协议入口与领域扩展拆开；
+- 托管桥：`AnimeStudio.PInvoke`、`AnimeStudio.FBXWrapper`；
+- 原生实现：`AnimeStudio.ACLNative`、`AnimeStudio.FBXNative`、`AnimeStudio.Oodle`；
+- 明确不进入产品：GUI、Patcher；
+- 待证明确有需要后再进入：FBX、fmod、HLSLDecompiler、BinaryDecompiler 及旧 ACL 变体。
+
+当前上游 NuGet 包包括 Newtonsoft.Json、System.CommandLine、
+System.Configuration.ConfigurationManager、K4os.Hash.xxHash、Kyaru.Texture2DDecoder、
+MessagePack、ZstdSharp.Port、SixLabors.ImageSharp.Drawing、Mono.Cecil 和
+Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`；后续按真实源码闭包
+逐项引入，不能照抄旧 CLI 的全部依赖。
+
+当前已知风险：
+
+- 研究副本与权威 AnimeStudio 相差多个提交，且研究副本有本地修改，不能直接复用；
+- 当前 CLI 工程会携带 FBX、ACL、Oodle 等多组原生库，需要区分必需、可选与未使用；
+- AnimeStudio 定制分支包含大量第三方 ACL/RTM 代码，许可证和构建平台必须单独核对；
+- `server.py` 调用点分散，先收口适配器再拆 HTTP 层，避免同时改变协议和业务语义；
+- 当前 VFS 工作树不干净，产品化改动必须使用独立目录和小范围补丁，避免覆盖既有工作。
+- 上游核心锁定的 MessagePack 3.1.4 存在多项已知漏洞；VFS 构建已先提升至 3.1.8，仍需
+  通过 AssetMap MessagePack 读写回归确认兼容。
+
+## 当前交接断点
+
+截至 2026-08-25，本轮按用户要求停在“对象快照迁移开始前”。当前工作树的可交付边界为：
+
+- worker `0.5.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
+  聚焦解码、单 Bundle AssetMap 和多输入 CABMap 构建；
+- Python 已通过唯一 `UnityWorkerClient` 使用前五项生产能力；`buildCabMap` 已有客户端封装，
+  但尚未接入 `server.py` 的模型/AvatarMesh 生产路径；
+- `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。通用 `Convert`、
+  `ObjectJSON`、`IdentifiedTexture`、Cubemap 与动画仍由旧 CLI 执行；
+- CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。它尚未被对象导出消费，
+  因而旧 `BuildCABMap + UseCABMap` 组合不能删除，也不能宣称 P3.2 已完成；
+- 已完成对旧 `UseCABMap + ObjectJSON` 调用链的只读审计，没有开始实现对象快照 exporter。
+  权威证据入口为 `AnimeStudio.CLI/Program.cs`、`Studio.BuildAssetData/ExportAssets`、
+  `Exporter.ExportObjectJSONFile` 和 `ObjectSnapshotExporter.Build`；
+- 旧 ObjectJSON 会把 `sourceOriginalPath`、`loadedSourceOriginalPath` 等物理路径写入快照。
+  新协议必须用稳定 input ID 替换这些字段，不能把开发机路径带回产品契约；
+- 对象身份仍必须保持 `sourceFile + pathId`，container 必须来自 AssetBundle/ResourceManager
+  的 PPtr 映射，跨 Bundle 引用必须依据显式输入闭包解析，禁止退回按文件名猜对象。
+
+下一位接手者应按以下顺序继续：
+
+1. 先把 CABMap 的“读取一次得到稳定映射”与对象加载所需的运行期物理路径绑定分层，公共
+   解析不得分别在 CABMap 和 ObjectJSON 中重复实现；
+2. 定义一个请求内完成的对象快照操作：显式多输入、主输入/选择范围、类型列表、精确
+   container 列表、独占输出目录；不要暴露旧 CLI 参数或全局 `Maps/`；
+3. 从权威 `ObjectSnapshotExporter` 迁移最小快照契约，不复制巨型 `Exporter.cs`。首先只覆盖
+   当前模型消费者实际需要的 GameObject、Transform、Mesh/Renderer、Material、Animator、
+   Avatar；LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；
+4. 用死亡少女骨骼及现有 Prefab/AvatarMesh 样本对比对象数量、`sourceFile + pathId`、container、
+   PPtr 解析和下游 ModelDocument，不以“进程成功”代替等价验证；
+5. 等对象导出真正消费新 CABMap 后，再将 `server.py` 和 `avatar_mesh_snapshot.py` 切换到
+   worker 原子 run，并删除旧 `BuildCABMap/UseCABMap` 调用。
+
+最近一次完整验证：Python `274` 项通过；.NET 常规 `18` 项通过、`4` 项本机证据测试未配置
+时跳过；死亡少女 AssetMap/CABMap 两项本机证据测试单独通过；Release 构建 0 警告、0 错误，
+产品自有文件的 `git diff --check` 通过。锁定导入的上游 vendor 保留其原始尾随空白，不以
+格式化改写破坏来源比对。真实 fixture 位于被忽略的研究目录，不进入提交。
+
+## 变更记录
+
+### 2026-08-25
+
+- 建立本文，冻结“源码内嵌、内部 worker 进程边界、VFS 自有协议”的方向。
+- 记录 VFS `9a549f1`、权威 AnimeStudio `8cdec963` 和研究副本 `03336c4` 三个基线。
+- 将持续更新文档写入阶段门禁；下一步为完成依赖/许可证盘点和导入方案。
+- 从权威提交生成 SHA-256 为
+  `52222131df3457f108f11b68ae90510989f4f779219278d622951118b3b4fdb2` 的临时源码归档；
+  归档只用于盘点，未直接复制到生产目录。
+- 新增 `unity-worker` 骨架、VFS 自有 `1.0.0` 握手协议和结构化未知操作错误。
+- `dotnet build Vfs.UnityWorker.slnx -c Release` 通过，0 警告；2 个 MSTest 契约测试通过；
+  进程级握手返回唯一已实现能力 `handshake`，未知操作以退出码 2 和
+  `unknown_operation` 返回。
+- 根据依赖策略反馈，改为“定制源码入库、明确开源第三方依赖初始化下载、发布包自包含”；
+  ACL 与 RTM 分别锁定到 `3ee56854`、`d046447c`，归档带 SHA-256 校验。
+- 从权威归档初筛 392 个文件；按依赖策略移出 ACL/RTM 的 130 个重复第三方文件，当前
+  `unity-worker/vendor` 待跟踪文件为 262 个，并建立 `Vfs.AnimeStudio.Core` 构建项目。
+  首次构建暴露 MessagePack 3.1.4 安全告警和 4 个上游编译告警，因此尚未把 P1 标为完成。
+- MessagePack 已提升到 3.1.8，NuGet 漏洞审计无已知漏洞；以最小可记录补丁消除 4 个
+  上游警告。当前 Release 构建为 0 警告、0 错误，2 个 worker 契约测试通过。
+- 新增 VFS 自有 JSON 单次请求协议和 `exportMonoBehaviourRaw`。worker 只解析
+  AssetBundle、MonoBehaviour、MonoScript，按精确 container 选择，并拒绝非空输出目录。
+- 真实样本使用汤汤三段攻击 Projectile：Bundle SHA-256 为
+  `14d52a41720e6e1da48e7fa66e6534fbd0269e89bb1c8cd8bf13cf167de21a08`；新 worker 与
+  权威 AnimeStudio `8cdec963` CLI 均导出 1 个 4988 字节对象，SHA-256 同为
+  `89e92655155aeb2fd232c75d120264b9f3aa3f55bc2a0252223af968eec68e59`。
+- 新增共用 `MonoBehaviourExportPipeline`，Raw 与 TypeTree Dump 复用输入校验、Bundle
+  加载、container 映射及精确对象选择，不再各自实现一遍定位逻辑。
+- 新增 `exportMonoBehaviourTypeTreeDump`。同一汤汤样本的新旧 Dump 均为 1320 字节，
+  SHA-256 同为
+  `88b3b67142ea3766be66d6e00a6cf179deefa6324c562ec70d4cdf139d4707ab`；内嵌 TypeTree
+  仅消费 4988 个序列化字节中的 228 字节，因此结果明确返回 `complete: false`，不把基础
+  MonoBehaviour 外壳误报为完整组件。
+- 对权威 `8cdec963` CLI 做同资源三路对照：`JSON` 仅 360 字节 MonoBehaviour 外壳；
+  `Convert` 为 1080 字节 managed-reference 框架但各 `data` 为空；两者都不含
+  `ProjectileComponentData`。聚焦解码主体实际位于被忽略的研究副本提交 `03336c4`
+  （该副本是 grafted 根提交）中，其 `Exporter.cs` 另有 85 行未提交修正；两层都不在权威
+  台式机分支，不能由权威上游自动重建，已列为下一项必须迁移并固化来源的 VFS 定制代码。
+- 已在 `unity-worker/UPSTREAM.md` 固化研究解码器两层来源：`03336c4` 提交中的
+  `Exporter.cs` blob `1b66a69e`、85/1 行工作树补丁 blob `82ca7105`，以及合并文件
+  SHA-256 `c3571ce7...`。这些仅用于审计，构建不得读取被忽略研究目录，也不得把约 1 MB
+  巨型文件整体搬入新产品。
+- 已新增与字段语义解耦的 `ManagedReferenceRegistryScanner`，只恢复 registry 版本、RID、
+  类型身份及 payload 字节边界。合成测试覆盖正常链和伪整数头；汤汤真实 Raw 的本地证据
+  测试确认唯一 registry 位于偏移 84、版本 2、共 4 项，ProjectileComponentData header/
+  payload 分别始于 1480/1560，payload 长 3428 字节。扫描器采用“完整强类型链优先、再退到
+  null sentinel”的两阶段选择，避免连续零 payload 抢占后续真实 header。
+- 已把旧巨型 Exporter 内的 payload 游标重写为独立 `ManagedReferencePayloadReader`；它只
+  提供严格边界、有限浮点数、bool32 和对齐字符串读取，错误携带字段路径。后续 Projectile
+  字段解码只能依赖这个基础件，不再依赖 CLI 全局状态。
+- 已固定研究版两套二进制行为：2026-07-30 的 net9 构建（SHA-256 `1b664a2b...`）尚未
+  包含 85 行布局修正，在汤汤样本的 `allowHitSameTarget` 处错位并返回 `$unparsed`；
+  2026-08-02 的 net8 构建（SHA-256 `c5fbf6e4...`）包含该修正，能形成 `$decoded/$partial`
+  组件。旧失败输出不再被视作正确兼容目标，但其结构化失败仍是必须保留的边界。
+- 新增 `ProjectileComponentPrefixDecoder`，按修正后的字段顺序恢复到 `moveSegments` 末尾。
+  汤汤真实样本从组件 payload 偏移 1560 精确消费至 2032，恢复 ID、2 秒结束时长、10 米
+  结束距离、命中与碰撞字段，以及 `LaunchPoint -> Default -> TargetPoint` 移动段；剩余
+  2956 字节作为未迁移 tail 明确返回。
+- 新增独立 `ProjectileMoveModeDictionaryDecoder`：汤汤样本的 `Default` 字典值按研究证据
+  固定为 124 word，先恢复 traceType、traceTime、traceUntilDistance、moveType、parabolaDef，
+  其余 115 word 保留原始证据；整个字典精确消费 `[2032, 2548)`。该固定边界仍标记
+  `partial`，不会推广成未经多样本验证的通用规则。
+- 新增 `ProjectileMainEffectFinishDecoder`，显式支持“序列化 finishType + BlackboardDouble”
+  和“仅 BlackboardDouble”两种已知形态。汤汤样本恢复 `Default` 与 40 米，并把后续边界推进
+  到 2564；当前剩余 2424 字节为特效、声音和最终距离/倍率尾部。
+- 从台式机 VFS 索引提取庄方易两枚历史样本，AB SHA-256 分别为 `ecf674d5...`、
+  `cb5084d0...`，Raw 分别为 5784 字节且 SHA-256 为 `2c73c17d...`、`56095f93...`。
+  三样本均验证 124-word MoveModeData：汤汤阶段边界为 2032/2548/2564，庄方易两枚均为
+  2296/2812/2828。剩余 Raw words 分别为 606、739、739。
+- 新增正式 `decodeProjectileComponent` 操作，要求精确 container、唯一组件和严格 ID
+  相等；所有未理解尾部被完整消费为 Raw words，结果返回 `decodeStatus: partial`。汤汤
+  聚焦 JSON 为 63662 字节，SHA-256 `2c9901df...`，现有 Python
+  `load_projectile_export` 可直接识别根组件；重复写同一输出目录返回 `output_not_empty`。
+- 当前 Release 构建仍为 0 警告、0 错误；常规运行 16 项通过、2 项本地证据测试因未配置
+  fixture 跳过，显式配置后真实资源审计覆盖汤汤及庄方易两枚样本并通过；现有 Python
+  ProjectileData 10 项测试通过；逐项目 NuGet 漏洞审计无已知漏洞。
+- Release 构建继续保持 0 警告、0 错误；worker 契约与输出边界测试增至 6 个并全部通过；
+  NuGet 漏洞审计仍无已知漏洞。
+- 新增 Python 唯一 `UnityWorkerClient`，集中处理 worker 发现、版本化请求、超时、结构化错误
+  和启动产物身份。Projectile 是首条迁移链路：新结果进入独占 run 目录，只有完整校验后的
+  `meta.json` 指针可通过 `os.replace` 原子发布；旧 AnimeStudio MonoBehaviour 路径暂不改动。
+- Projectile Python 接入已用真实汤汤 Bundle 验证，能够经新 worker 产生并重新读取
+  `partial` 聚焦组件；缓存测试覆盖命中复用、唯一产物/哈希校验及失败不发布指针。
+- `/api/health` 已报告 worker 握手、协议兼容性、必需能力、可选工具和未迁移旧工具；
+  可选工具缺失不会把核心服务误判为不可用。
+- 共用 MonoBehaviour Raw 已迁移到新 worker，并与 Projectile 复用同一原子导出框架，
+  没有再复制缓存发布逻辑。汤汤真实样本仍精确导出 4988 字节，SHA-256 为
+  `89e92655...`，连续调用命中同一已发布 run。
+- worker 缓存身份除启动 EXE/DLL 外，还包含发布目录全部直接文件的确定性元数据摘要；
+  单独重编译领域解码 DLL 时也会可靠失效，不再依赖“顺便更新 apphost”这一偶然行为。
+- 原子导出框架已从单产物扩展为多产物：逐项拒绝路径逃逸、重复路径、大小或 SHA-256
+  不一致，并在发布前验证派生文件。TypeTree Dump 已迁移到该框架，多个 MonoBehaviour
+  的文本会在同一 run 内生成 `combined-dump.txt` 后一起发布。
+- 汤汤真实 TypeTree 回归仍为 1320 字节、SHA-256 `88b3b671...`，消费 228/4988 字节并
+  明确报告 `complete: false`；连续调用命中同一 run。旧 MonoBehaviour 专用 CLI override
+  已删除，因为生产调用点已不存在。
+- `UnityWorkerClient` 新增可取消执行：取消前不会启动进程，运行中取消会 terminate、等待
+  回收，超时再 kill，并返回稳定 `worker_cancelled`。请求临时目录只会在进程退出后清理。
+- 新增持久化 `BackgroundTaskRegistry` 和 Projectile 首条异步入口。状态与结果位于独占任务
+  目录，`status.json` 是原子指针；内存仅保存当前进程的取消事件。成功结果写盘后才发布，
+  取消/失败不含结果指针，服务重启遗留的非终态任务会转为 `task_interrupted`。
+- 新增 `buildAssetMap`，复用权威 AnimeStudio 的单 Bundle 对象索引实现及锁定类型配置，
+  但由 VFS 协议显式传入输出类型和稳定 `sourceLabel`。上游写入的临时绝对路径会在 worker
+  边界被替换，因而相同资源不会随机器或缓存 run 改变 `AssetEntries[].Source`。
+- AssetMap 已接入共用多产物原子 run 框架；旧 CLI 目前只继续承担 `Convert`。死亡少女骨骼
+  Bundle 以 `Mesh`、`Material`、`Avatar` 三类得到 32 个条目。权威源码能把 container 解析为
+  `assets/beyond/arts/entity/npc/major/girl/deathgirl/models/sk_npc_major_deathgirl_01.fbx`；本机旧
+  net8 研究二进制的同一条目则为空，因此旧研究二进制不是等价目标，权威来源结果优先。
+- AssetMap 与 CABMap 的边界已明确分开：前者索引单个 Bundle 内对象；后者表达多个 Bundle
+  的 CAB 名、稳定输入 ID、序列化文件偏移及依赖。因此先定义无机器路径的 VFS 多输入
+  CABMap JSON 契约，再让对象导出显式消费它；不得复制旧 `BuildCABMap` 写全局 `Maps/`
+  目录、`UseCABMap` 再隐式读取的行为。
+- 新增 `buildCabMap` VFS 协议：输入为显式 `{ inputId, inputPath }` 列表，JSON 产物只含 CAB
+  名、稳定输入 ID、SerializedFile 偏移和外部 CAB 依赖，不保存 baseFolder 或物理路径。
+  实现直接复用权威 `AssetsManager` 的 Bundle/SerializedFile 读取，不调用旧全局 CABMap。
+  输入 ID、输入路径或 CAB 名重复均明确失败；死亡少女骨骼真实 Bundle 已验证可产生非空映射
+  且产物不含样本绝对路径。此能力尚未替换对象导出的 `UseCABMap`，不能误标为整条链路完成。
