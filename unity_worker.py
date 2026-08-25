@@ -16,6 +16,12 @@ PROTOCOL_VERSION = "1.0.0"
 PROTOCOL_NAME = "vfs-unity-worker"
 
 
+def worker_creation_flags() -> int:
+    """Keep per-request console workers invisible on Windows."""
+
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+
+
 class UnityWorkerError(RuntimeError):
     """worker 返回的稳定结构化错误。"""
 
@@ -325,6 +331,7 @@ class UnityWorkerClient:
                 errors="replace",
                 timeout=self.timeout_seconds,
                 check=False,
+                creationflags=worker_creation_flags(),
             )
         except FileNotFoundError as error:
             raise UnityWorkerError("worker_not_found", str(error), False) from error
@@ -356,6 +363,7 @@ class UnityWorkerClient:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
+                creationflags=worker_creation_flags(),
             )
         except FileNotFoundError as error:
             raise UnityWorkerError("worker_not_found", str(error), False) from error

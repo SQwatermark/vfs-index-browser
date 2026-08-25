@@ -10,6 +10,14 @@
 > partial 组件，不再依赖旧通用 JSON。
 > 这一区别是可复现性边界，不否定下述 manifest 身份链和历史样本结论。
 >
+> 后续产品化更新（2026-08-25）：`Endfield.Extensions` 已随嵌入式 Unity worker 合入当前
+> 工作树并完成真实服务验证。`GameplayTagQuery.tags[]` 按同版本 MemoryPack 生成包装器
+> 证据读取为 raw int32 `tagId`，不再虚构并消费字符串 path；这修复了莱万汀
+> `projectile_chr_0016_laevat_attack_4_2` 与 `projectile_chr_0016_laevat_attack_5` 的
+> 前缀错位。两份资源均经 `/api/akedb-compatible/ProjectileData/<id>.json` 返回 200，
+> 且解码 ID 与请求严格一致。序列化组件保留原始大小写时，ID 核验使用大小写不敏感的
+> ordinal 比较，与 manifest 路径的大小写不敏感身份规则保持一致。
+>
 > 新 worker 当前已恢复 managed-reference registry 和 Projectile 固定前缀。汤汤三段攻击
 > 样本中组件 payload 为 `[1560, 4988)`；前缀精确消费到 2032，余下 2956 字节的
 > `moveModeDict` 已继续消费至 2548，主特效结束条件消费至 2564。当前还剩 2424 字节的
@@ -92,10 +100,11 @@ record、chunk 修改时间、assetIndex、asset path，以及 AnimeStudio EXE/C
 枚举和哈希含义仍是诊断表示，因此返回的组件通常带 `$partial: true`，API 对应报告
 `decode.status = "partial"`，不会把它伪装成完全语义化结果。
 
-本次会话中索引指向的 `D:\Hypergryph Launcher\games\Endfield Game` chunk 路径已不在当前
-主机上，所以无法对庄方易两个 AB 再做一次实时端到端导出。实现与测试覆盖了精确身份查询、
-按需资源链、JSON managed-reference 选择、歧义处理和 HTTP 状态；部署主机只要恢复索引所指的
-本地游戏 chunk，并提供带该解码器的 AnimeStudio CLI，即可直接得到实际组件数据。
+早期会话中索引指向的 `D:\Hypergryph Launcher\games\Endfield Game` chunk 路径一度不在
+当前主机，因此当时无法对庄方易两个 AB 做实时端到端导出。当前嵌入式 worker 已可通过服务
+按需恢复并解码实际资源；实现与测试覆盖精确身份查询、按需资源链、managed-reference 选择、
+歧义处理和 HTTP 状态。若未来本地 chunk 或缓存再次缺失，应把它报告为证据不可用，而不是
+增加模糊路径回退。
 
 ## 后续验证
 

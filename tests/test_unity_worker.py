@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import tempfile
 import threading
@@ -9,6 +10,53 @@ from unity_worker import UnityWorkerClient, UnityWorkerError, UnityWorkerProtoco
 
 
 class UnityWorkerClientTests(unittest.TestCase):
+    def test_synchronous_worker_uses_hidden_console_flags_on_windows(self):
+        observed = {}
+
+        def run(command, **kwargs):
+            observed.update(kwargs)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "requestId": None,
+                    "ok": True,
+                    "result": {
+                        "protocol": {"name": "vfs-unity-worker", "version": "1.0.0"},
+                        "workerVersion": "test",
+                        "capabilities": [],
+                    },
+                }),
+                "",
+            )
+
+        UnityWorkerClient(["fake-worker"], runner=run).handshake()
+
+        expected = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        self.assertEqual(expected, observed["creationflags"])
+
+    def test_cancellable_worker_uses_hidden_console_flags_on_windows(self):
+        observed = {}
+        cancel_event = threading.Event()
+
+        class CompletedProcess:
+            returncode = 0
+
+            def communicate(self, timeout=None):
+                return json.dumps({"requestId": "hidden-1", "ok": True, "result": {}}), ""
+
+        def start_process(*_args, **kwargs):
+            observed.update(kwargs)
+            return CompletedProcess()
+
+        UnityWorkerClient(
+            ["fake-worker"],
+            process_factory=start_process,
+        ).request("operation", {}, request_id="hidden-1", cancel_event=cancel_event)
+
+        expected = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+        self.assertEqual(expected, observed["creationflags"])
+
     def test_cancellation_terminates_and_reaps_the_request_process(self):
         cancel_event = threading.Event()
 

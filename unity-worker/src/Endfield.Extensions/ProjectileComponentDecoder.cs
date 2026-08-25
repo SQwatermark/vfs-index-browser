@@ -42,7 +42,10 @@ public static class ProjectileComponentDecoder
         var entry = entries[0];
         var prefix = ProjectileComponentPrefixDecoder.Decode(rawData, entry);
         var actualId = prefix.Data["id"] as string;
-        if (!string.Equals(actualId, expectedProjectileId, StringComparison.Ordinal))
+        // HTTP/manifest lookup uses a canonical lowercase path, while the serialized component
+        // preserves the author's original ASCII casing. Identity is therefore case-insensitive
+        // at this boundary; the decoded payload still returns the original serialized ID.
+        if (!string.Equals(actualId, expectedProjectileId, StringComparison.OrdinalIgnoreCase))
         {
             throw new MonoBehaviourExportException(
                 "projectile_id_mismatch",

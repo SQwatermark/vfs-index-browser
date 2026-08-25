@@ -239,7 +239,7 @@ public static class ProjectileComponentPrefixDecoder
         };
     }
 
-    private static Dictionary<string, object?> ReadGameplayTagQuery(
+    internal static Dictionary<string, object?> ReadGameplayTagQuery(
         ManagedReferencePayloadReader reader,
         string fieldPath)
     {
@@ -256,15 +256,14 @@ public static class ProjectileComponentPrefixDecoder
                 ["value"] = queryType,
                 ["name"] = names[queryType],
             },
-            ["tags"] = ReadGameplayTags(reader, $"{fieldPath}.tags", 32, 256),
+            ["tags"] = ReadGameplayTags(reader, $"{fieldPath}.tags", 32),
         };
     }
 
     private static List<Dictionary<string, object?>> ReadGameplayTags(
         ManagedReferencePayloadReader reader,
         string fieldPath,
-        int maximumCount,
-        int maximumPathLength)
+        int maximumCount)
     {
         var count = ReadCount(reader, $"{fieldPath}.count", maximumCount);
         var items = new List<Dictionary<string, object?>>(count);
@@ -272,39 +271,10 @@ public static class ProjectileComponentPrefixDecoder
         {
             items.Add(new Dictionary<string, object?>
             {
-                ["path"] = ReadZeroPaddedUtf8(
-                    reader,
-                    $"{fieldPath}[{index}].path",
-                    maximumPathLength),
                 ["tagId"] = Hash32(reader.ReadInt32($"{fieldPath}[{index}].tagId")),
             });
         }
         return items;
-    }
-
-    private static string ReadZeroPaddedUtf8(
-        ManagedReferencePayloadReader reader,
-        string fieldPath,
-        int maximumLength)
-    {
-        var lengthOffset = reader.Position;
-        var length = reader.ReadInt32($"{fieldPath}.length");
-        if (length < 0 || length > maximumLength)
-        {
-            throw new InvalidDataException($"{fieldPath} 包含非法字符串长度 {length}。");
-        }
-        reader.SetPosition(lengthOffset);
-        var value = reader.ReadAlignedUtf8String(fieldPath);
-        var payloadEnd = lengthOffset + 4 + length;
-        var alignedEnd = (payloadEnd + 3) & ~3;
-        for (var offset = payloadEnd; offset < alignedEnd; offset++)
-        {
-            if (reader.RawData[offset] != 0)
-            {
-                throw new InvalidDataException($"{fieldPath} 在 {offset} 包含非零对齐字节。");
-            }
-        }
-        return value;
     }
 
     private static List<T> ReadObjectList<T>(

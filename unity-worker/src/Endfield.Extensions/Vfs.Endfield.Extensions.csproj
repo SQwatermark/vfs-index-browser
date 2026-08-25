@@ -10,4 +10,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AnimeStudio.Core\Vfs.AnimeStudio.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Vfs.UnityWorker.Tests" />
+  </ItemGroup>
 </Project>
