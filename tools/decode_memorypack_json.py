@@ -83,6 +83,9 @@ TYPE_OVERRIDES = {
 TYPE_ALIASES = {}
 
 RAW_GAMEPLAY_TAG_FIELDS = {
+    # 1.4.4 ObtainCost wrapper Deserialize (RVA 0x03E61583):
+    # one bool + one inline int32, no GameplayTag object header.
+    ("Beyond.Gameplay.Core.ObtainCostAction.Data", "uspRecoverTag"),
     ("Beyond.Gameplay.Core.HitStopAction.Data", "timeDilationPriority"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "slot"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "timeDilationPriority"),

@@ -68,6 +68,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dump-root", type=Path, required=True, help="Il2CppDumper AI-friendly dump directory")
     parser.add_argument("--output", type=Path, required=True, help="JSON output path")
+    parser.add_argument("--union-map", type=Path, help="Also include all recovered concrete union types as schema roots")
     parser.add_argument(
         "--class",
         dest="classes",
@@ -692,6 +693,9 @@ def main(argv: Iterable[str]) -> int:
     wrappers_by_instance = extract_wrappers(lines)
     runtime_classes = parse_runtime_classes(args.dump_root)
     classes = args.classes or DEFAULT_ROOT_CLASSES
+    if args.union_map:
+        union_map = json.loads(args.union_map.read_text(encoding="utf-8"))
+        classes = include_union_roots(classes, union_map)
     schemas = build_recursive_schema(classes, wrappers_by_instance, runtime_classes, args.max_depth)
     report = {
         "kind": "EndfieldMemoryPackSchema",
@@ -710,6 +714,18 @@ def main(argv: Iterable[str]) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0
+
+
+def include_union_roots(classes: list[str], union_map: dict) -> list[str]:
+    """Nested/generic wrapper inheritance is not always in the runtime index."""
+    if not isinstance(union_map, dict):
+        raise SystemExit("union map must be an object")
+    variants = []
+    for entries in union_map.values():
+        if not isinstance(entries, dict) or any(not isinstance(value, str) or not value for value in entries.values()):
+            raise SystemExit("union map entries must map tags to concrete type names")
+        variants.extend(entries.values())
+    return list(dict.fromkeys([*classes, *sorted(set(variants))]))
 
 
 if __name__ == "__main__":

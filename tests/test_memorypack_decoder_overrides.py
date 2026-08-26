@@ -52,6 +52,15 @@ class MemoryPackDecoderOverrideTests(unittest.TestCase):
         self.assertEqual({"tagId": 1234}, value)
         self.assertEqual(4, reader.tell())
 
+    def test_zero_recovery_tag_does_not_consume_next_union_header(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        reader = MemoryPackReader(struct.pack("<i", 0) + b"\xbe")
+        self.assertEqual({"tagId": 0}, decoder.read_value(
+            reader, "Beyond.Gameplay.Core.GameplayTag", "$.uspRecoverTag",
+            "Beyond.Gameplay.Core.ObtainCostAction.Data", "uspRecoverTag",
+        ))
+        self.assertEqual(0xBE, reader.read_u8())
+
     def test_enemy_ai_marker_info_uses_full_unmanaged_layout(self):
         decoder = Decoder(SchemaIndex({"classes": []}))
         reader = MemoryPackReader(struct.pack("<?3xi", True, 4321))

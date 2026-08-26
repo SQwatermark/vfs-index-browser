@@ -237,7 +237,11 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/build_audio_dialog_index.py`：从 AudioDialog JSON 和现有 PCK 元数据构建逻辑语音 SQLite 索引。
 - `tools/scan_jsondata_formats.py`：批量统计 JsonData 的真实编码格式。
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
-- `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema。
+- `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema；可用 `--union-map`
+  将已恢复派生类型显式纳入根集合。
+- `tools/extract_memorypack_unions.py`：从运行时注册恢复 union；部分初始化快照可传入同版本
+  `--metadata`，严格核对类型名、token 和索引。复现与边界见
+  [诀资源解码记录](docs/research/memorypack-arcane-2026-08-26.md)。
 - `tools/decode_memorypack_json.py`：使用已知 schema 解码二进制配置。
 - `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，根据
   `endfieldSourceMaterial` 与 `endfieldPreview` 自动建立 Eevee CharacterNPR
