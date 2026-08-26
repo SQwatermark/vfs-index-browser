@@ -3,10 +3,39 @@ import struct
 import unittest
 from pathlib import Path
 
-from tools.decode_memorypack_json import Decoder, MemoryPackReader, SchemaIndex
+from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex
 
 
 class MemoryPackDecoderOverrideTests(unittest.TestCase):
+    def test_buff_apply_tags_are_raw_signed_int32_and_preserve_next_field(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        for tags in ([], [0], [-1480463572, 226, 2147483647, -2147483648]):
+            with self.subTest(tags=tags):
+                reader = MemoryPackReader(struct.pack("<i", len(tags)) + b"".join(
+                    struct.pack("<i", tag) for tag in tags
+                ) + b"\xbe")
+                self.assertEqual([{"tagId": tag} for tag in tags], decoder.read_value(
+                    reader, "Beyond.Gameplay.Core.GameplayTag[]", "$.applyTags",
+                    "Beyond.Gameplay.Core.BuffData", "applyTags",
+                ))
+                self.assertEqual(0xBE, reader.read_u8())
+
+    def test_buff_apply_tags_null_is_not_empty(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        reader = MemoryPackReader(struct.pack("<i", -1) + b"\xbe")
+        self.assertIsNone(decoder.read_value(
+            reader, "Beyond.Gameplay.Core.GameplayTag[]", "$.applyTags",
+            "Beyond.Gameplay.Core.BuffData", "applyTags",
+        ))
+        self.assertEqual(0xBE, reader.read_u8())
+
+    def test_buff_apply_tags_truncated_payload_fails(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        with self.assertRaises(DecodeError):
+            decoder.read_value(MemoryPackReader(struct.pack("<ii", 2, 42)),
+                "Beyond.Gameplay.Core.GameplayTag[]", "$.applyTags",
+                "Beyond.Gameplay.Core.BuffData", "applyTags")
+
     def test_super_armor_blackboard_value_is_int32(self):
         decoder = Decoder(SchemaIndex({"classes": []}))
         reader = MemoryPackReader(struct.pack("<i", 280))

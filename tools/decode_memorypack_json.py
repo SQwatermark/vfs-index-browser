@@ -93,6 +93,9 @@ RAW_GAMEPLAY_TAG_FIELDS = {
 }
 
 RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
+    # BuffData.Deserialize 0x0387B803 -> raw count * 4 reader 0x03A0EC30;
+    # result is stored in BuffData.applyTags (+0x68) at 0x0387BBB5.
+    ("Beyond.Gameplay.Core.BuffData", "applyTags"),
     ("Beyond.Gameplay.Core.GameplayTagQuery", "tags"),
 }
 

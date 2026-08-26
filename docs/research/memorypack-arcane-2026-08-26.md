@@ -1,5 +1,52 @@
 # 诀资源：部分初始化快照与 MemoryPack 解码
 
+## 2026-08-26 续：66/66 解码与 CharacterTemplate 来源
+
+本轮新增字段覆盖 `BuffData.applyTags`，不是修改 GameplayTag 的全局格式：
+
+- `BuffDataForMemoryPack.Deserialize` RVA `0x0387B6A0`，在 `0x0387B803` 调用
+  raw array helper `0x03A0EC30`；helper 读 int32 count（-1=null，0=空），
+  `0x03A0ED77` 计算 count×4，`0x03A0ED85` 连续读取载荷。
+- 返回结果经 `0x0387BBB0/0x0387BBB5` 写到 BuffData + `0x68`，静态字段身份为 applyTags。
+  因此元素为 inline signed int32，没有每元素 object header。
+- seal2 完整消费 **3145/3145** 字节，tag=162143970；train_showhp **880/880**，
+  tags=351294767/-1394338415。此前 64/66 现为 **66/66**；语料中仍未找到新写入。
+- 新增三个测试覆盖符号位/零/空列表、null 与空的区别、截断拒绝和后续字段不被多读。
+  `python -m unittest discover -s tests -p '*memorypack*.py'`：**14 通过、2 项既有失败**
+  （SuperArmor 值类型、Enemy AI marker layout），不伪装为全绿。
+
+角色模板资源另有关键发现，不能继续只搜索 Skill/Buff：
+
+1. 当前 manifest 路径
+   `assets/beyond/dynamicassets/gamedata/characterdata/data_chr_0032_lizhiyan.asset`，
+   此次 assetIndex=79223、manifest id=451359；bundle
+   `main/02eeee54d47f7fc38f592da9.ab`，此次 raw id=229377。这些索引不是跨版本稳定 ID。
+2. 经 `/api/raw` 取得 bundle，使用内嵌 UnityWorker 的 `monobehaviour-raw` 导出，
+   未启动桌面 AnimeStudio。CAB `CAB-5d951182bacbd082ae8ce99e34f22bf7`，
+   PathID `-5979748725007797054`，raw 13724 字节，SHA256
+   `33934515EA8B90EFDF35F3FAE4901124ED54FC16C087A9755574D8DB58DCA0BC`。
+3. registry 在 raw 偏移 64，version=2、50 项；扫描另有嵌套假候选，不能随意挑选。
+   raw 头部指向 CharacterTemplateData RID `2708501211437859795`。
+   根载荷 `[168,544)` 已按继承字段完整读取，id=`chr_0032_lizhiyan`，26 个组件 RID
+   均解析成功；其中 AbilitySystemData RID `2708501211437859801`，范围 `[4092,7368)`。
+4. 该组件 `[6284,6460)` 有四项完整 DataPair，均空 valueStr、isDynamic=true：
+   consumed_type=0、consumed_layer=0、ult_hit=0、wisd_greater_will=1，全部带 EntityBB_ 前缀。
+   这还是局部载荷证据，AbilitySystemData 前缀未完整解析；正式字段导出仍未接通。
+   既有黑板扫描器另外在 6328/6372/6408 找到嵌套假候选，起点均是前项 true 的 bool32。
+   保持歧义拒绝，后续应按字段路径读取，不能改为选最大列表。
+5. 条件 RID `2708501211437859835`，类型 CheckSpellInflictionType.Data，载荷
+   `[12164,12212)`：isEnable=true、priorityLevel/Offset=0、serverActionIndex=1013、
+   mask=15、savedKey=`EntityBB_consumed_type`；组件偏移 5692 引用此 RID。
+   事件绑定和前置条件仍待严格导出，不能凭周边 event=121 的字节就安装监听器。
+
+TypeTree 文本仅消费 2264/13724，后续 registry 已错位，**不得拿它作完整解码结果**。
+原始文件、试验脚本和解码结果都只在 Endaxis `tmp/`；不提交游戏资源、生成 schema 或审计。
+本轮没有替换服务默认 schema，没有新增 CharacterTemplate 正式 API。
+原生写入动作已先进入 combat-spec，详见其 `docs/check-spell-infliction-type.md` 与
+`docs/arcane-consumed-type-gap.md`。Endaxis 8 场失败尚未解除。
+
+以下为上一批过程。
+
 ## 已确认结果
 
 本批仅修资源解码，不修改游戏规则、Endaxis 转换产物或服务默认 schema。
