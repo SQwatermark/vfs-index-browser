@@ -1,5 +1,7 @@
 # 研究文档索引
 
+- [character-template-prefix.md](character-template-prefix.md)：角色根引用校验、AbilitySystem 顺序前缀解码与连携条件取证边界。
+
 - [manifest-hgmmap-format.md](manifest-hgmmap-format.md)：BundleManifest 的头部、Bundle、依赖数组和 AssetInfo 路径格式。
 - [jsondata-binary-json-format.md](jsondata-binary-json-format.md)：JsonData 中非文本 JSON 的格式分类和探测结果。
 - [memorypack-decoder-progress-2026-07-29.md](memorypack-decoder-progress-2026-07-29.md)：MemoryPack schema 提取与解码进展。

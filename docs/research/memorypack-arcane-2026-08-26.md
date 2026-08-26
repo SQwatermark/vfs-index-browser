@@ -1,5 +1,9 @@
 # 诀资源：部分初始化快照与 MemoryPack 解码
 
+最新续篇：[CharacterTemplate 有界字段导出](character-template-prefix.md)已解决下面的前缀
+扫描歧义：按字段读取至 entityBlackboard，5 条连携事件绑定与局部黑板完整导出；6 个条件
+叶子完整、8 个仍 raw，总体 partial。尚未接通 Endaxis 生产转换，不能据此宣称 8 场失败消失。
+
 ## 2026-08-26 续：66/66 解码与 CharacterTemplate 来源
 
 本轮新增字段覆盖 `BuffData.applyTags`，不是修改 GameplayTag 的全局格式：
