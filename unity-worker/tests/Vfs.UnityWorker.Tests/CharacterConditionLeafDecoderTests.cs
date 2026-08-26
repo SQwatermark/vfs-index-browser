@@ -8,6 +8,58 @@ namespace Vfs.UnityWorker.Tests;
 public sealed class CharacterConditionLeafDecoderTests
 {
     [TestMethod]
+    public void ReadsContextTargetAndTagCountWithoutDroppingSignedTagIdentity()
+    {
+        var raw = Bytes(w =>
+        {
+            Target(w); w.Write(0); w.Write(1); w.Write(unchecked((int)0xa315eb9b));
+            w.Write(0); w.Write(3); w.Write(0); w.Write(1f); Text(w, "");
+        });
+        var entry = Entry("CheckBuffStackNumByTag/Data", raw.Length, "Beyond.Gameplay.Core.Conditions");
+        var data = CharacterConditionLeafDecoder.Decode(raw, entry)!;
+        var target = (Dictionary<string, object?>)data["checkTarget"]!;
+        Assert.AreEqual(2, target["targetSource"]);
+        Assert.AreEqual("trigger", target["targetGroupKey"]);
+        Assert.AreEqual(3, data["compareType"]);
+        var tags = (List<Dictionary<string, object?>>)((Dictionary<string, object?>)data["tagQuery"]!)["tags"]!;
+        Assert.AreEqual(unchecked((int)0xa315eb9b), ((Dictionary<string, object?>)tags[0]["tagId"]!)["value"]);
+        Assert.ThrowsException<InvalidDataException>(() => CharacterConditionLeafDecoder.Decode(raw, entry with { DataLength = raw.Length - 4 }));
+    }
+
+    [TestMethod]
+    public void ReadsObjectMaskAndPreservesNestedReferenceIds()
+    {
+        var raw = Bytes(w => { Target(w, 2708501211437859999); w.Write(16); });
+        var data = CharacterConditionLeafDecoder.Decode(raw, Entry("CheckObjectTypeMatch/Data", raw.Length,
+            "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.AreEqual(16, data["objectTypeMask"]);
+        var selector = (Dictionary<string, object?>)((Dictionary<string, object?>)data["target"]!)["selectorData"]!;
+        Assert.AreEqual("2708501211437859999", selector["finderData"]);
+    }
+
+    [TestMethod]
+    public void DebugPayloadIsPreservedEvenThoughNativeFallbackDoesNotReadIt()
+    {
+        var raw = Bytes(w =>
+        {
+            w.Write(1); Target(w); w.Write(1f); w.Write(0f); w.Write(0.5f); w.Write(1f);
+            Text(w, "missing-key"); Text(w, "test-log");
+        });
+        var data = CharacterConditionLeafDecoder.Decode(raw, Entry("DebugPrintAction/Data", raw.Length))!;
+        Assert.AreEqual("missing-key", data["bbKey"]);
+        Assert.AreEqual("test-log", data["identifier"]);
+        Assert.AreEqual(0.5f, ((Dictionary<string, object?>)data["color"]!)["b"]);
+    }
+
+    private static void Target(BinaryWriter w, long finder = -2)
+    {
+        w.Write(2); Text(w, "trigger"); w.Write(1); Text(w, ""); w.Write(0); Text(w, ""); w.Write(0);
+        w.Write(finder); w.Write(0); w.Write(0); w.Write(0); w.Write(0);
+        w.Write(-2L); w.Write(-2L); w.Write(0); w.Write(0); w.Write(0); w.Write(1); w.Write(0);
+        w.Write(0); w.Write(0); Text(w, "");
+    }
+
+    [TestMethod]
     public void DecodesSavedKeyAndRejectsTrailingOrTruncatedBytes()
     {
         var raw = Bytes(w => { w.Write(15); Text(w, "EntityBB_test"); });

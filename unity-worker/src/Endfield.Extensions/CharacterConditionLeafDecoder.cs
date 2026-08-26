@@ -9,7 +9,12 @@ public static class CharacterConditionLeafDecoder
         var spell = entry.ClassName == "CheckSpellInflictionType/Data"
             && entry.Namespace == "Beyond.Gameplay.Core.Conditions";
         var compare = entry.ClassName == "CompareFloat/Data" && entry.Namespace == "Beyond.Gameplay.Core";
-        if (!spell && !compare) return null;
+        var objectType = entry.ClassName == "CheckObjectTypeMatch/Data"
+            && entry.Namespace == "Beyond.Gameplay.Core.Conditions";
+        var tagStack = entry.ClassName == "CheckBuffStackNumByTag/Data"
+            && entry.Namespace == "Beyond.Gameplay.Core.Conditions";
+        var debug = entry.ClassName == "DebugPrintAction/Data" && entry.Namespace == "Beyond.Gameplay.Core";
+        if (!spell && !compare && !objectType && !tagStack && !debug) return null;
         var r = new ManagedReferencePayloadReader(raw, entry.DataOffset, entry.DataLength);
         var data = new Dictionary<string, object?>
         {
@@ -23,12 +28,37 @@ public static class CharacterConditionLeafDecoder
             data["mask"] = r.ReadInt32("mask");
             data["savedKey"] = r.ReadAlignedUtf8String("savedKey");
         }
-        else
+        else if (compare)
         {
             // Unity declaration order, NOT MemoryPack member order. Serialized value is float32.
             data["valueA"] = ReadNumber(r, "valueA");
             data["compare"] = r.ReadInt32("compare");
             data["valueB"] = ReadNumber(r, "valueB");
+        }
+        else if (objectType)
+        {
+            data["target"] = UnityTargetSettingsDecoder.Read(r, "target");
+            data["objectTypeMask"] = r.ReadInt32("objectTypeMask");
+        }
+        else if (tagStack)
+        {
+            data["checkTarget"] = UnityTargetSettingsDecoder.Read(r, "checkTarget");
+            data["tagQuery"] = ProjectileComponentPrefixDecoder.ReadGameplayTagQuery(r, "tagQuery");
+            data["buffStackNumType"] = r.ReadInt32("buffStackNumType");
+            data["compareType"] = r.ReadInt32("compareType");
+            data["value"] = ReadNumber(r, "value");
+        }
+        else
+        {
+            data["logType"] = r.ReadInt32("logType");
+            data["target"] = UnityTargetSettingsDecoder.Read(r, "target");
+            data["color"] = new Dictionary<string, object?>
+            {
+                ["r"] = r.ReadFloat("color.r"), ["g"] = r.ReadFloat("color.g"),
+                ["b"] = r.ReadFloat("color.b"), ["a"] = r.ReadFloat("color.a"),
+            };
+            data["bbKey"] = r.ReadAlignedUtf8String("bbKey");
+            data["identifier"] = r.ReadAlignedUtf8String("identifier");
         }
         r.EnsureComplete();
         return data;

@@ -4,6 +4,22 @@
 `character-template-prefix-v1`，**总体始终 partial**，不是完整 CharacterTemplate API。
 前序原始资源取得过程见 [诀二进制研究](memorypack-arcane-2026-08-26.md)。
 
+## 同日后续：14/14 条件叶子载荷完整
+
+新增 UnityTargetSettingsDecoder，按 TargetSettings/SelectorData/DirectionSettings 字段顺序读
+嵌套目标、RID 列表、方向参数；嵌套 RID 保留字符串，包括 -2 空引用。非空嵌套引用仅保存
+身份，不代表递归解释了其语义。新增 CheckObjectTypeMatch、CheckBuffStackNumByTag、DebugPrint
+叶子解码，复用既有 GameplayTagQuery 读取器，保留 signed tag ID，不从数值猜显示名。
+
+真实样本现在 **14/14 直接叶子完整消费**；目标均为 Context/trigger 或 DebugPrint 的 Target，
+selector/advancedDirection 引用均为 -2，列表为空；没有非空子引用遗留。模板总体仍 partial，
+后缀 908 字节不变。最新输出 `tmp/arcane-character-conditions-complete.json`，脚本参数同下。
+新增 3 项合成测试；UnityWorker **32 通过、4 外部资产跳过**。不启动外部 GUI，不提交 raw/JSON。
+
+原生动作执行、标签目录身份和 trigger 与 input 分离的证据已进入 combat-spec
+`docs/combo-condition-leaves.md`。本工具不推断冷却门禁或跨条件顺序，不声称 Next 模拟已通。
+下文的 6 complete/8 raw 是上一批快照。
+
 ## 字段与引用边界
 
 - 从 MonoBehaviour 头读根 RID，只接受头部结束位置的 version 2 registry；核对真实 root
