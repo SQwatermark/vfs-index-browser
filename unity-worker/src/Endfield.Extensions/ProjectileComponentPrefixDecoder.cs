@@ -40,12 +40,8 @@ public static class ProjectileComponentPrefixDecoder
             ["finishOnReach"] = reader.ReadBool32("projectileComponent.finishOnReach"),
             ["hitOnReach"] = reader.ReadBool32("projectileComponent.hitOnReach"),
             ["colliderShapeData"] = ReadShapeData(reader, "projectileComponent.colliderShapeData"),
-            ["blockLayerDef"] = ReadSparseEnum(
-                reader,
-                "projectileComponent.blockLayerDef",
-                (0, "Custom"),
-                (1, "Nothing"),
-                (2, "WallAndGround")),
+            ["blockLayerDef"] = DecodeProjectileBlockLayerDef(
+                reader.ReadInt32("projectileComponent.blockLayerDef")),
             ["blockLayer"] = Hash32(reader.ReadInt32("projectileComponent.blockLayer")),
             ["targetFilter"] = ReadTargetFilter(reader, "projectileComponent.targetFilter"),
             ["ignoreImmuneLevel"] = ReadSparseEnum(
@@ -344,6 +340,24 @@ public static class ProjectileComponentPrefixDecoder
         {
             result["name"] = matched.Name;
         }
+        return result;
+    }
+
+    /// <summary>
+    /// 1.4.4 _CalculateTouchingLayer 先对序列化值加一：结果 0 读取自定义层，1 清空阻挡层，
+    /// 2 使用墙体/地面层。因此原生值是 -1/0/1，而不是元数据声明顺序的 0/1/2。
+    /// </summary>
+    internal static Dictionary<string, object?> DecodeProjectileBlockLayerDef(int value)
+    {
+        var result = Hash32(value);
+        result["name"] = value switch
+        {
+            -1 => "Custom",
+            0 => "Nothing",
+            1 => "WallAndGround",
+            _ => null,
+        };
+        if (result["name"] is null) result.Remove("name");
         return result;
     }
 

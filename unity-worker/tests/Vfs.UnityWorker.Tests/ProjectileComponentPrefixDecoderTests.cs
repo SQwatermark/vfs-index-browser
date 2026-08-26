@@ -7,6 +7,22 @@ namespace Vfs.UnityWorker.Tests;
 public sealed class ProjectileComponentPrefixDecoderTests
 {
     [TestMethod]
+    public void DecodesProjectileBlockLayerDefFromNativeBranchValues()
+    {
+        Assert.AreEqual(
+            "Custom",
+            ProjectileComponentPrefixDecoder.DecodeProjectileBlockLayerDef(-1)["name"]);
+        Assert.AreEqual(
+            "Nothing",
+            ProjectileComponentPrefixDecoder.DecodeProjectileBlockLayerDef(0)["name"]);
+        Assert.AreEqual(
+            "WallAndGround",
+            ProjectileComponentPrefixDecoder.DecodeProjectileBlockLayerDef(1)["name"]);
+        Assert.IsFalse(
+            ProjectileComponentPrefixDecoder.DecodeProjectileBlockLayerDef(2).ContainsKey("name"));
+    }
+
+    [TestMethod]
     public void ReadsGameplayTagQueryTagsAsRawTagIds()
     {
         var bytes = new byte[16];
