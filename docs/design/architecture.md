@@ -104,6 +104,9 @@ BundleManifest 虚拟树的目录统计、资源分页和 preview/model/avatar-p
 manifest VFS 条目定位、物理来源解析与 HTTP 错误映射，新服务不访问主 SQLite 或发送响应。
 VFS 文件路径检索由 `vfs_search_service.py` 负责，服务统一 scope 过滤、SQL LIKE 字面量转义、
 稳定排序、上限和文件元数据回填；Handler 只约束查询参数并发送文档。
+Manifest 导出文件的通用预览文档和 Cubemap 六面文档由
+`manifest_asset_preview_service.py` 组装。普通文件继续委托共享预览分类器；Cubemap 固定 Unity
+面序、PositiveZ 默认面和逐面 raw/download 链接。资源解析与导出失败的 HTTP 映射仍归 Handler。
 文件后缀分类、媒体 Content-Type、有限编码探测、文本判定、截断和十六进制格式统一位于
 `file_preview_service.py`。普通 VFS 文件、Manifest 导出文件和 AB/PCK/USM 内部产物共享该规则；
 TableCfg 与 MemoryPack 等领域解码仍在通用分类前执行，不会被宽松文本探测吞掉。

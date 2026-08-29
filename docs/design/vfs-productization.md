@@ -910,3 +910,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - `/api/search` 的 SQL 与响应组装已抽到 `vfs_search_service.py`，scope、路径匹配、稳定排序和文件
   元数据在应用服务中完成；`%`、`_` 与反斜杠保持字面量语义，避免搜索词意外扩大为 SQL 通配。
   Handler 只解析并约束 `scope/q/limit`。
+- Manifest 资源预览文档已抽到 `manifest_asset_preview_service.py`：普通导出文件仍复用统一文本/媒体/
+  十六进制分类，Cubemap 则统一六面顺序、PositiveZ 默认预览、总尺寸和逐面 raw/download URL。
+  Handler 只负责定位资源、触发导出和映射失败，应用服务不读取 VFS 或调用 Worker。真实重启后
+  `t_sky_cube_004.exr` 的 6 面、5,680,951 字节和默认面 URL，以及 MonoBehaviourDump 的 kind、
+  1,486 字节、正文长度和链接均与迁移前一致。

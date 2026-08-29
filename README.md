@@ -148,6 +148,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `secondary_audio_startup.py` | 二级音频审计、逐项重建、重审计与启动结果协调 |
 | `vfs_directory_service.py` | VFS 目录分页、批量文件回填与 manifest 虚拟目录占位 |
 | `manifest_virtual_directory_service.py` | BundleManifest 虚拟目录分页与资源预览链接组装 |
+| `manifest_asset_preview_service.py` | Manifest 普通导出资源与 Cubemap 六面预览文档组装 |
 | `vfs_search_service.py` | VFS 文件路径检索、LIKE 转义与结果元数据组装 |
 | `file_preview_service.py` | 普通、Manifest 与容器内部文件共享的媒体/文本/十六进制预览 |
 | `vfs_file_preview_service.py` | VFS 容器、TableCfg、JSON/MemoryPack 与通用预览应用层 |

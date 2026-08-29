@@ -74,6 +74,7 @@ from vfs_directory_service import (
     split_manifest_virtual_path,
 )
 from manifest_virtual_directory_service import ManifestVirtualDirectoryService
+from manifest_asset_preview_service import ManifestAssetPreviewService
 from vfs_search_service import VfsSearchService
 from file_preview_service import (
     AUDIO_EXTENSIONS,
@@ -3171,42 +3172,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             bundle_record, faces, asset_meta, manifest_asset = cubemap
             manifest_id = query.get("manifestId", [""])[0]
             asset_index = query.get("assetIndex", [""])[0]
-            face_payload = []
-            for face_name in CUBEMAP_FACE_NAMES:
-                target = faces[face_name]
-                raw_url = (
-                    f"/api/manifest-asset/raw?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}&face={face_name}"
-                )
-                face_payload.append(
-                    {
-                        "name": face_name,
-                        "size": target.stat().st_size,
-                        "contentType": guess_content_type(target.name),
-                        "rawUrl": raw_url,
-                        "downloadUrl": f"{raw_url}&download=1",
-                    }
-                )
-            default_face = next(item for item in face_payload if item["name"] == "PositiveZ")
-            total_size = sum(item["size"] for item in face_payload)
             self.send_json(
-                {
-                    "file": {
-                        **bundle_record,
-                        "file_name": manifest_asset["path"],
-                        "length": total_size,
-                    },
-                    "resolvedFile": bundle_record,
-                    "usedFallback": False,
-                    "name": Path(str(manifest_asset["path"])).name,
-                    "size": total_size,
-                    "rawUrl": default_face["rawUrl"],
-                    "downloadUrl": default_face["downloadUrl"],
-                    "asset": asset_meta,
-                    "message": f"来自 {manifest_asset['bundle_name']}，按 Unity Cubemap 面序导出",
-                    "kind": "cubemap",
-                    "faces": face_payload,
-                }
+                ManifestAssetPreviewService().build_cubemap(
+                    bundle_record,
+                    faces,
+                    asset_meta,
+                    manifest_asset,
+                    manifest_id=manifest_id,
+                    asset_index=asset_index,
+                )
             )
             return
 
@@ -3216,23 +3190,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
         bundle_record, target, asset_meta, manifest_asset = resolved
         manifest_id = query.get("manifestId", [""])[0]
         asset_index = query.get("assetIndex", [""])[0]
-        raw_url = f"/api/manifest-asset/raw?manifestId={manifest_id}&assetIndex={asset_index}"
-        base = {
-            "file": {
-                **bundle_record,
-                "file_name": manifest_asset["path"],
-                "length": target.stat().st_size,
-            },
-            "resolvedFile": bundle_record,
-            "usedFallback": False,
-            "name": target.name,
-            "size": target.stat().st_size,
-            "rawUrl": raw_url,
-            "downloadUrl": f"{raw_url}&download=1",
-            "asset": asset_meta,
-            "message": f"来自 {manifest_asset['bundle_name']}",
-        }
-        self.send_json(FilePreviewService.build_path(base, target))
+        self.send_json(
+            ManifestAssetPreviewService().build_file(
+                bundle_record,
+                target,
+                asset_meta,
+                manifest_asset,
+                manifest_id=manifest_id,
+                asset_index=asset_index,
+            )
+        )
 
     def build_model_task_result(
         self,
