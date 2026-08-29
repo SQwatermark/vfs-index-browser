@@ -4975,6 +4975,23 @@ class BrowserHandler(BaseHTTPRequestHandler):
         animation_query["assetIndex"] = values
         return self.resolve_manifest_asset_source(animation_query)
 
+    def resolve_manifest_model_source(
+        self,
+        query: dict[str, list[str]],
+    ) -> tuple[ManifestIndex, dict, dict, Path] | None:
+        try:
+            manifest_id = int(query.get("manifestId", [""])[0])
+            asset_index = int(query.get("assetIndex", [""])[0])
+        except ValueError:
+            self.send_error_json(400, "Manifest 资源引用无效")
+            return None
+
+        try:
+            return self.manifest_asset_service().resolve_model(manifest_id, asset_index)
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
+            return None
+
     def resolve_animation_sources(
         self,
         query: dict[str, list[str]],
@@ -5001,15 +5018,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
             return None
 
-        resolved = []
-        for index in indexes:
-            animation_query = dict(query)
-            animation_query["assetIndex"] = [str(index)]
-            animation = self.resolve_manifest_asset_source(animation_query)
-            if animation is None:
-                return None
-            resolved.append(animation)
-        return resolved
+        try:
+            manifest_id = int(query.get("manifestId", [""])[0])
+        except ValueError:
+            self.send_error_json(400, "Manifest 资源引用无效")
+            return None
+        try:
+            return self.manifest_asset_service().resolve_many(manifest_id, indexes)
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
+            return None
 
     def resolve_manifest_asset_file(
         self,
@@ -5827,15 +5845,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         }
 
     def handle_manifest_asset_model(self, query: dict[str, list[str]]) -> None:
-        resolved = self.resolve_manifest_asset_source(query)
+        resolved = self.resolve_manifest_model_source(query)
         if resolved is None:
             return
         animation_resolved = self.resolve_optional_animation_source(query)
         if query.get("animationAssetIndex") and animation_resolved is None:
-            return
-        asset = resolved[1]
-        if not is_model_entry_path(str(asset["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
             return
         try:
             lod = int(query.get("lod", ["0"])[0])
@@ -6349,12 +6363,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         return result
 
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
-        resolved = self.resolve_manifest_asset_source(query)
+        resolved = self.resolve_manifest_model_source(query)
         if resolved is None:
-            return
-        path = str(resolved[1]["path"])
-        if not is_model_entry_path(path):
-            self.send_error_json(400, "resource is not a supported model entry")
             return
 
         try:
@@ -6482,12 +6492,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         return blend_path
 
     def handle_manifest_asset_model_blend(self, query: dict[str, list[str]]) -> None:
-        resolved = self.resolve_manifest_asset_source(query)
+        resolved = self.resolve_manifest_model_source(query)
         if resolved is None:
-            return
-        path = str(resolved[1]["path"])
-        if not is_model_entry_path(path):
-            self.send_error_json(400, "resource is not a supported model entry")
             return
         if not BLENDER_EXE.is_file():
             self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
@@ -6581,7 +6587,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self,
         query: dict[str, list[str]],
     ) -> None:
-        model_resolved = self.resolve_manifest_asset_source(query)
+        model_resolved = self.resolve_manifest_model_source(query)
         if model_resolved is None:
             return
         if not query.get("animationAssetIndex"):
@@ -6589,11 +6595,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         animation_resolved = self.resolve_optional_animation_source(query)
         if animation_resolved is None:
-            return
-
-        model_asset = model_resolved[1]
-        if not is_model_entry_path(str(model_asset["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
             return
 
         try:
@@ -6620,13 +6621,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self,
         query: dict[str, list[str]],
     ) -> None:
-        resolved = self.resolve_manifest_asset_source(query)
+        resolved = self.resolve_manifest_model_source(query)
         if resolved is None:
             return
         index, model_asset, _, _ = resolved
-        if not is_model_entry_path(str(model_asset["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
-            return
         default_query = query.get(
             "queryHint",
             [default_model_animation_query(str(model_asset["path"]))],

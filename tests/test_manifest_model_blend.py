@@ -33,12 +33,21 @@ class ManifestModelBlendTests(unittest.TestCase):
 
         handler = object.__new__(server.BrowserHandler)
         handler.wfile = io.BytesIO()
-        handler.resolve_manifest_asset_source = lambda _query: (
+        resolved = (
             object(),
             {"asset_index": 7, "path": asset_path},
             {},
             self.root / "source.chk",
         )
+        handler.resolve_manifest_asset_source = lambda _query: resolved
+
+        def resolve_model(_query):
+            if not server.is_model_entry_path(asset_path):
+                handler.send_error_json(400, "resource is not a supported model entry")
+                return None
+            return resolved
+
+        handler.resolve_manifest_model_source = resolve_model
         lods = []
 
         def ensure_model(resolved, *, lod=0):
@@ -485,18 +494,22 @@ class ManifestModelBlendTests(unittest.TestCase):
         handler = object.__new__(server.BrowserHandler)
         resolved_indexes = []
 
-        def resolve(query):
-            index = int(query["assetIndex"][0])
-            resolved_indexes.append(index)
-            return object(), {"asset_index": index}, {}, self.root / f"{index}.chk"
+        class Resolver:
+            def resolve_many(_self, manifest_id, indexes):
+                self.assertEqual(12, manifest_id)
+                resolved_indexes.extend(indexes)
+                return [
+                    (object(), {"asset_index": index}, {}, self.root / f"{index}.chk")
+                    for index in indexes
+                ]
 
-        handler.resolve_manifest_asset_source = resolve
+        handler.manifest_asset_service = lambda: Resolver()
         handler.send_error_json = lambda status, message: self.fail(
             f"unexpected HTTP {status}: {message}"
         )
 
         result = handler.resolve_animation_sources(
-            {"animationAssetIndex": ["22", "11,22"]}
+            {"manifestId": ["12"], "animationAssetIndex": ["22", "11,22"]}
         )
 
         self.assertEqual([11, 22], resolved_indexes)

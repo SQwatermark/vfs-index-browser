@@ -65,7 +65,7 @@ class ManifestAnimationSearchTests(unittest.TestCase):
             "asset_index": 9,
             "path": "assets/actors/chr_0004_pelica_postmodel.prefab",
         }
-        handler.resolve_manifest_asset_source = lambda _query: (
+        handler.resolve_manifest_model_source = lambda _query: (
             self.index,
             model_asset,
             {},
@@ -92,7 +92,7 @@ class ManifestAnimationSearchTests(unittest.TestCase):
             "asset_index": 9,
             "path": "assets/actors/chr_0004_pelica_postmodel.prefab",
         }
-        handler.resolve_manifest_asset_source = lambda _query: (
+        handler.resolve_manifest_model_source = lambda _query: (
             self.index,
             model_asset,
             {},
