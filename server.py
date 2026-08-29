@@ -74,6 +74,7 @@ from vfs_directory_service import (
     split_manifest_virtual_path,
 )
 from manifest_virtual_directory_service import ManifestVirtualDirectoryService
+from vfs_search_service import VfsSearchService
 from file_preview_service import (
     AUDIO_EXTENSIONS,
     IMAGE_EXTENSIONS,
@@ -855,10 +856,6 @@ def build_database(index_path: Path, db_path: Path) -> None:
 
 def row_to_dict(row: sqlite3.Row) -> dict:
     return {key: row[key] for key in row.keys()}
-
-
-def escape_sql_like(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def is_safe_akedb_name(value: str) -> bool:
@@ -1759,28 +1756,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         scope = query.get("scope", ["effective"])[0]
         term = query.get("q", [""])[0].strip()
         limit = min(max(int(query.get("limit", ["100"])[0]), 1), 500)
-        if not term:
-            self.send_json({"items": []})
-            return
-        pattern = f"%{escape_sql_like(term)}%"
         with self.connect() as conn:
-            rows = [
-                row_to_dict(row)
-                for row in conn.execute(
-                    """
-                    SELECT e.path, e.name, f.id, f.source, f.block_name, f.file_name,
-                           f.chunk_file, f.chunk_exists, f.offset, f.length,
-                           f.encrypted, f.iv_seed
-                    FROM entries e
-                    JOIN files f ON f.id = e.file_id
-                    WHERE e.scope = ? AND e.type = 'file' AND e.path LIKE ? ESCAPE '\\'
-                    ORDER BY e.path COLLATE NOCASE
-                    LIMIT ?
-                    """,
-                    (scope, pattern, limit),
-                )
-            ]
-        self.send_json({"items": rows, "limit": limit})
+            document = VfsSearchService().search(conn, scope, term, limit=limit)
+        self.send_json(document)
 
     def build_projectile_document(
         self,

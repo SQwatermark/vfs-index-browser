@@ -907,3 +907,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `manifest.hgmmap`、解析物理来源并映射 HTTP 错误。合成回归锁定根目录中文名、深层目录路径、
   prefab 模型入口和 AvatarMesh 的 plan/lod=0 特例；真实重启后根目录 242,222 个 bundle / 331,714
   个 asset，以及 projectile 深层目录 407 个资源和稳定预览 URL 均保持一致。
+- `/api/search` 的 SQL 与响应组装已抽到 `vfs_search_service.py`，scope、路径匹配、稳定排序和文件
+  元数据在应用服务中完成；`%`、`_` 与反斜杠保持字面量语义，避免搜索词意外扩大为 SQL 通配。
+  Handler 只解析并约束 `scope/q/limit`。
