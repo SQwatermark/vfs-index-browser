@@ -1663,7 +1663,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         worker.db_path = self.db_path
         created = TASKS.submit_with_progress(
             "model",
-            lambda cancel_event, report_progress: worker.build_model_preview_result(
+            lambda cancel_event, report_progress: worker.build_model_task_result(
                 manifest_id,
                 resolved,
                 animation_resolved,
@@ -5468,6 +5468,56 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         self.send_json({**base, "kind": "hex", "hex": hex_preview(data), "truncated": truncated})
 
+    def build_model_task_result(
+        self,
+        manifest_id: int,
+        resolved: tuple[ManifestIndex, dict, dict, Path],
+        animation_resolved: tuple[ManifestIndex, dict, dict, Path] | None,
+        lod: int,
+        *,
+        cancel_event: threading.Event,
+        progress: Callable[[dict], None],
+    ) -> dict:
+        is_avatar_mesh = is_avatar_mesh_asset_path(str(resolved[1]["path"]))
+        total = 6 if is_avatar_mesh else 5
+        stage_offsets = {
+            "avatarPlan": 0,
+            "cabMap": 1 if is_avatar_mesh else 0,
+            "objects": 2 if is_avatar_mesh else 1,
+            "textures": 3 if is_avatar_mesh else 2,
+            "publish": 4 if is_avatar_mesh else 3,
+            "cache": total - 1,
+        }
+
+        def report_model_progress(value: dict) -> None:
+            stage = str(value.get("stage") or "")
+            progress({
+                "stage": stage,
+                "completed": stage_offsets.get(stage, 0),
+                "total": total,
+            })
+
+        result = self.build_model_preview_result(
+            manifest_id,
+            resolved,
+            animation_resolved,
+            lod,
+            cancel_event=cancel_event,
+            progress=report_model_progress,
+        )
+        if cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
+        progress({"stage": "glb", "completed": total - 1, "total": total})
+        self.ensure_manifest_asset_model_glb(
+            resolved,
+            lod=lod,
+            cancel_event=cancel_event,
+        )
+        if cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
+        progress({"stage": "ready", "completed": total, "total": total})
+        return result
+
     def build_model_preview_result(
         self,
         manifest_id: int,
@@ -5664,9 +5714,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def ensure_manifest_asset_model_glb(
         self,
-        resolved: tuple[ManifestIndex, dict, dict, dict],
+        resolved: tuple[ManifestIndex, dict, dict, Path],
         *,
         lod: int = 0,
+        cancel_event: threading.Event | None = None,
     ) -> tuple[dict, Path, Path]:
         index, asset, bundle_record, bundle_chunk = resolved
         is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
@@ -5677,6 +5728,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 bundle_record,
                 bundle_chunk,
                 lod,
+                cancel_event=cancel_event,
             )
         else:
             dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
@@ -5688,6 +5740,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 dependencies,
                 dependency_sources,
                 missing_dependencies,
+                cancel_event=cancel_event,
             )
             cache_root, _, _ = self.model_snapshot_cache_paths(
                 bundle_record, int(asset["asset_index"])
@@ -5730,6 +5783,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             or glb_path.stat().st_mtime_ns < newest_source_mtime
             or load_cache_identity(glb_meta_path) != cache_identity
         ):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("worker_cancelled")
             glb = build_glb(
                 document,
                 geometry,
@@ -5743,6 +5798,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
         return asset, model_path, glb_path
 
     def load_model_glb_inputs(

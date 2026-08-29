@@ -115,7 +115,7 @@ class ServerTaskTests(unittest.TestCase):
         cancel_event_outer = cancel_event
         with (
             patch.object(server, "TASKS", FakeTasks()),
-            patch.object(server.BrowserHandler, "build_model_preview_result", build),
+            patch.object(server.BrowserHandler, "build_model_task_result", build),
         ):
             handler.handle_start_model_task()
             result = operations[0][1](cancel_event, progress_reports.append)
@@ -193,6 +193,49 @@ class ServerTaskTests(unittest.TestCase):
         self.assertEqual("modelDocument", result["kind"])
         self.assertEqual("hierarchyOnly", result["status"])
         self.assertEqual("test", result["run"]["scope"])
+
+    def test_model_task_prepares_glb_before_publishing_result(self):
+        handler = object.__new__(server.BrowserHandler)
+        cancel_event = threading.Event()
+        resolved = (
+            object(),
+            {"path": "assets/model.prefab", "asset_index": 11},
+            {"id": 7},
+            Path("bundle.ab"),
+        )
+        observed = []
+        reports = []
+
+        def build(*_args, cancel_event=None, progress=None):
+            self.assertIsNotNone(cancel_event)
+            progress({"stage": "objects", "completed": 2, "total": 4})
+            return {"kind": "modelDocument"}
+
+        def prepare(model, *, lod=0, cancel_event=None):
+            observed.append((model, lod, cancel_event))
+
+        handler.build_model_preview_result = build
+        handler.ensure_manifest_asset_model_glb = prepare
+
+        result = handler.build_model_task_result(
+            3,
+            resolved,
+            None,
+            0,
+            cancel_event=cancel_event,
+            progress=reports.append,
+        )
+
+        self.assertEqual({"kind": "modelDocument"}, result)
+        self.assertEqual([(resolved, 0, cancel_event)], observed)
+        self.assertEqual(
+            [
+                {"stage": "objects", "completed": 1, "total": 5},
+                {"stage": "glb", "completed": 4, "total": 5},
+                {"stage": "ready", "completed": 5, "total": 5},
+            ],
+            reports,
+        )
 
 
 if __name__ == "__main__":

@@ -351,8 +351,9 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 - Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap`、`exportObjectSnapshots` 与
   `exportIdentifiedTextures`，模型和 AvatarMesh 生产路径均已接入；
 - 浏览器模型预览已改走持久化后台任务，切换资源会取消旧任务；取消事件贯穿 Avatar 计划、
-  CABMap、对象与纹理 worker，任务状态保存当前阶段。兼容的同步模型 GET 复用同一结果构建
-  函数；GLB 与 Blender 派生下载仍是后续可任务化的同步路径；
+  CABMap、对象与纹理 worker，任务状态保存当前阶段，并在发布成功结果前完成基础 GLB 派生。
+  兼容的同步模型 GET 复用同一结果构建函数；批量动画绑定与 Blender 派生下载仍是后续可
+  任务化的同步路径；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
@@ -374,7 +375,7 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
    `Convert`；
-2. 将仍为同步路径的 GLB、批量动画绑定和 Blender 派生接入后台任务，并消除批量导出
+2. 将仍为同步路径的批量动画绑定和 Blender 派生接入后台任务，并消除批量导出
    “预检查后再次绑定”的重复工作；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；

@@ -122,9 +122,10 @@ DELETE /api/task?taskId=<id>
 
 Projectile 创建请求体为 `{"projectileId":"projectile_..."}`；模型请求体包含
 `manifestId`、`assetIndex`、`lod` 和可选的 `animationAssetIndex`。任务结果写入独占缓存目录，
-成功后才由原子状态文件发布；模型任务会在状态中报告资源计划、CAB 映射、对象、纹理和发布
-阶段。浏览器切换模型时会取消旧任务，`DELETE` 会实际终止对应的独占 worker 进程，而不只是
-改变前端状态。原同步模型查询仍保留给已有调用者兼容。
+成功后才由原子状态文件发布；模型任务会在状态中报告资源计划、CAB 映射、对象、纹理、缓存
+发布和 GLB 派生阶段，前端收到成功结果时基础 GLB 已就绪。浏览器切换模型时会取消旧任务，
+`DELETE` 会实际终止对应的独占 worker 进程，而不只是改变前端状态。原同步模型查询仍保留给
+已有调用者兼容。
 
 ```text
 GET /api/manifest

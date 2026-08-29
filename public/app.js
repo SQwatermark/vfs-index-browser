@@ -227,6 +227,8 @@ const modelProgressLabels = {
   textures: '导出模型纹理',
   publish: '发布模型缓存',
   cache: '读取模型缓存',
+  glb: '生成 GLB 预览',
+  ready: '模型预览已就绪',
 }
 
 function renderModelTaskProgress(progress) {
