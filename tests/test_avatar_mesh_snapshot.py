@@ -5,7 +5,7 @@ from pathlib import Path
 
 from avatar_mesh_snapshot import (
     load_exported_objects,
-    material_texture_names,
+    material_texture_selections,
     selected_container_paths,
     selected_object_names,
 )
@@ -109,26 +109,33 @@ class AvatarMeshSnapshotTests(unittest.TestCase):
             self.assertEqual({"body", "eyes"}, set(materials))
             self.assertEqual("CharacterAvatar", avatar["m_Name"])
 
-    def test_collects_unique_non_null_texture_names(self):
+    def test_collects_exact_texture_identities_from_snapshot_references(self):
         materials = {
             "body": {
-                "m_SavedProperties": {
-                    "m_TexEnvs": {
-                        "_BaseMap": {"m_Texture": {"IsNull": False, "Name": "Body_D"}},
-                        "_Mask": {"m_Texture": {"IsNull": False, "Name": "Body_M"}},
-                    }
+                "$animestudio": {
+                    "pptrReferences": [
+                        {
+                            "path": "$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture",
+                            "targetType": "Texture2D",
+                            "targetSourceFile": "CAB-a",
+                            "targetPathId": -17,
+                            "targetName": "Body_D",
+                        },
+                        {
+                            "path": "$.m_SavedProperties.m_TexEnvs._BaseMap.m_Texture",
+                            "targetType": "Texture2D",
+                            "targetSourceFile": "cab-A",
+                            "targetPathId": -17,
+                            "targetName": "Body_D",
+                        },
+                    ]
                 }
-            },
-            "face": {
-                "m_SavedProperties": {
-                    "m_TexEnvs": {
-                        "_BaseMap": {"m_Texture": {"IsNull": False, "Name": "Body_D"}},
-                        "_Empty": {"m_Texture": {"IsNull": True, "Name": "Ignored"}},
-                    }
-                }
-            },
+            }
         }
-        self.assertEqual(["Body_D", "Body_M"], material_texture_names(materials))
+        self.assertEqual(
+            [{"sourceFile": "CAB-a", "pathId": -17, "name": "Body_D"}],
+            material_texture_selections(materials),
+        )
 
 
 if __name__ == "__main__":

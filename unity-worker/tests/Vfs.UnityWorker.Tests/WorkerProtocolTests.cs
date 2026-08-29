@@ -19,7 +19,7 @@ public sealed class WorkerProtocolTests
         StringAssert.Contains(payload, WorkerProtocol.AnimeStudioUpstreamCommit);
         StringAssert.Contains(
             payload,
-            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\"]");
+            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\",\"exportIdentifiedTextures\"]");
     }
 
     [TestMethod]
@@ -243,6 +243,43 @@ public sealed class WorkerProtocolTests
                     output)));
 
             Assert.AreEqual("unknown_primary_input", exception.Code);
+            Assert.IsFalse(Directory.Exists(output));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void IdentifiedTextureRejectsDuplicateSelectionBeforeCreatingOutput()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"vfs-worker-test-{Guid.NewGuid():N}");
+        var input = Path.Combine(root, "input.ab");
+        var cabMap = Path.Combine(root, "cab-map.json");
+        var output = Path.Combine(root, "output");
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllBytes(input, [0x00]);
+            File.WriteAllText(cabMap, "{\"schemaVersion\":1,\"entries\":[]}");
+
+            var exception = Assert.ThrowsException<MonoBehaviourExportException>(() =>
+                ObjectSnapshotExporter.ExportIdentifiedTextures(
+                    new IdentifiedTextureExportRequest(
+                        [new ObjectSnapshotInput("bundle:1", input)],
+                        cabMap,
+                        "bundle:1",
+                        [
+                            new IdentifiedTextureSelection("CAB-test", 7),
+                            new IdentifiedTextureSelection("cab-TEST", 7),
+                        ],
+                        output)));
+
+            Assert.AreEqual("invalid_texture_selection", exception.Code);
             Assert.IsFalse(Directory.Exists(output));
         }
         finally

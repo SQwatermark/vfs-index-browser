@@ -267,6 +267,41 @@ class UnityWorkerClientTests(unittest.TestCase):
         self.assertTrue(Path(arguments["cabMapPath"]).is_absolute())
         self.assertTrue(Path(arguments["inputs"][1]["inputPath"]).is_absolute())
 
+    def test_export_identified_textures_uses_exact_object_identities(self):
+        observed = {}
+
+        def run(command, **kwargs):
+            request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
+            observed.update(request)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "requestId": request["requestId"],
+                    "ok": True,
+                    "result": {"artifactCount": 1, "artifacts": []},
+                }),
+                "",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            UnityWorkerClient(["fake-worker"], runner=run).export_identified_textures(
+                inputs=[{"inputId": "bundle:primary", "inputPath": str(root / "entry.ab")}],
+                cab_map_path=root / "cab-map.json",
+                primary_input_id="bundle:primary",
+                selections=[{"sourceFile": "CAB-test", "pathId": -17}],
+                output_directory=root / "textures",
+                request_id="textures-1",
+            )
+
+        self.assertEqual("exportIdentifiedTextures", observed["operation"])
+        self.assertEqual(
+            [{"sourceFile": "CAB-test", "pathId": -17}],
+            observed["arguments"]["selections"],
+        )
+        self.assertTrue(Path(observed["arguments"]["cabMapPath"]).is_absolute())
+
     def test_translates_structured_worker_error(self):
         def run(command, **kwargs):
             return subprocess.CompletedProcess(

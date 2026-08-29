@@ -24,13 +24,13 @@ manifest.hgmmap
 各层职责如下：
 
 1. `manifest_index.py` 定位入口 Bundle，并查询三类 Bundle 依赖的传递闭包。
-2. `server.py` 按需暂存相关 AB，驱动 AnimeStudio 导出 CABMap、对象 JSON 和引用纹理。
+2. `server.py` 按需暂存相关 AB，驱动 VFS Unity worker 导出 CABMap、对象快照和引用纹理。
 3. `animestudio_model.py` 根据显式 `sourceFile + pathId` 和 PPtr 恢复组合模型，禁止靠文件名猜引用。
 4. `model_document.py` 定义并校验稳定的中间协议，Schema 位于 `schemas/model-document.schema.json`。
 5. `gltf_export.py` 从 ModelDocument 选择预览资源并生成自包含 GLB，不重新解释 Unity 对象。
 6. 前端通过 Three.js 加载 GLB，普通文件浏览行为不受模型预览入口影响。
 
-当前 Prefab 快照适配器要求 AnimeStudio `ObjectJSON` 携带 `$animestudio` 身份与 PPtr 元数据，并严格接受 `AnimeStudioObjectSnapshot/1.0.0`。标准 `JSON` 只写对象载荷，不属于模型恢复协议。旧模型缓存曾掩盖该差异；快照缓存版本 26 会强制重新生成。`sourceFile + pathId` 是对象身份，跨 Bundle 引用由 AnimeStudio 在加载 manifest 依赖闭包的 CAB 映射后解析；消费端不能退回按导出文件名猜测，也不能通过全量导出依赖闭包规避问题。
+当前 Prefab 快照适配器要求 worker 输出 `$animestudio` 身份与 PPtr 元数据，并严格接受 `AnimeStudioObjectSnapshot/1.0.0`。标准 `JSON` 只写对象载荷，不属于模型恢复协议。`sourceFile + pathId` 是对象和纹理身份；跨 Bundle 引用由内嵌核心在加载 manifest 依赖闭包并校验显式 CABMap 后解析。消费端不能退回按导出文件名或对象名猜测，也不能通过全量导出依赖闭包规避问题。
 
 ## ModelDocument 边界
 

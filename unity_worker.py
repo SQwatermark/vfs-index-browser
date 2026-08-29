@@ -348,6 +348,42 @@ class UnityWorkerClient:
             cancel_event=cancel_event,
         )
 
+    def export_identified_textures(
+        self,
+        *,
+        inputs: Sequence[Mapping[str, str]],
+        cab_map_path: Path,
+        primary_input_id: str,
+        selections: Sequence[Mapping[str, object]],
+        output_directory: Path,
+        request_id: str,
+        cancel_event: object | None = None,
+    ) -> dict:
+        return self.request(
+            "exportIdentifiedTextures",
+            {
+                "inputs": [
+                    {
+                        "inputId": value["inputId"],
+                        "inputPath": str(Path(value["inputPath"]).resolve()),
+                    }
+                    for value in inputs
+                ],
+                "cabMapPath": str(cab_map_path.resolve()),
+                "primaryInputId": primary_input_id,
+                "selections": [
+                    {
+                        "sourceFile": str(value["sourceFile"]),
+                        "pathId": int(value["pathId"]),
+                    }
+                    for value in selections
+                ],
+                "outputDirectory": str(output_directory.resolve()),
+            },
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def _run(
         self,
         command: Sequence[str],

@@ -54,11 +54,8 @@ from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
-    build_cab_map_command,
-    build_texture_export_command,
     load_exported_objects,
-    load_texture_paths,
-    material_texture_names,
+    material_texture_selections,
     selected_container_paths,
 )
 from npc_avatar_model import build_static_avatar_mesh_document
@@ -77,7 +74,6 @@ from animestudio_model import (
     find_container_root_game_object,
     load_animestudio_objects,
 )
-from animestudio_tool import load_animestudio_tool_manifest
 from model_document import validate_model_document
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
@@ -245,6 +241,7 @@ def build_health_document() -> dict:
         "buildAssetMap",
         "buildCabMap",
         "exportObjectSnapshots",
+        "exportIdentifiedTextures",
     ])
     return {
         "apiVersion": 1,
@@ -305,8 +302,8 @@ MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
 PROJECTILE_COMPONENT_EXPORT_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
-MODEL_SNAPSHOT_VERSION = 30
-AVATAR_MODEL_SNAPSHOT_VERSION = 3
+MODEL_SNAPSHOT_VERSION = 31
+AVATAR_MODEL_SNAPSHOT_VERSION = 4
 ANIMATION_CLIP_EXPORT_VERSION = 4
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
@@ -3070,9 +3067,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         geometry_path = model_path.with_name("geometry.bin")
         texture_root = model_path.parent / "textures"
         model_builder_path = Path(build_hierarchy_document.__code__.co_filename)
-        if not ANIMESTUDIO_CLI.exists():
-            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
-        tool_manifest = load_animestudio_tool_manifest(ANIMESTUDIO_CLI)
         source_identity = {
             "recordId": int(record["id"]),
             "length": int(record["length"]),
@@ -3096,11 +3090,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 for dependency, dependency_chunk in dependency_sources
             ],
             "missingDependencyBundles": missing_dependency_bundles,
-            "toolArtifacts": {
-                "unityWorker": UNITY_WORKER.artifact_identity(),
-                "legacyTextureExporter": dotnet_tool_identity(ANIMESTUDIO_CLI),
-            },
-            "toolManifest": tool_manifest,
+            "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
         if model_path.exists() and run_path.exists():
             try:
@@ -3163,7 +3153,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             ),
         )
         validate_worker_artifacts(object_root, object_result)
-        map_name = f"vfs-model-{int(record['id'])}-{int(asset['asset_index'])}"
         completed_steps = [
             {"name": "buildCABMap", "workerResult": cab_result},
             {"name": "exportObjectSnapshots", "workerResult": object_result},
@@ -3209,103 +3198,41 @@ class BrowserHandler(BaseHTTPRequestHandler):
         image_uris = {}
         if textures:
             shutil.rmtree(texture_root, ignore_errors=True)
-            texture_root.mkdir(parents=True, exist_ok=True)
-            texture_names = sorted(
-                {str(texture.get("name") or "") for texture in textures.values()} - {""}
+            texture_result = UNITY_WORKER.export_identified_textures(
+                inputs=staged_inputs,
+                cab_map_path=cab_root / "cab-map.json",
+                primary_input_id="manifest:primary",
+                selections=[
+                    {"sourceFile": identity.source_file, "pathId": identity.path_id}
+                    for identity in textures
+                ],
+                output_directory=texture_root,
+                request_id=(
+                    f"model-textures-{int(record['id'])}-{int(asset['asset_index'])}-"
+                    f"{time.time_ns()}"
+                ),
             )
-            # IdentifiedTexture 尚未迁入 worker；只为这一条遗留转换链建立旧 CABMap。
-            # 对象快照本身已经不再消费进程级 Maps 状态。
-            legacy_map_command = [
-                str(ANIMESTUDIO_CLI),
-                str(input_root),
-                str(texture_root),
-                "--game",
-                "ArknightsEndfield",
-                "--map_op",
-                "BuildCABMap",
-                "--map_name",
-                map_name,
-                "--logger_flags",
-                "Error",
-                "Warning",
-                "Info",
-            ]
-            legacy_map = subprocess.run(
-                legacy_map_command,
-                cwd=str(ANIMESTUDIO_CLI.parent),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=300,
-                check=False,
-            )
+            validate_worker_artifacts(texture_root, texture_result)
             completed_steps.append(
                 {
-                    "name": "buildLegacyTextureCABMap",
-                    "command": legacy_map_command,
-                    "returncode": legacy_map.returncode,
-                    "stdout": legacy_map.stdout,
-                    "stderr": legacy_map.stderr,
+                    "name": "exportIdentifiedTextures",
+                    "workerResult": texture_result,
                 }
             )
-            if legacy_map.returncode != 0:
-                raise RuntimeError("AnimeStudio texture CABMap build failed")
-            texture_command = [
-                str(ANIMESTUDIO_CLI),
-                str(source_path),
-                str(texture_root),
-                "--game",
-                "ArknightsEndfield",
-                "--map_op",
-                "UseCABMap",
-                "--map_name",
-                map_name,
-                "--types",
-                "Texture2D",
-                "--names",
-                f"^(?:{'|'.join(re.escape(name) for name in texture_names)})$",
-                "--export_type",
-                "IdentifiedTexture",
-                "--group_assets",
-                "ByType",
-                "--logger_flags",
-                "Error",
-                "Warning",
-                "Info",
-            ]
-            completed = subprocess.run(
-                texture_command,
-                cwd=str(ANIMESTUDIO_CLI.parent),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=300,
-                check=False,
-            )
-            completed_steps.append(
-                {
-                    "name": "exportTextures",
-                    "command": texture_command,
-                    "returncode": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
-                }
-            )
-            if completed.returncode == 0:
-                for texture_id in textures:
-                    suffix = f"_p{texture_id.path_id & 0xFFFFFFFFFFFFFFFF:016X}.png"
-                    matches = [
-                        path for path in texture_root.rglob("*.png")
-                        if path.name.upper().endswith(suffix.upper())
-                    ]
-                    if len(matches) == 1:
-                        relative = matches[0].relative_to(texture_root).as_posix()
-                        image_uris[texture_id] = (
-                            f"/api/manifest-asset/model-texture?recordId={int(record['id'])}"
-                            f"&assetIndex={int(asset['asset_index'])}&path={quote(relative)}"
-                        )
+            texture_ids = {
+                (identity.source_file.casefold(), identity.path_id): identity
+                for identity in textures
+            }
+            for artifact in texture_result.get("artifacts", []):
+                identity = texture_ids.get(
+                    (str(artifact.get("sourceFile") or "").casefold(), int(artifact["pathId"]))
+                )
+                if identity is not None:
+                    image_uris[identity] = (
+                        f"/api/manifest-asset/model-texture?recordId={int(record['id'])}"
+                        f"&assetIndex={int(asset['asset_index'])}"
+                        f"&path={quote(str(artifact['relativePath']))}"
+                    )
             attach_texture_images(document, textures, image_uris)
             missing_textures = [
                 texture_id.document_id for texture_id in textures if texture_id not in image_uris
@@ -3396,8 +3323,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         bundle_chunk: Path,
         lod: int,
     ) -> tuple[dict, dict, Path]:
-        if not ANIMESTUDIO_CLI.exists():
-            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
         if lod not in range(4):
             raise ValueError(f"LOD must be in 0..3, got {lod}")
 
@@ -3421,7 +3346,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         geometry_path = model_path.with_name("geometry.bin")
         texture_root = model_path.parent / "textures"
-        tool_manifest = load_animestudio_tool_manifest(ANIMESTUDIO_CLI)
         builder_paths = [
             Path(build_static_avatar_mesh_document.__code__.co_filename),
             Path(selected_container_paths.__code__.co_filename),
@@ -3453,11 +3377,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "builders": {
                 path.name: path.stat().st_mtime_ns for path in builder_paths
             },
-            "toolArtifacts": {
-                "unityWorker": UNITY_WORKER.artifact_identity(),
-                "legacyTextureExporter": dotnet_tool_identity(ANIMESTUDIO_CLI),
-            },
-            "toolManifest": tool_manifest,
+            "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
         if model_path.is_file() and run_path.is_file():
             try:
@@ -3495,10 +3415,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not staged_inputs:
             raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
         primary_input_id = staged_inputs[0]["inputId"]
-        map_name = (
-            f"vfs-avatar-{int(bundle_record['id'])}-"
-            f"{int(asset['asset_index'])}-lod{lod}"
-        )
         cab_root = object_root.parent / "cab-map"
         shutil.rmtree(cab_root, ignore_errors=True)
         cab_result = UNITY_WORKER.build_cab_map(
@@ -3530,69 +3446,41 @@ class BrowserHandler(BaseHTTPRequestHandler):
         ]
 
         meshes, materials, avatar = load_exported_objects(object_root, plan)
-        texture_names = material_texture_names(materials)
+        texture_selections = material_texture_selections(materials)
         texture_uris = {}
-        if texture_names:
-            texture_root.mkdir(parents=True, exist_ok=True)
-            legacy_map_command = build_cab_map_command(
-                ANIMESTUDIO_CLI,
-                input_root,
-                texture_root,
-                map_name,
+        if texture_selections:
+            texture_result = UNITY_WORKER.export_identified_textures(
+                inputs=staged_inputs,
+                cab_map_path=cab_root / "cab-map.json",
+                primary_input_id=primary_input_id,
+                selections=texture_selections,
+                output_directory=texture_root,
+                request_id=(
+                    f"avatar-textures-{int(bundle_record['id'])}-"
+                    f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
+                ),
             )
-            legacy_map = subprocess.run(
-                legacy_map_command,
-                cwd=str(ANIMESTUDIO_CLI.parent),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=300,
-                check=False,
-            )
+            validate_worker_artifacts(texture_root, texture_result)
             completed_steps.append({
-                "name": "buildLegacyTextureCABMap",
-                "command": legacy_map_command,
-                "returncode": legacy_map.returncode,
-                "stdout": legacy_map.stdout,
-                "stderr": legacy_map.stderr,
+                "name": "exportIdentifiedTextures",
+                "workerResult": texture_result,
             })
-            if legacy_map.returncode != 0:
-                raise RuntimeError("AnimeStudio AvatarMesh texture CABMap build failed")
-            command = build_texture_export_command(
-                ANIMESTUDIO_CLI,
-                input_root,
-                texture_root,
-                map_name,
-                texture_names,
-            )
-            completed = subprocess.run(
-                command,
-                cwd=str(ANIMESTUDIO_CLI.parent),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=300,
-                check=False,
-            )
-            completed_steps.append({
-                "name": "exportTextures",
-                "command": command,
-                "returncode": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
-            })
-            if completed.returncode != 0:
-                raise RuntimeError("AnimeStudio AvatarMesh step failed: exportTextures")
-            texture_paths = load_texture_paths(texture_root, texture_names)
-            for name, path in texture_paths.items():
-                relative = path.relative_to(texture_root).as_posix()
-                texture_uris[name] = (
-                    f"/api/manifest-asset/model-texture?recordId={int(bundle_record['id'])}"
-                    f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
-                    f"&path={quote(relative)}"
+            selection_names = {
+                (str(value["sourceFile"]).casefold(), int(value["pathId"])): str(value["name"])
+                for value in texture_selections
+            }
+            for artifact in texture_result.get("artifacts", []):
+                name = selection_names.get(
+                    (str(artifact.get("sourceFile") or "").casefold(), int(artifact["pathId"]))
                 )
+                if name:
+                    if name in texture_uris:
+                        raise RuntimeError(f"AvatarMesh selects duplicate Texture2D name: {name}")
+                    texture_uris[name] = (
+                        f"/api/manifest-asset/model-texture?recordId={int(bundle_record['id'])}"
+                        f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
+                        f"&path={quote(str(artifact['relativePath']))}"
+                    )
 
         document, geometry = build_static_avatar_mesh_document(
             avatar_mesh,

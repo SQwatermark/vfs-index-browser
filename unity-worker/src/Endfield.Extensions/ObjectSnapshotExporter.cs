@@ -4,6 +4,7 @@ using AnimeStudio;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Linq;
+using SixLabors.ImageSharp;
 
 namespace Vfs.Endfield.Extensions;
 
@@ -24,6 +25,29 @@ public sealed record ObjectSnapshotExportResult(
     int ObjectCount,
     IReadOnlyList<string> IncludedTypes,
     string PrimaryInputId);
+
+public sealed record IdentifiedTextureSelection(string SourceFile, long PathId);
+
+public sealed record IdentifiedTextureExportRequest(
+    IReadOnlyList<ObjectSnapshotInput> Inputs,
+    string CabMapPath,
+    string PrimaryInputId,
+    IReadOnlyList<IdentifiedTextureSelection> Selections,
+    string OutputDirectory);
+
+public sealed record IdentifiedTextureArtifact(
+    string RelativePath,
+    string SourceFile,
+    long PathId,
+    string Name,
+    int Width,
+    int Height,
+    long ByteCount,
+    string Sha256);
+
+public sealed record IdentifiedTextureExportResult(
+    int ArtifactCount,
+    IReadOnlyList<IdentifiedTextureArtifact> Artifacts);
 
 /// <summary>
 /// 在一个请求内绑定显式 Bundle 输入、稳定 CABMap 和对象快照。物理路径只用于本次加载，
@@ -85,14 +109,7 @@ public static class ObjectSnapshotExporter
             // 主输入必须先加载。AssetBundle preload container 可同时给依赖对象附上主资源
             // container；随后依赖自身的 AssetBundle container 会把它改回权威资源路径，
             // 与旧 ObjectJSON 的按需依赖加载顺序一致。
-            var orderedInputPaths = inputs
-                .OrderByDescending(value => string.Equals(
-                    value.InputId,
-                    primaryInputId,
-                    StringComparison.Ordinal))
-                .Select(value => value.InputPath)
-                .ToArray();
-            manager.LoadFiles(orderedInputPaths);
+            LoadExplicitInputs(manager, inputs, primaryInputId);
             var sourceInputIds = BindLoadedFiles(manager.assetsFileList, inputs, cabMap);
             var containerByObject = BuildContainerMap(manager.assetsFileList);
             var selected = manager.assetsFileList
@@ -156,6 +173,95 @@ public static class ObjectSnapshotExporter
                 artifacts.Count,
                 includedTypes.Select(value => value.ToString()).ToArray(),
                 primaryInputId);
+        }
+        finally
+        {
+            manager.Clear();
+        }
+    }
+
+    public static IdentifiedTextureExportResult ExportIdentifiedTextures(
+        IdentifiedTextureExportRequest request)
+    {
+        var inputs = PrepareInputs(request.Inputs);
+        var inputById = inputs.ToDictionary(value => value.InputId, StringComparer.Ordinal);
+        var primaryInputId = request.PrimaryInputId?.Trim();
+        if (string.IsNullOrEmpty(primaryInputId) || !inputById.ContainsKey(primaryInputId))
+        {
+            throw new MonoBehaviourExportException(
+                "unknown_primary_input",
+                $"纹理导出 primaryInputId 不在显式输入中：{request.PrimaryInputId}");
+        }
+        var selections = PrepareTextureSelections(request.Selections);
+        var cabMapPath = ExportRequestGuard.PrepareInput(request.CabMapPath);
+        var cabMap = LoadCabMap(cabMapPath, inputById.Keys);
+        var outputDirectory = ExportRequestGuard.PrepareOutput(request.OutputDirectory);
+        var game = GameManager.GetGame(GameType.ArknightsEndfield)
+            ?? throw new MonoBehaviourExportException(
+                "game_profile_missing",
+                "AnimeStudio 核心未提供 ArknightsEndfield 游戏配置。");
+
+        EndfieldAssetTypeProfile.Configure();
+        var manager = new AssetsManager
+        {
+            Silent = true,
+            SkipProcess = false,
+            ResolveDependencies = false,
+            Game = game,
+        };
+        try
+        {
+            LoadExplicitInputs(manager, inputs, primaryInputId);
+            BindLoadedFiles(manager.assetsFileList, inputs, cabMap);
+            var texturesByIdentity = manager.assetsFileList
+                .SelectMany(file => file.Objects.OfType<Texture2D>())
+                .Where(texture => texture.type == ClassIDType.Texture2D)
+                .ToDictionary(
+                    texture => (texture.assetsFile.fileName, texture.m_PathID),
+                    texture => texture,
+                    SourcePathIdComparer.Instance);
+            var artifacts = new List<IdentifiedTextureArtifact>(selections.Count);
+            foreach (var selection in selections)
+            {
+                if (!texturesByIdentity.TryGetValue(
+                    (selection.SourceFile, selection.PathId),
+                    out var texture))
+                {
+                    throw new MonoBehaviourExportException(
+                        "texture_not_found",
+                        $"找不到精确 Texture2D：{selection.SourceFile} / {selection.PathId}");
+                }
+                using var image = texture.ConvertToImage(true)
+                    ?? throw new MonoBehaviourExportException(
+                        "texture_decode_failed",
+                        $"Texture2D 无法解码：{selection.SourceFile} / {selection.PathId}");
+                var relativePath = Path.Combine(
+                    "Texture2D",
+                    StableSourceDirectory(texture.assetsFile.fileName),
+                    $"{SafeObjectName(texture.Name)}_p{unchecked((ulong)texture.m_PathID):X16}.png");
+                var outputPath = Path.Combine(outputDirectory, relativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+                using (var stream = new FileStream(
+                    outputPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None))
+                {
+                    image.SaveAsPng(stream);
+                }
+                var outputInfo = new FileInfo(outputPath);
+                using var hashStream = File.OpenRead(outputPath);
+                artifacts.Add(new IdentifiedTextureArtifact(
+                    relativePath.Replace(Path.DirectorySeparatorChar, '/'),
+                    texture.assetsFile.fileName,
+                    texture.m_PathID,
+                    texture.Name,
+                    texture.m_Width,
+                    texture.m_Height,
+                    outputInfo.Length,
+                    Convert.ToHexString(SHA256.HashData(hashStream)).ToLowerInvariant()));
+            }
+            return new IdentifiedTextureExportResult(artifacts.Count, artifacts);
         }
         finally
         {
@@ -458,6 +564,75 @@ public static class ObjectSnapshotExporter
                 $"SerializedFile 名称不能安全用于产物路径：{sourceFile}");
         }
         return sourceFile;
+    }
+
+    private static void LoadExplicitInputs(
+        AssetsManager manager,
+        IReadOnlyList<(string InputId, string InputPath)> inputs,
+        string primaryInputId)
+    {
+        var orderedInputPaths = inputs
+            .OrderByDescending(value => string.Equals(
+                value.InputId,
+                primaryInputId,
+                StringComparison.Ordinal))
+            .Select(value => value.InputPath)
+            .ToArray();
+        manager.LoadFiles(orderedInputPaths);
+    }
+
+    private static IReadOnlyList<IdentifiedTextureSelection> PrepareTextureSelections(
+        IReadOnlyList<IdentifiedTextureSelection>? values)
+    {
+        if (values is null || values.Count == 0)
+        {
+            throw new MonoBehaviourExportException(
+                "invalid_input",
+                "纹理导出必须至少包含一个精确 selection。");
+        }
+        var identities = new HashSet<(string SourceFile, long PathId)>(
+            SourcePathIdComparer.Instance);
+        var result = new List<IdentifiedTextureSelection>(values.Count);
+        foreach (var value in values)
+        {
+            var sourceFile = value.SourceFile?.Trim();
+            if (string.IsNullOrEmpty(sourceFile) ||
+                value.PathId == 0 ||
+                !identities.Add((sourceFile, value.PathId)))
+            {
+                throw new MonoBehaviourExportException(
+                    "invalid_texture_selection",
+                    $"纹理 selection 为空、重复或 PathID 为零：{value.SourceFile} / {value.PathId}");
+            }
+            result.Add(new IdentifiedTextureSelection(sourceFile, value.PathId));
+        }
+        return result;
+    }
+
+    private static string SafeObjectName(string value)
+    {
+        var name = string.IsNullOrWhiteSpace(value) ? "Texture2D" : value;
+        foreach (var character in Path.GetInvalidFileNameChars())
+        {
+            name = name.Replace(character, '_');
+        }
+        return name.Length < 180 ? name : name[..180];
+    }
+
+    private sealed class SourcePathIdComparer : IEqualityComparer<(string SourceFile, long PathId)>
+    {
+        public static readonly SourcePathIdComparer Instance = new();
+
+        public bool Equals(
+            (string SourceFile, long PathId) left,
+            (string SourceFile, long PathId) right) =>
+            left.PathId == right.PathId &&
+            string.Equals(left.SourceFile, right.SourceFile, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string SourceFile, long PathId) value) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.SourceFile),
+                value.PathId);
     }
 
     private static IReadOnlyList<(string InputId, string InputPath)> PrepareInputs(

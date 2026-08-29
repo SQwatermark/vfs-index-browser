@@ -5,7 +5,7 @@ AnimeStudio CLI 的兼容层；Python 服务只能通过这里定义的版本化
 
 当前已实现 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap` 和
-`buildCabMap`、`exportObjectSnapshots`。
+`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`。
 能力列表只声明已经接入并通过契约测试及真实样本验证的操作，不得为了兼容旧调用而提前
 声明尚未实现的能力。
 
@@ -31,9 +31,10 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 - 协议所有权：VFS；
 - 进程边界：单次 worker 进程，后续按性能证据决定是否改为常驻；
 - 权威 AnimeStudio 来源提交：`8cdec963c4e187ea0a4a339b8969844a9574638b`；
-- worker 版本：`0.6.0`；
+- worker 版本：`0.7.0`；
 - 已实现能力：`handshake`、`exportMonoBehaviourRaw`、`exportMonoBehaviourTypeTreeDump`、
-  `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`；
+  `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`、
+  `exportIdentifiedTextures`；
 - Raw 导出要求本次请求独占的空输出目录，成功响应返回 PathID、container、字节长度和
   SHA-256，不会覆盖旧模拟/导出结果；
 - TypeTree Dump 只读取对象内嵌 TypeTree，并同时返回 `serializedByteCount`、
@@ -58,11 +59,14 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 - `exportObjectSnapshots` 在单次请求中显式接收物理输入闭包、CABMap、主输入、允许选择的
   input ID、类型与精确 container。它验证 CAB 名、input ID 和 SerializedFile 偏移一致后才
   导出 `sourceFile + pathId` 身份的快照；公共 JSON 只附加稳定 input ID，不保存物理路径；
+- `exportIdentifiedTextures` 复用相同的显式输入与 CABMap 绑定，只接受精确
+  `sourceFile + pathId` 选择，不按可能重复的对象名筛选；PNG 继续使用
+  `_p<16 位 PathID>.png` 命名，并返回尺寸、字节数和 SHA-256；
 - 旧 CLI 的通用 `JSON` 只序列化 MonoBehaviour 外壳，不是 managed-reference 领域解码。
   Projectile 的聚焦解码器主体存在于被忽略的旧研究副本提交 `03336c4`，其上另有 85 行
   未提交修正；当前已迁移可由三份真实样本验证的结构，并保留未理解尾部。对象快照 worker
-  已能直接消费 CABMap，`server.py` 的模型和 AvatarMesh 对象阶段也已切换；旧 `UseCABMap`
-  只剩 IdentifiedTexture 等尚未迁移的转换入口，因此仍不能宣称它已无调用者。
+  已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；通用
+  `Convert`、Cubemap 和动画等入口仍待迁移，不能据此宣称旧 CLI 已无调用者。
 
 真实样本边界回归示例：
 
@@ -76,7 +80,8 @@ AssetMap/CABMap 的本地真实 Bundle 审计另使用
 且 CABMap 不包含物理输入路径。
 
 对象快照模型闭包审计使用 `VFS_WORKER_OBJECT_SNAPSHOT_FIXTURE_ROOT`，目录中应包含旧模型缓存的
-`inputs/entry.ab`、依赖 Bundle 和 `objects/`。测试核对旧快照身份是新快照的子集、共同对象的
-container 完全一致，并检查所有物理输入路径都未写入新 JSON。
+`inputs/entry.ab`、依赖 Bundle、`objects/` 和可选的 `textures/`。测试核对旧快照身份是新快照
+的子集、共同对象 container 完全一致，并检查所有物理输入路径都未写入新 JSON；存在旧纹理
+时还会按 PathID 逐张核对新旧 PNG 的 SHA-256。
 
 完整阶段计划见 [VFS 产品化与 AnimeStudio 内嵌计划](../docs/design/vfs-productization.md)。

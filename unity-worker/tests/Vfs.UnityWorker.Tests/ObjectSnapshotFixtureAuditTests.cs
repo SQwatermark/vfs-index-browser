@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Vfs.Endfield.Extensions;
 
@@ -76,6 +77,39 @@ public sealed class ObjectSnapshotFixtureAuditTests
                     exportedText.Contains(Path.GetFullPath(inputPath), StringComparison.Ordinal),
                     $"snapshot leaked physical input path {inputPath}");
             }
+
+            var legacyTextureRoot = Path.Combine(fixtureRoot, "textures");
+            var textureSelections = ReadTextureSelections(legacyRoot, legacyTextureRoot);
+            if (textureSelections.Count > 0)
+            {
+                var textureRoot = Path.Combine(temporaryRoot, "textures");
+                var textureResult = ObjectSnapshotExporter.ExportIdentifiedTextures(
+                    new IdentifiedTextureExportRequest(
+                        inputs,
+                        Path.Combine(cabRoot, "cab-map.json"),
+                        "fixture:primary",
+                        textureSelections,
+                        textureRoot));
+                Assert.AreEqual(textureSelections.Count, textureResult.ArtifactCount);
+                foreach (var artifact in textureResult.Artifacts)
+                {
+                    var suffix = $"_p{unchecked((ulong)artifact.PathId):X16}.png";
+                    var legacyMatches = Directory.GetFiles(
+                            legacyTextureRoot,
+                            "*.png",
+                            SearchOption.AllDirectories)
+                        .Where(path => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                        .ToArray();
+                    Assert.AreEqual(1, legacyMatches.Length, $"legacy texture match for {suffix}");
+                    var currentPath = Path.Combine(
+                        textureRoot,
+                        artifact.RelativePath.Replace('/', Path.DirectorySeparatorChar));
+                    CollectionAssert.AreEqual(
+                        SHA256.HashData(File.ReadAllBytes(legacyMatches[0])),
+                        SHA256.HashData(File.ReadAllBytes(currentPath)),
+                        $"texture bytes differ for {suffix}");
+                }
+            }
         }
         finally
         {
@@ -109,5 +143,57 @@ public sealed class ObjectSnapshotFixtureAuditTests
             values.Add(identity, (type, container));
         }
         return values;
+    }
+
+    private static IReadOnlyList<IdentifiedTextureSelection> ReadTextureSelections(
+        string root,
+        string legacyTextureRoot)
+    {
+        var textureFiles = Directory.GetFiles(
+            legacyTextureRoot,
+            "*.png",
+            SearchOption.AllDirectories);
+        var pathIds = new HashSet<long>();
+        foreach (var textureFile in textureFiles)
+        {
+            var name = Path.GetFileNameWithoutExtension(textureFile);
+            var marker = name.LastIndexOf("_p", StringComparison.OrdinalIgnoreCase);
+            if (marker >= 0 &&
+                ulong.TryParse(
+                    name[(marker + 2)..],
+                    System.Globalization.NumberStyles.HexNumber,
+                    null,
+                    out var value))
+            {
+                pathIds.Add(unchecked((long)value));
+            }
+        }
+        var values = new Dictionary<string, IdentifiedTextureSelection>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in Directory.GetFiles(root, "*.json", SearchOption.AllDirectories))
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            if (!document.RootElement.TryGetProperty("$animestudio", out var metadata) ||
+                !metadata.TryGetProperty("pptrReferences", out var references))
+            {
+                continue;
+            }
+            foreach (var reference in references.EnumerateArray())
+            {
+                if (!reference.TryGetProperty("targetType", out var targetType) ||
+                    targetType.GetString() != "Texture2D" ||
+                    !reference.TryGetProperty("targetSourceFile", out var sourceFile) ||
+                    !reference.TryGetProperty("targetPathId", out var pathId))
+                {
+                    continue;
+                }
+                var source = sourceFile.GetString()!;
+                var id = pathId.GetInt64();
+                if (pathIds.Contains(id))
+                {
+                    values.TryAdd($"{source}|{id}", new IdentifiedTextureSelection(source, id));
+                }
+            }
+        }
+        return values.Values.ToArray();
     }
 }
