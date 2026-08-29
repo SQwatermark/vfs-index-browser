@@ -20,6 +20,7 @@ class WwiseMediaServiceTests(unittest.TestCase):
             "bank_encrypted": 1,
             "logical_path": "Audio/default.pck",
             "package_file_size": 1000,
+            "package_file_data_md5": "source-md5",
         }
 
     def test_resolves_entry_source_artifact_and_download(self):
@@ -33,7 +34,7 @@ class WwiseMediaServiceTests(unittest.TestCase):
                 calls.append(
                     ("source", media["pck_file_id"], media["logical_path"])
                 ),
-                ({"id": 99, "file_name": "default.pck", "length": 1000}, Path("pck.chk")),
+                ({"id": 99, "file_name": "default.pck", "length": 1000, "file_data_md5": "source-md5"}, Path("pck.chk")),
             )[1],
             lambda record, chunk, entry, mode, namespace: (
                 calls.append(("ensure", record, chunk, entry, mode, namespace)),
@@ -89,11 +90,29 @@ class WwiseMediaServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(FileNotFoundError, "PCK source is unavailable"):
             missing_source.resolve({"pckFileId": ["99"], "ordinal": ["3"]})
 
+    def test_rejects_same_size_changed_package_content(self):
+        service = WwiseMediaService(
+            lambda *_args: self.media(),
+            lambda *_args: (
+                {
+                    "id": 99,
+                    "file_name": "default.pck",
+                    "length": 1000,
+                    "file_data_md5": "different",
+                },
+                Path("pck.chk"),
+            ),
+            lambda *_args: self.fail("build is unexpected"),
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "content identity changed"):
+            service.resolve({"pckFileId": ["99"], "ordinal": ["3"]})
+
     def test_wraps_artifact_build_failure(self):
         service = WwiseMediaService(
             lambda *_args: self.media(),
             lambda *_args: (
-                {"id": 99, "file_name": "default.pck", "length": 1000},
+                {"id": 99, "file_name": "default.pck", "length": 1000, "file_data_md5": "source-md5"},
                 Path("pck.chk"),
             ),
             lambda *_args: (_ for _ in ()).throw(RuntimeError("conversion failed")),

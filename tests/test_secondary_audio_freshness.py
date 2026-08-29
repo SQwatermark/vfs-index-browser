@@ -72,17 +72,21 @@ class SecondaryAudioFreshnessTests(unittest.TestCase):
     def _write_wwise(self, path, size):
         with closing(sqlite3.connect(self.wwise)) as conn:
             conn.execute("CREATE TABLE wwise_index_meta (key TEXT, value TEXT)")
-            conn.execute("INSERT INTO wwise_index_meta VALUES ('schema_version', '2')")
+            conn.execute("INSERT INTO wwise_index_meta VALUES ('schema_version', '3')")
             conn.execute(
                 """
                 CREATE TABLE wwise_packages (
                     pck_file_id INTEGER,
                     logical_path TEXT,
-                    file_size INTEGER
+                    file_size INTEGER,
+                    file_data_md5 TEXT
                 )
                 """
             )
-            conn.execute("INSERT INTO wwise_packages VALUES (8, ?, ?)", (path, size))
+            conn.execute(
+                "INSERT INTO wwise_packages VALUES (8, ?, ?, 'pckmd5')",
+                (path, size),
+            )
             conn.commit()
 
     def test_accepts_id_reordering_when_stable_path_and_size_match(self):
@@ -127,6 +131,18 @@ class SecondaryAudioFreshnessTests(unittest.TestCase):
 
         self.assertEqual("stale", result["audioDialog"]["status"])
         self.assertIn("TableCfg content changed", result["audioDialog"]["issues"][0])
+
+    def test_reports_same_size_changed_wwise_package(self):
+        with closing(sqlite3.connect(self.vfs)) as conn:
+            conn.execute(
+                "UPDATE files SET file_data_md5 = 'NEWMD5' WHERE logical_id = 'Audio/a.pck'"
+            )
+            conn.commit()
+
+        result = inspect_secondary_audio_indexes(self.vfs, self.audio, self.wwise)
+
+        self.assertEqual("stale", result["wwise"]["status"])
+        self.assertIn("PCK content changed", result["wwise"]["issues"][0])
 
 
 if __name__ == "__main__":

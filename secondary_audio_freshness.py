@@ -93,16 +93,25 @@ def _inspect_wwise(vfs: sqlite3.Connection, database: Path) -> dict:
     try:
         with closing(sqlite3.connect(database)) as conn:
             version = _schema_version(conn, "wwise_index_meta")
+            if version < 3:
+                return {
+                    "status": "stale",
+                    "database": str(database),
+                    "schemaVersion": version,
+                    "packageCount": 0,
+                    "resolvedPackageCount": 0,
+                    "issues": ["schema does not preserve PCK content identity"],
+                }
             rows = conn.execute(
                 """
-                SELECT pck_file_id, logical_path, file_size
+                SELECT pck_file_id, logical_path, file_size, file_data_md5
                 FROM wwise_packages
                 ORDER BY pck_file_id
                 """
             ).fetchall()
     except (sqlite3.Error, ValueError) as error:
         return _unavailable(database, str(error))
-    return _audit_packages(vfs, database, version, rows)
+    return _audit_packages(vfs, database, version, rows, verify_content=True)
 
 
 def _audit_packages(
@@ -110,10 +119,14 @@ def _audit_packages(
     database: Path,
     schema_version: int,
     rows: list[tuple],
+    *,
+    verify_content: bool = False,
 ) -> dict:
     issues = []
     resolved = 0
-    for pck_file_id, raw_path, raw_size in rows:
+    for row in rows:
+        pck_file_id, raw_path, raw_size, *extra = row
+        expected_md5 = str(extra[0] or "").casefold() if extra else ""
         logical_path = str(raw_path or "")
         if not logical_path or raw_size is None:
             issues.append(f"VFS file id {pck_file_id} has no stable PCK identity")
@@ -122,11 +135,16 @@ def _audit_packages(
         if current is None:
             issues.append(f"PCK is unavailable: {logical_path}")
             continue
-        current_id, current_size = current
+        current_id, current_size, current_md5 = current
         if int(raw_size) != current_size:
             issues.append(
                 f"PCK size changed: {logical_path} ({raw_size} -> {current_size})"
             )
+            continue
+        if verify_content and (
+            not expected_md5 or expected_md5 != current_md5.casefold()
+        ):
+            issues.append(f"PCK content changed: {logical_path}")
             continue
         resolved += 1
     return {
@@ -135,17 +153,21 @@ def _audit_packages(
         "schemaVersion": schema_version,
         "packageCount": len(rows),
         "resolvedPackageCount": resolved,
-        "verification": "logicalPathAndSize",
+        "verification": (
+            "logicalPathSizeAndContentMd5"
+            if verify_content
+            else "logicalPathAndSize"
+        ),
         "issues": issues[:10],
     }
 
 
 def _resolve_readable_vfs_package(
     conn: sqlite3.Connection, logical_path: str
-) -> tuple[int, int] | None:
+) -> tuple[int, int, str] | None:
     rows = conn.execute(
         """
-        SELECT id, length, chunk_path
+        SELECT id, length, chunk_path, file_data_md5
         FROM files
         WHERE logical_id = ?
         ORDER BY CASE source WHEN 'Persistent' THEN 0 WHEN 'StreamingAssets' THEN 1 ELSE 9 END,
@@ -153,9 +175,9 @@ def _resolve_readable_vfs_package(
         """,
         (logical_path,),
     ).fetchall()
-    for file_id, length, chunk_path in rows:
+    for file_id, length, chunk_path, file_data_md5 in rows:
         if Path(chunk_path).is_file():
-            return int(file_id), int(length)
+            return int(file_id), int(length), str(file_data_md5 or "")
     return None
 
 

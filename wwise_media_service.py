@@ -53,6 +53,7 @@ class WwiseMediaService:
             entry,
             index_name="Wwise index",
             expected_file_size=int(media["package_file_size"]),
+            expected_file_data_md5=str(media["package_file_data_md5"]),
         )
         try:
             target = self._ensure_media(record, chunk_path, entry, mode, "wwise")

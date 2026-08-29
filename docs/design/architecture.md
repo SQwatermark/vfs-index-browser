@@ -87,7 +87,7 @@ Wwise 索引的 Events/Banks/Media 虚拟目录、分页、行到虚拟文件的
 和长度，显式关闭全部 SQLite 连接，并把 current/stale/unavailable 结果写入 `/api/health`。该阶段
 只判定是否需要重建，不在审计函数内修改或猜修二级索引。Wwise 为 stale 且未指定
 `--no-auto-rebuild` 时，`secondary_audio_rebuild.py` 在独立子进程中从当前 VFS 构建临时候选库；
-候选必须依次通过 SQLite `integrity_check`、稳定路径/长度 freshness 和非空包集合门禁，才会以
+候选必须依次通过 SQLite `integrity_check`、稳定路径/长度/内容 MD5 freshness 和非空包集合门禁，才会以
 `os.replace` 发布并保留上一版数据库。构建或验证失败不会覆盖活动库，服务继续 degraded 启动。
 AudioDialog 的自动重建由 `audio_dialog_rebuild.py` 执行：发现器定位 effective TableCfg 和四语
 PCK，只有 banks 与 stream 均可读的语言才进入候选；PCK 目录元数据由正式缓存服务生成，不依赖

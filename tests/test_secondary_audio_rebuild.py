@@ -29,11 +29,12 @@ class SecondaryAudioRebuildTests(unittest.TestCase):
                     logical_id TEXT NOT NULL,
                     length INTEGER NOT NULL,
                     chunk_path TEXT NOT NULL
+                    ,file_data_md5 TEXT
                 )
                 """
             )
             conn.execute(
-                "INSERT INTO files VALUES (9, 'Persistent', 'Audio/a.pck', 1000, ?)",
+                "INSERT INTO files VALUES (9, 'Persistent', 'Audio/a.pck', 1000, ?, 'PCKMD5')",
                 (str(self.chunk),),
             )
             conn.commit()
@@ -46,18 +47,19 @@ class SecondaryAudioRebuildTests(unittest.TestCase):
     def _write_candidate(path: Path, *, size: int = 1000):
         with closing(sqlite3.connect(path)) as conn:
             conn.execute("CREATE TABLE wwise_index_meta (key TEXT, value TEXT)")
-            conn.execute("INSERT INTO wwise_index_meta VALUES ('schema_version', '2')")
+            conn.execute("INSERT INTO wwise_index_meta VALUES ('schema_version', '3')")
             conn.execute(
                 """
                 CREATE TABLE wwise_packages (
                     pck_file_id INTEGER,
                     logical_path TEXT,
-                    file_size INTEGER
+                    file_size INTEGER,
+                    file_data_md5 TEXT
                 )
                 """
             )
             conn.execute(
-                "INSERT INTO wwise_packages VALUES (7, 'Audio/a.pck', ?)",
+                "INSERT INTO wwise_packages VALUES (7, 'Audio/a.pck', ?, 'pckmd5')",
                 (size,),
             )
             conn.commit()

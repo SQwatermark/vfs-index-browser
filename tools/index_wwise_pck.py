@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sqlite3
 import sys
 from pathlib import Path
@@ -35,6 +36,7 @@ def main() -> int:
     try:
         with args.pck.open("rb") as source:
             size = args.pck.stat().st_size
+            content_md5 = hashlib.file_digest(source, "md5").hexdigest()
 
             def read_range(offset: int, length: int) -> bytes:
                 source.seek(offset)
@@ -59,6 +61,7 @@ def main() -> int:
                 args.pck_file_id,
                 package,
                 logical_path=args.logical_path or args.pck.name,
+                file_data_md5=content_md5,
             )
         print(f"[3/3] 已写入：{args.database}")
     except (OSError, ValueError, sqlite3.Error) as error:

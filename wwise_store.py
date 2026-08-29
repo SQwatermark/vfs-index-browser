@@ -8,7 +8,7 @@ from audio_package import AudioPackageIndex
 from wwise_hirc import normalize_wwise_id
 
 
-WWISE_SCHEMA_VERSION = 2
+WWISE_SCHEMA_VERSION = 3
 
 
 def create_wwise_schema(conn: sqlite3.Connection) -> None:
@@ -23,6 +23,7 @@ def create_wwise_schema(conn: sqlite3.Connection) -> None:
             pck_file_id INTEGER PRIMARY KEY,
             logical_path TEXT NOT NULL,
             file_size INTEGER NOT NULL,
+            file_data_md5 TEXT NOT NULL,
             bank_count INTEGER NOT NULL,
             media_count INTEGER NOT NULL
         );
@@ -135,6 +136,7 @@ def replace_wwise_package(
     package: AudioPackageIndex,
     *,
     logical_path: str = "",
+    file_data_md5: str = "",
 ) -> None:
     if pck_file_id < 0:
         raise ValueError("pck_file_id must be non-negative")
@@ -143,11 +145,17 @@ def replace_wwise_package(
         conn.execute("DELETE FROM audio_banks WHERE pck_file_id = ?", (pck_file_id,))
         conn.execute("DELETE FROM wwise_packages WHERE pck_file_id = ?", (pck_file_id,))
         conn.execute(
-            "INSERT INTO wwise_packages VALUES (?, ?, ?, ?, ?)",
+            """
+            INSERT INTO wwise_packages (
+                pck_file_id, logical_path, file_size, file_data_md5,
+                bank_count, media_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
             (
                 pck_file_id,
                 logical_path,
                 package.file_size,
+                file_data_md5.casefold(),
                 len(package.banks),
                 len(package.media),
             ),
@@ -515,7 +523,8 @@ def get_wwise_media(
     rows = _fetch_dicts(
         conn,
         """
-        SELECT m.*, p.logical_path, p.file_size AS package_file_size
+        SELECT m.*, p.logical_path, p.file_size AS package_file_size,
+               p.file_data_md5 AS package_file_data_md5
         FROM wwise_media m
         JOIN wwise_packages p ON p.pck_file_id = m.pck_file_id
         WHERE m.pck_file_id = ? AND m.ordinal = ?

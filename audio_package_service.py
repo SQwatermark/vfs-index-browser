@@ -76,6 +76,7 @@ def validate_indexed_audio_source(
     *,
     index_name: str,
     expected_file_size: int | None = None,
+    expected_file_data_md5: str | None = None,
 ) -> None:
     file_name = str(record.get("file_name") or "")
     if not file_name.casefold().endswith(".pck"):
@@ -90,6 +91,14 @@ def validate_indexed_audio_source(
         raise StaleAudioIndexError(
             f"{index_name} PCK size changed from {expected_file_size} to "
             f"{record['length']}; rebuild the secondary audio index"
+        )
+    if (
+        expected_file_data_md5
+        and str(record.get("file_data_md5") or "").casefold()
+        != expected_file_data_md5.casefold()
+    ):
+        raise StaleAudioIndexError(
+            f"{index_name} PCK content identity changed; rebuild the secondary audio index"
         )
     if entry.bank_encrypted:
         start = entry.bank_offset

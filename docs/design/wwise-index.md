@@ -6,7 +6,10 @@
 索引。网页只读取索引元数据；WEM/WAV 在用户预览或下载时才从原 PCK 按范围读取。
 
 `pck_file_id` 是主 VFS 索引内的非稳定数字 ID。媒体读取使用 `wwise_packages.logical_path` 在当前
-主索引重新定位 PCK，并复核建索引时的 `file_size` 和媒体范围；因此仅重排数字 ID 不再破坏读取。
+主索引重新定位 PCK，并复核建索引时的 `file_size`、`file_data_md5` 和媒体范围；因此仅重排数字
+ID 不再破坏读取，同尺寸内容替换也会触发启动重建。
+媒体读取前还会再次比较当前 VFS 记录的内容 MD5；即使 PCK 在服务启动后被同尺寸替换，也会
+拒绝读取并要求重建，而不会把旧范围套到新内容。
 旧库中空逻辑路径只能回退数字 ID，但仍受 `.pck` 身份与范围门禁保护。
 
 它不猜测 Wwise 工程中的作者命名。数字 ID、物理位置、关系图和来自 TableCfg 的语义名称
@@ -84,7 +87,7 @@ data/wwise-index.sqlite
 把缺失源视为错误。
 
 HTTP 服务启动时会审计活动 Wwise 库。状态为 stale 时，默认自动运行相同的完整构建，但输出先
-落入活动库同目录的临时目录；只有候选库通过 SQLite 完整性、稳定 PCK 路径与长度 freshness、
+落入活动库同目录的临时目录；只有候选库通过 SQLite 完整性、稳定 PCK 路径、长度与内容 MD5 freshness、
 非空包集合三项门禁后才原子替换活动库，上一版保留为 `wwise-index.previous.sqlite`。失败时旧库
 保持不变，`/api/health` 通过 `secondaryAudioRebuild` 报告失败原因。可用 `--no-auto-rebuild`
 禁用自动修复，仅审计状态。
@@ -120,7 +123,6 @@ Event 3537164
 
 ## 尚未完成
 
-- 为 PCK 稳定路径/长度之外补充可复验的主索引内容摘要；
 - Switch、Blend、Music Segment/Track/Playlist 的完整分支和时间结构；
 - TableCfg/Lua/关卡配置到 Event 的语义引用索引；
 - `Music` 与 `SoundEffects` 分类目录；

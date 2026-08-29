@@ -171,6 +171,7 @@ def main(argv: list[str] | None = None) -> int:
                     int(record["pck_file_id"]),
                     package,
                     logical_path=label,
+                    file_data_md5=str(record.get("file_data_md5") or ""),
                 )
                 print(
                     f"  {len(package.banks)} banks, "

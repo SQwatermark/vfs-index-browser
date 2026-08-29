@@ -6,14 +6,50 @@ from audio_dialog_store import create_audio_dialog_schema
 from tests.test_wwise_hirc import EVENT, MEDIA, bank_fixture
 from wwise_hirc import parse_soundbank
 from wwise_store import (
+    create_wwise_schema,
     event_media_ids,
     get_wwise_event,
     list_wwise_media,
     replace_wwise_package,
+    validate_wwise_schema,
 )
 
 
 class WwiseStoreTests(unittest.TestCase):
+    def test_schema_persists_package_content_identity(self):
+        conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
+
+        replace_wwise_package(
+            conn,
+            7,
+            AudioPackageIndex(100, (), ()),
+            logical_path="Audio/a.pck",
+            file_data_md5="AABBCC",
+        )
+
+        self.assertEqual(
+            ("Audio/a.pck", 100, "aabbcc"),
+            conn.execute(
+                "SELECT logical_path, file_size, file_data_md5 FROM wwise_packages"
+            ).fetchone(),
+        )
+
+    def test_rejects_schema_two_for_content_identity_rebuild(self):
+        conn = sqlite3.connect(":memory:")
+        self.addCleanup(conn.close)
+        conn.executescript(
+            """
+            CREATE TABLE wwise_index_meta (key TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO wwise_index_meta VALUES ('schema_version', '2');
+            """
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "rebuild with schema 3"):
+            create_wwise_schema(conn)
+        with self.assertRaisesRegex(RuntimeError, "rebuild with schema 3"):
+            validate_wwise_schema(conn)
+
     def test_persists_and_traverses_event_graph(self):
         conn = sqlite3.connect(":memory:")
         self.addCleanup(conn.close)
