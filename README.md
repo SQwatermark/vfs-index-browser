@@ -94,6 +94,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `task_requests.py` | 模型、动画与 Blender 后台任务的严格输入 DTO |
 | `task_operations.py` | 已解析领域输入到独立后台构建服务的任务组装 |
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
+| `manifest_asset_requests.py` | manifest 资源身份与批量动画 query 的严格解析 |
 | `manifest_asset_service.py` | manifest/asset 身份到本地可读 AssetBundle 的解析 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |

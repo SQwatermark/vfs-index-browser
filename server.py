@@ -58,6 +58,12 @@ from manifest_asset_service import (
     ManifestAssetService,
     is_model_entry_path,
 )
+from manifest_asset_requests import (
+    ManifestAssetRequestError,
+    parse_animation_asset_indexes,
+    parse_manifest_asset_reference,
+    parse_manifest_id,
+)
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
     load_exported_objects,
@@ -4952,14 +4958,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
         query: dict[str, list[str]],
     ) -> tuple[ManifestIndex, dict, dict, Path] | None:
         try:
-            manifest_id = int(query.get("manifestId", [""])[0])
-            asset_index = int(query.get("assetIndex", [""])[0])
-        except ValueError:
-            self.send_error_json(400, "Manifest 资源引用无效")
+            reference = parse_manifest_asset_reference(query)
+        except ManifestAssetRequestError as error:
+            self.send_error_json(400, str(error))
             return None
 
         try:
-            return self.manifest_asset_service().resolve(manifest_id, asset_index)
+            return self.manifest_asset_service().resolve(
+                reference.manifest_id,
+                reference.asset_index,
+            )
         except ManifestAssetResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None
@@ -4971,23 +4979,36 @@ class BrowserHandler(BaseHTTPRequestHandler):
         values = query.get("animationAssetIndex")
         if not values:
             return None
-        animation_query = dict(query)
-        animation_query["assetIndex"] = values
-        return self.resolve_manifest_asset_source(animation_query)
+        try:
+            reference = parse_manifest_asset_reference(
+                query,
+                asset_parameter="animationAssetIndex",
+            )
+            return self.manifest_asset_service().resolve(
+                reference.manifest_id,
+                reference.asset_index,
+            )
+        except ManifestAssetRequestError as error:
+            self.send_error_json(400, str(error))
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
+        return None
 
     def resolve_manifest_model_source(
         self,
         query: dict[str, list[str]],
     ) -> tuple[ManifestIndex, dict, dict, Path] | None:
         try:
-            manifest_id = int(query.get("manifestId", [""])[0])
-            asset_index = int(query.get("assetIndex", [""])[0])
-        except ValueError:
-            self.send_error_json(400, "Manifest 资源引用无效")
+            reference = parse_manifest_asset_reference(query)
+        except ManifestAssetRequestError as error:
+            self.send_error_json(400, str(error))
             return None
 
         try:
-            return self.manifest_asset_service().resolve_model(manifest_id, asset_index)
+            return self.manifest_asset_service().resolve_model(
+                reference.manifest_id,
+                reference.asset_index,
+            )
         except ManifestAssetResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None
@@ -4996,35 +5017,22 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self,
         query: dict[str, list[str]],
     ) -> list[tuple[ManifestIndex, dict, dict, Path]] | None:
-        raw_values = query.get("animationAssetIndex", [])
-        if not raw_values:
-            return []
         try:
-            indexes = sorted(
-                {
-                    int(value)
-                    for raw_value in raw_values
-                    for value in raw_value.split(",")
-                    if value
-                }
+            indexes = parse_animation_asset_indexes(
+                query,
+                maximum=MAX_BLEND_ANIMATION_COUNT,
             )
-        except ValueError:
-            self.send_error_json(400, "animationAssetIndex is invalid")
+            if not indexes:
+                return []
+            manifest_id = parse_manifest_id(query)
+        except ManifestAssetRequestError as error:
+            self.send_error_json(400, str(error))
             return None
-        if not indexes or len(indexes) > MAX_BLEND_ANIMATION_COUNT:
-            self.send_error_json(
-                400,
-                f"animation selection must contain 1 to {MAX_BLEND_ANIMATION_COUNT} items",
+        try:
+            return self.manifest_asset_service().resolve_many(
+                manifest_id,
+                indexes,
             )
-            return None
-
-        try:
-            manifest_id = int(query.get("manifestId", [""])[0])
-        except ValueError:
-            self.send_error_json(400, "Manifest 资源引用无效")
-            return None
-        try:
-            return self.manifest_asset_service().resolve_many(manifest_id, indexes)
         except ManifestAssetResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None

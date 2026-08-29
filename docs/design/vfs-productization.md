@@ -611,4 +611,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   动画去重排序。模型、可选单动画和批量动画任务已直接调用该服务，不再绕经 Handler 的 HTTP
   查询兼容方法；当前庄方宜 `451359/263486` 的真实模型任务在拆分后仍成功，非模型资源会稳定
   返回 400。同步模型预览、GLB、动画候选和 Blender 入口也已复用统一模型解析适配，移除了各
-  Handler 重复的入口类型判断；同步批量动画解析复用 `resolve_many`。
+  Handler 重复的入口类型判断；同步批量动画解析复用 `resolve_many`。同步 query 的
+  manifest/asset 身份及批量动画集合由 `manifest_asset_requests.py` 独立校验，Handler 仅负责
+  把请求错误映射为 400。
