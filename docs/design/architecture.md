@@ -138,6 +138,9 @@ mtime 缓存和 `.blend` 发布。HTTP Handler 注入两类 GLB provider 与 Ble
 GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将领域构建阶段映射为后台任务总
 进度。manifest 索引与 Bundle 来源仍通过注入接口访问；Handler 保留原方法名供同步路由和任务
 系统兼容，不再掌握模型结果文档的字段规则。
+模型文档中的 buffer/texture URL 由 `model_artifact_resolver.py` 解析为不可变 run 内文件。请求
+身份统一校验 record、asset、LOD 与显式 run；纹理路径先 URL 解码再限制于该 run 的 `textures/`
+目录，路径逃逸和未完成 run 都不会返回文件。Handler 只保留 400/404 映射、内容类型与流式发送。
 
 ## 关键约束
 

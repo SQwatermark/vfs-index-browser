@@ -802,3 +802,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   回归覆盖普通/Avatar、三类模型状态、LOD URL、动画参数、工具缺失、进度和 GLB 门禁。模型主
   构建、动画、GLB、Blender 与预览结果的应用层至此均已拆出，下一阶段转向模型文件响应或其他
   Handler 大型领域。
+- ModelDocument 的 geometry/texture 请求身份解析、record/asset/LOD 校验、活动或显式不可变 run
+  定位、纹理 URL 解码和目录边界已移入 `model_artifact_resolver.py`。缺失纹理 run 与缺失文件仍
+  保持既有可区分 404 文案；Handler 只负责 HTTP 错误映射和流式发送。合成回归覆盖活动/显式 run、
+  geometry、编码后的纹理子路径、路径逃逸、无效 LOD 和未完成 run；既有回归继续证明请求旧 run
+  不会漂移到当前指针。模型缓存结构至此不再散落于 buffer/texture 路由，下一阶段可转向单动画
+  结果服务或模型候选搜索边界。

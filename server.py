@@ -112,6 +112,11 @@ from model_animation_service import (
 )
 from model_blend_service import ModelBlendService
 from model_preview_service import ModelPreviewService
+from model_artifact_resolver import (
+    ModelArtifactReference,
+    ModelArtifactResolver,
+    ModelArtifactRunNotFound,
+)
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2851,6 +2856,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             max_blend_animation_count=MAX_BLEND_ANIMATION_COUNT,
         )
 
+    def model_artifact_resolver(self) -> ModelArtifactResolver:
+        return ModelArtifactResolver(self.model_run_store())
+
     def ensure_animation_clip_export(
         self,
         record: dict,
@@ -4408,26 +4416,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_manifest_asset_model_buffer(self, query: dict[str, list[str]]) -> None:
         try:
-            record_id = int(query.get("recordId", [""])[0])
-            asset_index = int(query.get("assetIndex", [""])[0])
-            lod_value = query.get("lod", [None])[0]
-            lod = int(lod_value) if lod_value is not None else None
-            if record_id < 0 or asset_index < 0:
-                raise ValueError
-            if lod is not None and lod not in range(4):
-                raise ValueError
-        except (ValueError, IndexError):
-            self.send_error_json(400, "recordId, assetIndex or lod is invalid")
+            reference = ModelArtifactReference.parse(query)
+        except ValueError as error:
+            self.send_error_json(400, str(error))
             return
-        root = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index)
-        if lod is not None:
-            root /= f"avatar-lod-{lod}"
-        published_root = resolve_published_model_run(
-            root,
-            query.get("run", [""])[0],
-        )
-        target = published_root / "geometry.bin" if published_root is not None else None
-        if target is None or not target.is_file():
+        target = self.model_artifact_resolver().geometry(reference)
+        if target is None:
             self.send_error_json(404, "model geometry buffer not found")
             return
         self.send_response(200)
@@ -4441,31 +4435,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_manifest_asset_model_texture(self, query: dict[str, list[str]]) -> None:
         try:
-            record_id = int(query.get("recordId", [""])[0])
-            asset_index = int(query.get("assetIndex", [""])[0])
-            lod_value = query.get("lod", [None])[0]
-            lod = int(lod_value) if lod_value is not None else None
-            if record_id < 0 or asset_index < 0:
-                raise ValueError
-            if lod is not None and lod not in range(4):
-                raise ValueError
-        except (ValueError, IndexError):
-            self.send_error_json(400, "recordId, assetIndex or lod is invalid")
+            reference = ModelArtifactReference.parse(query)
+        except ValueError as error:
+            self.send_error_json(400, str(error))
             return
-        root = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index)
-        if lod is not None:
-            root /= f"avatar-lod-{lod}"
-        published_root = resolve_published_model_run(
-            root,
-            query.get("run", [""])[0],
-        )
-        if published_root is None:
-            self.send_error_json(404, "model texture run not found")
+        try:
+            target = self.model_artifact_resolver().texture(
+                reference, query.get("path", [""])[0]
+            )
+        except ModelArtifactRunNotFound as error:
+            self.send_error_json(404, str(error))
             return
-        root = (published_root / "textures").resolve()
-        relative = unquote(query.get("path", [""])[0]).replace("\\", "/").strip("/")
-        target = (root / relative).resolve()
-        if not relative or root not in target.parents or not target.is_file():
+        if target is None:
             self.send_error_json(404, "model texture not found")
             return
         self.send_response(200)
