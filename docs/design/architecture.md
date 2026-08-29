@@ -62,7 +62,8 @@ AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 
 目录或私有结果字段。模型、动画和 Blender 创建参数由 `task_requests.py` 转成不可变 DTO，
 LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task_operations.py` 为每项后台
 工作创建不带 socket、headers 或响应流的独立构建实例，并集中绑定任务种类、取消事件和进度
-回调；Handler 不再捕获自身或手写后台 lambda。manifest 资源解析核心也已移入无 HTTP 依赖的
+回调；`model_task_submission_service.py` 串联严格 DTO、Manifest 模型/动画解析和三类后台提交，
+Handler 只保留环境门禁、错误码与 202 响应。manifest 资源解析核心也已移入无 HTTP 依赖的
 应用服务；模型、可选单动画和批量动画任务均直接调用该服务，不再拼装查询参数后绕经 HTTP
 兼容方法。保留的同步模型、GLB、动画候选和 Blender 入口也通过统一适配方法调用同一模型
 校验；批量动画同步入口使用服务的去重、排序和解析结果。`manifest_asset_requests.py` 集中解析

@@ -91,6 +91,7 @@ from internal_directory_service import InternalDirectoryService
 from internal_file_preview_service import InternalFilePreviewService
 from raw_file_service import RawFileResponse, RawFileService
 from avatar_resource_plan_service import AvatarResourcePlanService
+from model_task_submission_service import ModelTaskSubmissionService
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -169,12 +170,7 @@ from projectile_data import (
 from unity_worker import UnityWorkerClient, UnityWorkerError
 from task_registry import BackgroundTaskRegistry, TaskNotFoundError
 from task_service import TaskApplicationService
-from task_requests import (
-    ModelAnimationTaskRequest,
-    ModelBlendTaskRequest,
-    ModelTaskRequest,
-    TaskInputError,
-)
+from task_requests import TaskInputError
 from task_operations import BackgroundTaskOperations
 from runtime_config import RuntimeConfig, parse_port
 from service_logging import LOGGER, configure_service_logging
@@ -1277,6 +1273,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         return BackgroundTaskOperations(TASK_API, create_service)
 
+    def model_task_submission_service(self) -> ModelTaskSubmissionService:
+        return ModelTaskSubmissionService(
+            self.manifest_asset_service(),
+            self.background_task_operations(),
+            max_blend_animation_count=MAX_BLEND_ANIMATION_COUNT,
+        )
+
     def handle_start_projectile_task(self) -> None:
         try:
             body = self.read_json_body()
@@ -1290,34 +1293,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_start_model_task(self) -> None:
         try:
-            request = ModelTaskRequest.parse(self.read_json_body())
+            created = self.model_task_submission_service().start_model(
+                self.read_json_body()
+            )
         except (TaskInputError, ValueError):
             self.send_error_json(400, "manifestId, assetIndex or lod is invalid")
             return
-
-        resolver = self.manifest_asset_service()
-        try:
-            resolved = resolver.resolve_model(request.manifest_id, request.asset_index)
         except ManifestAssetResolutionError as error:
             self.send_error_json(error.status, str(error))
             return
-        animation_resolved = None
-        if request.animation_asset_index is not None:
-            try:
-                animation_resolved = resolver.resolve(
-                    request.manifest_id,
-                    request.animation_asset_index,
-                )
-            except ManifestAssetResolutionError as error:
-                self.send_error_json(error.status, str(error))
-                return
-
-        created = self.background_task_operations().start_model(
-            request.manifest_id,
-            resolved,
-            animation_resolved,
-            request.lod,
-        )
         self.send_json(created, status=202, cache_control="no-store")
 
     def handle_start_model_blend_task(self) -> None:
@@ -1326,56 +1310,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
             return
         try:
-            request = ModelBlendTaskRequest.parse(
-                self.read_json_body(),
-                max_animation_count=MAX_BLEND_ANIMATION_COUNT,
+            created = self.model_task_submission_service().start_blend(
+                self.read_json_body()
             )
         except (TaskInputError, ValueError):
             self.send_error_json(400, "model blend task input is invalid")
             return
-
-        resolver = self.manifest_asset_service()
-        try:
-            resolved = resolver.resolve_model(request.manifest_id, request.asset_index)
-            animation_sources = resolver.resolve_many(
-                request.manifest_id,
-                request.animation_asset_indexes,
-            )
         except ManifestAssetResolutionError as error:
             self.send_error_json(error.status, str(error))
             return
-        created = self.background_task_operations().start_model_blend(
-            resolved,
-            animation_sources,
-            request.lod,
-        )
         self.send_json(created, status=202, cache_control="no-store")
 
     def handle_start_model_animation_task(self) -> None:
         try:
-            request = ModelAnimationTaskRequest.parse(self.read_json_body())
+            created = self.model_task_submission_service().start_animation(
+                self.read_json_body()
+            )
         except (TaskInputError, ValueError):
             self.send_error_json(400, "model animation task input is invalid")
             return
-
-        resolver = self.manifest_asset_service()
-        try:
-            model_resolved = resolver.resolve_model(
-                request.manifest_id,
-                request.asset_index,
-            )
-            animation_resolved = resolver.resolve(
-                request.manifest_id,
-                request.animation_asset_index,
-            )
         except ManifestAssetResolutionError as error:
             self.send_error_json(error.status, str(error))
             return
-        created = self.background_task_operations().start_model_animation(
-            model_resolved,
-            animation_resolved,
-            request.lod,
-        )
         self.send_json(created, status=202, cache_control="no-store")
 
     def handle_task_status(self, query: dict[str, list[str]]) -> None:

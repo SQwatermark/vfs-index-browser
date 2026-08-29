@@ -122,6 +122,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `task_service.py` | 后台任务状态、取消和产物查询的应用层边界 |
 | `task_requests.py` | 模型、动画与 Blender 后台任务的严格输入 DTO |
 | `task_operations.py` | 已解析领域输入到独立后台构建服务的任务组装 |
+| `model_task_submission_service.py` | 模型任务 DTO、Manifest 资源解析与后台提交协调 |
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
 | `manifest_asset_requests.py` | manifest 资源身份与批量动画 query 的严格解析 |
 | `manifest_asset_service.py` | manifest/asset 身份到本地可读 AssetBundle 的解析 |

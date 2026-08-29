@@ -606,6 +606,11 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Handler 直接调用注册表。模型、单动画和 Blender 请求已由 `task_requests.py` 统一解析成
   不可变 DTO，保留原有错误文本和批量上限。`task_operations.py` 已集中四类任务的种类、
   独立构建实例、取消事件和进度回调绑定，后台闭包不再由 Handler 组装。
+- 模型、Blend 和单动画任务的 DTO→Manifest 资源解析→后台提交链已集中到
+  `model_task_submission_service.py`。服务保证可选动画不产生多余解析、Blend 批量输入先通过数量
+  门禁、三类任务使用同一 resolver/operations 边界；Handler 只保留 Blender 能力门禁、应用错误
+  到 HTTP 的映射和统一 202/no-store 响应。真实重启后，三类非法输入仍分别返回原 400 文案，
+  不存在的 manifest ID 仍稳定返回 404 `file not found`，且不会创建后台任务。
 - `manifest_asset_service.py` 已接管 manifest 文件来源 fallback、AssetInfo 查找、Bundle 来源
   排序与可读性选择，并通过应用错误返回原有 400/404 语义，不直接写 HTTP。合成 SQLite 测试
   覆盖失效 Persistent manifest 回退到可读来源、缺失 asset、缺失 Bundle、模型类型校验与批量
