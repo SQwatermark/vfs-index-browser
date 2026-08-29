@@ -34,6 +34,7 @@ schema、测试或生产代码后，才算正式进入实现路线。
 | `task_requests.py` | 后台任务创建输入的解析、类型化和边界校验 |
 | `task_operations.py` | 四类后台任务与独立领域构建实例的绑定 |
 | `manifest_index.py` | `manifest.hgmmap` 解析和逻辑目录索引 |
+| `manifest_asset_service.py` | manifest 资源、来源 fallback 与 Bundle 可读性解析 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `model_document.py` | 完整模型领域文档及语义校验 |
 | `animestudio_model.py` | AnimeStudio Unity 对象适配和共享几何/材质构建 |

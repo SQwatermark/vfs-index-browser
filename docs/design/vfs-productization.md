@@ -604,5 +604,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   终态取消 200、未知任务 404、产物下载 200；四类任务提交也已统一经过该服务，不再从
   Handler 直接调用注册表。模型、单动画和 Blender 请求已由 `task_requests.py` 统一解析成
   不可变 DTO，保留原有错误文本和批量上限。`task_operations.py` 已集中四类任务的种类、
-  独立构建实例、取消事件和进度回调绑定，后台闭包不再由 Handler 组装。下一步将 manifest
-  资源身份解析移出 Handler。
+  独立构建实例、取消事件和进度回调绑定，后台闭包不再由 Handler 组装。
+- `manifest_asset_service.py` 已接管 manifest 文件来源 fallback、AssetInfo 查找、Bundle 来源
+  排序与可读性选择，并通过应用错误返回原有 400/404 语义，不直接写 HTTP。合成 SQLite 测试
+  覆盖失效 Persistent manifest 回退到可读来源、缺失 asset 和缺失 Bundle；当前庄方宜
+  `451359/263486` 的真实模型任务在拆分后仍成功。下一步把模型与动画组合选择也移入该服务。

@@ -53,6 +53,7 @@ from wwise_store import (
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
+from manifest_asset_service import ManifestAssetResolutionError, ManifestAssetService
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
     load_exported_objects,
@@ -2951,6 +2952,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.manifest_indexes[key] = index
             return index
 
+    def manifest_asset_service(self) -> ManifestAssetService:
+        return ManifestAssetService(self.db_path, self.manifest_index, source_rank)
+
     def read_file_range(self, record: dict, chunk_path: Path, relative_offset: int, length: int) -> bytes:
         file_length = int(record["length"])
         if relative_offset < 0 or length < 0 or relative_offset + length > file_length:
@@ -4967,42 +4971,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "Manifest 资源引用无效")
             return None
 
-        with self.connect() as conn:
-            resolved_manifest = self.resolve_file_record(conn, manifest_id)
-            if resolved_manifest is None:
-                return None
-            _, manifest_record, manifest_chunk = resolved_manifest
-            try:
-                index = self.manifest_index(manifest_record, manifest_chunk)
-                asset = index.asset(asset_index)
-            except (ValueError, OSError, sqlite3.Error) as error:
-                self.send_error_json(400, str(error))
-                return None
-            if asset is None:
-                self.send_error_json(404, "Manifest 中不存在该资源")
-                return None
-
-            bundle_file_name = f"Data/Bundles/Windows/{asset['bundle_name']}"
-            candidates = [
-                row_to_dict(row)
-                for row in conn.execute(
-                    "SELECT * FROM files WHERE file_name = ?",
-                    (bundle_file_name,),
-                )
-            ]
-            candidates.sort(key=lambda row: source_rank(row["source"], bool(row["chunk_exists"])))
-            resolved_bundle = None
-            for candidate in candidates:
-                candidate_path = Path(candidate["chunk_path"])
-                if candidate_path.exists():
-                    resolved_bundle = (candidate, candidate_path)
-                    break
-            if resolved_bundle is None:
-                self.send_error_json(404, f"找不到资源对应的 AssetBundle：{asset['bundle_name']}")
-                return None
-
-        bundle_record, bundle_chunk = resolved_bundle
-        return index, asset, bundle_record, bundle_chunk
+        try:
+            return self.manifest_asset_service().resolve(manifest_id, asset_index)
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
+            return None
 
     def resolve_optional_animation_source(
         self,

@@ -25,6 +25,10 @@ SQLite 主索引保存逻辑文件、来源、物理 chunk、偏移、长度、�
 
 manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务根据 Bundle 名称定位 Effective `.ab`，调用仓库内 VFS Unity worker，并用 AssetMap 的 `Container` 精确匹配导出文件。常规资源类型无法导出时，`.asset` 和 `.prefab` 可按同一 container 精确回退到 MonoBehaviour TypeTree Dump；同一逻辑资源关联的多个组件会合并为一份可预览文本，而不会扫描整个 Bundle。Cubemap 也按 container 独立解析，但一个逻辑资源会产生六个带方向身份的面，HTTP 层以多产物预览返回，不能套用普通资源“一项对应一个文件”的假设。PCK、USM、TableCfg 和 MemoryPack 采用相同的按需解析原则。
 
+`manifest_asset_service.py` 负责把 manifest 文件 ID 与 asset index 解析成当前可读的 manifest
+来源、AssetInfo 和 AssetBundle。Persistent 记录失效时的同逻辑文件 fallback、来源排序、
+资源不存在和 Bundle 缺失均在该服务内完成，并以带状态码的应用错误返回；它不写 HTTP 响应。
+
 Prefab 模型恢复使用 VFS Unity worker 的版本化对象快照协议。内嵌 AnimeStudio 核心负责
 Unity 对象身份、TypeTree 载荷和跨 Bundle PPtr 解析；服务负责从 manifest 构造依赖闭包、
 调用 worker 并组装 ModelDocument。两者通过
@@ -53,7 +57,8 @@ AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 
 目录或私有结果字段。模型、动画和 Blender 创建参数由 `task_requests.py` 转成不可变 DTO，
 LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task_operations.py` 为每项后台
 工作创建不带 socket、headers 或响应流的独立构建实例，并集中绑定任务种类、取消事件和进度
-回调；Handler 不再捕获自身或手写后台 lambda。后续资源身份解析也应沿这一边界移出 Handler。
+回调；Handler 不再捕获自身或手写后台 lambda。manifest 资源解析核心也已移入无 HTTP 依赖的
+应用服务；后续继续把任务请求中的模型/动画组合选择从 Handler 移到该边界。
 
 ## 关键约束
 
