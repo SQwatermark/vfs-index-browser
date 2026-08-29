@@ -111,6 +111,24 @@ class ModelWorkerServiceTests(unittest.TestCase):
                     "request",
                 )
 
+    def test_texture_export_refuses_stale_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "textures"
+            output.mkdir()
+            (output / "stale.png").write_bytes(b"stale")
+            service = ModelWorkerService(FakeWorker(), lambda *_args: None)
+            with self.assertRaisesRegex(RuntimeError, "is not empty"):
+                service.export_textures(
+                    [{"inputId": "primary", "inputPath": "entry.ab"}],
+                    root / "cab-map.json",
+                    output,
+                    "request",
+                    primary_input_id="primary",
+                    selections=[],
+                )
+            self.assertEqual(b"stale", (output / "stale.png").read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()

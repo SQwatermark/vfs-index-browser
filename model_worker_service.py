@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -109,7 +108,15 @@ class ModelWorkerService:
         selections: Iterable[dict],
         cancel_event: object | None = None,
     ) -> dict:
-        shutil.rmtree(output_root, ignore_errors=True)
+        if output_root.is_dir():
+            try:
+                next(output_root.iterdir())
+            except StopIteration:
+                output_root.rmdir()
+            else:
+                raise RuntimeError("model texture output directory is not empty")
+        elif output_root.exists():
+            raise RuntimeError("model texture output path is not a directory")
         result = self._worker.export_identified_textures(
             inputs=staged_inputs,
             cab_map_path=cab_map_path,

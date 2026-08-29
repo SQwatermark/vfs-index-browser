@@ -100,7 +100,8 @@ Avatar 模型则始终要求 geometry。HTTP 按显式 run 读取旧资源也复
 普通模型和 Avatar 模型调用 Unity worker 的共享过程位于 `model_worker_service.py`。服务为每个
 稳定 input ID 暂存独占 Bundle 文件，统一执行并校验 CABMap、对象快照和精确 Texture2D 产物；
 具体模型管线只决定输入闭包、对象类型、container 与纹理 selection，并负责把结构化产物组装
-为各自 ModelDocument。
+为各自 ModelDocument。纹理输出必须位于新的空目录；服务遇到非空目录会失败并保留现场，
+不会递归删除调用方路径或用新产物掩盖陈旧文件。
 
 ## 关键约束
 
