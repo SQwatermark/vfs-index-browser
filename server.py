@@ -131,6 +131,7 @@ from task_requests import (
 )
 from task_operations import BackgroundTaskOperations
 from runtime_config import RuntimeConfig
+from tool_registry import ToolRegistry
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -195,21 +196,17 @@ USM_CONVERT = RUNTIME_CONFIG.usm_convert
 FFMPEG = RUNTIME_CONFIG.ffmpeg
 
 
-def executable_diagnostic(name: str, configured: str | Path) -> dict:
-    """解析可选命令，但不启动进程或隐式下载依赖。"""
+def optional_tool_registry() -> ToolRegistry:
+    """按当前配置构造能力快照，便于测试和运行时 override 立即生效。"""
 
-    raw = str(configured)
-    explicit = Path(raw)
-    resolved = explicit.resolve() if explicit.is_file() else None
-    if resolved is None and explicit.name == raw:
-        discovered = shutil.which(raw)
-        resolved = Path(discovered).resolve() if discovered else None
-    return {
-        "name": name,
-        "configured": raw,
-        "available": resolved is not None,
-        "resolvedPath": str(resolved) if resolved is not None else None,
-    }
+    return ToolRegistry(
+        {
+            "blender": BLENDER_EXE,
+            "vgmstream": VGMSTREAM_CLI,
+            "usm-convert": USM_CONVERT,
+            "ffmpeg": FFMPEG,
+        }
+    )
 
 
 def build_health_document() -> dict:
@@ -241,12 +238,7 @@ def build_health_document() -> dict:
         "indexRebuild": INDEX_REBUILD_REPORT,
         "manifestIndex": MANIFEST_INDEX_REPORT,
         "unityWorker": worker,
-        "optionalTools": [
-            executable_diagnostic("blender", BLENDER_EXE),
-            executable_diagnostic("vgmstream", VGMSTREAM_CLI),
-            executable_diagnostic("usm-convert", USM_CONVERT),
-            executable_diagnostic("ffmpeg", FFMPEG),
-        ],
+        "optionalTools": optional_tool_registry().diagnostics(),
         "legacyTools": [],
     }
 
@@ -1681,7 +1673,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.send_json(created, status=202, cache_control="no-store")
 
     def handle_start_model_blend_task(self) -> None:
-        if not BLENDER_EXE.is_file():
+        blender = optional_tool_registry().capability("blender")
+        if not blender.available:
             self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
             return
         try:
@@ -4681,9 +4674,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             or record.get("length")
             or "unknown"
         ).casefold()
+        vgmstream = optional_tool_registry().capability("vgmstream")
         converter_identity = "unavailable"
-        if VGMSTREAM_CLI.is_file():
-            stat = VGMSTREAM_CLI.stat()
+        if vgmstream.resolved_path is not None:
+            stat = vgmstream.resolved_path.stat()
             converter_identity = f"{stat.st_size:x}-{stat.st_mtime_ns:x}"
         media_identity = (
             f"v{AUDIO_PACKAGE_META_VERSION}-{package_identity}-"
@@ -4726,7 +4720,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return wem_path
 
         wav_path = wav_root / prefix / f"{entry.wem_id}.wav"
-        return VgmstreamConversionService(VGMSTREAM_CLI).ensure_wav(wem_path, wav_path)
+        vgmstream = optional_tool_registry().capability("vgmstream")
+        if vgmstream.resolved_path is None:
+            raise FileNotFoundError(f"vgmstream executable not found: {VGMSTREAM_CLI}")
+        return VgmstreamConversionService(vgmstream.resolved_path).ensure_wav(wem_path, wav_path)
 
     def usm_cache_paths(self, record: dict) -> tuple[Path, Path]:
         cache_root = INTERNAL_CACHE_DIR / str(record["id"]) / "video"
@@ -4782,12 +4779,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         target.parent.mkdir(parents=True, exist_ok=True)
         temp_path = target.with_name(f"{target.stem}.{os.getpid()}.{time.time_ns()}.mp4")
+        tools = optional_tool_registry()
+        usm_convert = tools.capability("usm-convert").resolved_path
+        ffmpeg = tools.capability("ffmpeg").resolved_path or FFMPEG
         try:
             convert_usm_to_mp4(
                 self.read_file_slice(record, chunk_path),
                 temp_path,
-                usm_convert=USM_CONVERT,
-                ffmpeg=FFMPEG,
+                usm_convert=usm_convert,
+                ffmpeg=ffmpeg,
             )
             os.replace(temp_path, target)
         finally:
@@ -4802,8 +4802,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "version": 1,
                     "fileLength": int(record["length"]),
                     "builtAtEpoch": int(time.time()),
-                    "usmConvert": str(USM_CONVERT),
-                    "ffmpeg": str(FFMPEG),
+                    "usmConvert": str(usm_convert) if usm_convert else None,
+                    "ffmpeg": str(ffmpeg),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -5787,6 +5787,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if animation_asset
             else ""
         )
+        blender_available = optional_tool_registry().available("blender")
         return {
             "kind": "modelDocument",
             "status": (
@@ -5807,7 +5808,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"&assetIndex={asset_index}{lod_parameter}{animation_parameter}"
                 f"&v={MODEL_BLEND_VERSION}"
                 if (is_prefab or is_avatar_mesh)
-                and BLENDER_EXE.is_file()
+                and blender_available
                 and BLENDER_MODEL_IMPORTER.is_file()
                 else None
             ),
@@ -5815,7 +5816,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
                 f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_BLEND_VERSION}"
                 if (is_prefab or is_avatar_mesh)
-                and BLENDER_EXE.is_file()
+                and blender_available
                 and BLENDER_MODEL_IMPORTER.is_file()
                 else None
             ),
@@ -6390,8 +6391,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: threading.Event | None = None,
     ) -> Path:
+        blender = optional_tool_registry().capability("blender")
+        if blender.resolved_path is None:
+            raise FileNotFoundError(f"Blender executable not found: {BLENDER_EXE}")
         return BlenderExportService(
-            BLENDER_EXE,
+            blender.resolved_path,
             PROJECT_ROOT,
             BLENDER_MODEL_IMPORTER,
             (
@@ -6406,7 +6410,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         resolved = self.resolve_manifest_model_source(query)
         if resolved is None:
             return
-        if not BLENDER_EXE.is_file():
+        blender = optional_tool_registry().capability("blender")
+        if not blender.available:
             self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
             return
 
@@ -6691,6 +6696,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
 
     def handle_internal_list(self, query: dict[str, list[str]]) -> None:
+        optional_tools = optional_tool_registry()
         file_id = self.file_id_from_query(query)
         if file_id is None:
             return
@@ -6736,6 +6742,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             except (FileNotFoundError, ValueError) as error:
                 self.send_error_json(404, str(error))
                 return
+            vgmstream = optional_tools.capability("vgmstream")
             self.send_json(
                 {
                     "kind": "audioPackage",
@@ -6748,8 +6755,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "meta": {
                         "builtAtEpoch": meta.get("builtAtEpoch"),
                         "entryCount": meta.get("entryCount"),
-                        "wavPreviewAvailable": VGMSTREAM_CLI.exists(),
-                        "vgmstreamCli": str(VGMSTREAM_CLI),
+                        "wavPreviewAvailable": vgmstream.available,
+                        "vgmstreamCli": (
+                            str(vgmstream.resolved_path)
+                            if vgmstream.resolved_path is not None
+                            else str(VGMSTREAM_CLI)
+                        ),
                     },
                 }
             )
@@ -6760,6 +6771,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             except FileNotFoundError as error:
                 self.send_error_json(404, str(error))
                 return
+            usm_convert = optional_tools.capability("usm-convert")
+            ffmpeg = optional_tools.capability("ffmpeg")
             self.send_json(
                 {
                     "kind": "criVideo",
@@ -6770,9 +6783,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "dirs": listing["dirs"],
                     "files": listing["files"],
                     "meta": {
-                        "usmConvertAvailable": USM_CONVERT.exists(),
-                        "usmConvert": str(USM_CONVERT),
-                        "ffmpeg": str(FFMPEG),
+                        "usmConvertAvailable": usm_convert.available,
+                        "ffmpegAvailable": ffmpeg.available,
+                        "usmConvert": (
+                            str(usm_convert.resolved_path)
+                            if usm_convert.resolved_path is not None
+                            else str(USM_CONVERT)
+                        ),
+                        "ffmpeg": (
+                            str(ffmpeg.resolved_path)
+                            if ffmpeg.resolved_path is not None
+                            else str(FFMPEG)
+                        ),
                     },
                 }
             )

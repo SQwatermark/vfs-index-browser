@@ -205,7 +205,7 @@ source file、PathID、container、长度和 SHA-256。`container` 使用精确�
 - [ ] 配置、缓存版本、日志、端口和数据根目录有统一入口。
 - [x] 启动时校验 VFS 主索引与当前游戏安装的一致性；索引过期时自动重建并原子切换，
   不能把陈旧索引导致的漏项返回为“资源不存在”。
-- [ ] 可选外部工具通过能力注册表接入，不散落路径判断。
+- [x] 可选外部工具通过能力注册表接入，不散落路径判断。
 
 完成门禁：handler 不包含二进制格式细节或 subprocess 编排，长任务不会发布半成品状态。
 
@@ -648,3 +648,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   manifest/任务缓存、AudioDialog/Wwise 索引和 Shader 归档，原有单项 override 保持兼容；默认
   JSONL 也改为 data root 内路径，删除了对相邻 Endaxis checkout 的隐式依赖。P4 配置项尚余
   端口/日志结构化与缓存版本注册表，故总门禁仍保持未完成。
+- `tool_registry.py` 统一解析 Blender、vgmstream、usm-convert 与 ffmpeg 的显式路径或 PATH
+  命令。健康诊断、模型下载入口、音视频预览能力、转换缓存身份和实际适配器执行均消费同一
+  能力快照；缺失工具只关闭对应派生能力。`server.py` 已不再散落这些工具的 `is_file/exists`
+  判断，P4 的可选工具能力注册表子门禁完成。
