@@ -139,6 +139,11 @@ Blender 任务请求使用相同的模型身份及 `animationAssetIndexes` 数�
 会取消旧任务，基础骨架、AnimationJSON 导出和轨道绑定分别报告进度；原同步动画 GET 继续
 作为兼容入口，并复用同一构建函数。
 
+任务注册表默认保留最近 512 个且七天内的终态任务。清理仅删除
+`data/internal-cache/tasks/<taskId>` 中的状态和结果引用，不删除模型、动画或 Blender 派生缓存；
+运行中任务、无法识别的目录和符号链接不会被清理。服务重启后遗留的非终态任务会先明确标为
+`task_interrupted`，再按普通终态任务进入保留策略。
+
 ```text
 GET /api/manifest
 GET /api/list?scope=effective&path=&page=1&pageSize=100

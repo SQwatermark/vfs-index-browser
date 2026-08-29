@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import threading
 import time
 import uuid
@@ -22,8 +23,16 @@ class TaskNotFoundError(KeyError):
 class BackgroundTaskRegistry:
     """执行线程只持有控制事件；结果写盘后才由原子状态文件发布。"""
 
-    def __init__(self, root_provider: Callable[[], Path]):
+    def __init__(
+        self,
+        root_provider: Callable[[], Path],
+        *,
+        retention_seconds: int = 7 * 24 * 60 * 60,
+        max_terminal_tasks: int = 512,
+    ):
         self._root_provider = root_provider
+        self._retention_ms = max(int(retention_seconds), 0) * 1000
+        self._max_terminal_tasks = max(int(max_terminal_tasks), 0)
         self._lock = threading.Lock()
         self._active: dict[str, threading.Event] = {}
 
@@ -59,6 +68,7 @@ class BackgroundTaskRegistry:
             "updatedAtEpochMs": created,
         }
         with self._lock:
+            self._cleanup_locked(created)
             self._active[task_id] = cancel_event
             self._write_status(task_id, record)
         thread = threading.Thread(
@@ -148,6 +158,57 @@ class BackgroundTaskRegistry:
                 }
             self._write_status(task_id, record)
             return record
+
+    def cleanup(self) -> int:
+        with self._lock:
+            return self._cleanup_locked(int(time.time() * 1000))
+
+    def _cleanup_locked(self, now_ms: int) -> int:
+        root = self._root_provider().resolve()
+        if not root.is_dir():
+            return 0
+        terminal = []
+        for child in root.iterdir():
+            if not child.is_dir() or child.is_symlink():
+                continue
+            try:
+                task_id = self._normalize_task_id(child.name)
+                if child.resolve().parent != root or task_id in self._active:
+                    continue
+                record = self._read_status(task_id)
+                if record.get("state") in INTERRUPTIBLE_STATES:
+                    record = {
+                        **record,
+                        "state": "failed",
+                        "updatedAtEpochMs": now_ms,
+                        "error": {
+                            "code": "task_interrupted",
+                            "message": "Task was interrupted by a previous server process",
+                        },
+                    }
+                    self._write_status(task_id, record)
+                if record.get("state") not in TERMINAL_STATES:
+                    continue
+                updated = int(record.get("updatedAtEpochMs", 0))
+            except (TaskNotFoundError, OSError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            terminal.append((updated, child))
+
+        terminal.sort(key=lambda item: item[0], reverse=True)
+        cutoff = now_ms - self._retention_ms
+        targets = {
+            path
+            for index, (updated, path) in enumerate(terminal)
+            if updated < cutoff or index >= self._max_terminal_tasks
+        }
+        removed = 0
+        for target in targets:
+            try:
+                shutil.rmtree(target)
+                removed += 1
+            except OSError:
+                pass
+        return removed
 
     def _run(
         self,

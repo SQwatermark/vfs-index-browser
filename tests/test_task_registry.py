@@ -1,3 +1,4 @@
+import json
 import tempfile
 import threading
 import time
@@ -114,6 +115,48 @@ class BackgroundTaskRegistryTests(unittest.TestCase):
             for task_id in ("../bad", "0" * 32):
                 with self.subTest(task_id=task_id), self.assertRaises(TaskNotFoundError):
                     registry.snapshot(task_id)
+
+    def test_cleanup_only_removes_expired_or_excess_terminal_tasks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            now = int(time.time() * 1000)
+
+            def write_task(task_id, state, updated):
+                task_root = root / task_id
+                task_root.mkdir()
+                (task_root / "status.json").write_text(
+                    '{"taskId":"' + task_id + '","kind":"sample","state":"'
+                    + state + '","updatedAtEpochMs":' + str(updated) + '}',
+                    encoding="utf-8",
+                )
+
+            newest = "1" * 32
+            excess = "2" * 32
+            expired = "3" * 32
+            running = "4" * 32
+            write_task(newest, "succeeded", now)
+            write_task(excess, "failed", now - 100)
+            write_task(expired, "cancelled", now - 20_000)
+            write_task(running, "running", now - 20_000)
+            (root / "research-notes").mkdir()
+            registry = BackgroundTaskRegistry(
+                lambda: root,
+                retention_seconds=10,
+                max_terminal_tasks=2,
+            )
+
+            self.assertEqual(2, registry.cleanup())
+            self.assertTrue((root / newest).is_dir())
+            self.assertFalse((root / excess).exists())
+            self.assertFalse((root / expired).exists())
+            self.assertTrue((root / running).is_dir())
+            self.assertEqual(
+                "failed",
+                json.loads(
+                    (root / running / "status.json").read_text(encoding="utf-8")
+                )["state"],
+            )
+            self.assertTrue((root / "research-notes").is_dir())
 
 
 if __name__ == "__main__":

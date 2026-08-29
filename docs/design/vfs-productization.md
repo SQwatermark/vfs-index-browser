@@ -366,6 +366,9 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 - 单片动画网页预览也已接入后台任务，基础骨架、AnimationJSON worker 导出和模型绑定分阶段
   报告状态；切换动画、恢复基础姿势或离开预览都会取消旧任务。兼容同步 GET 复用相同领域
   构建函数；
+- 任务注册表在创建新任务时清理超过七天或最近 512 项之外的终态记录。清理范围严格限制在
+  `internal-cache/tasks/<taskId>`，不会删除领域缓存、未知目录、符号链接或本进程活动任务；上次
+  进程遗留的非终态记录先转为 `task_interrupted`，不再永久占用任务目录；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
@@ -387,8 +390,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
    `Convert`；
-2. 为持久化任务与产物制定保留期限和垃圾回收，避免任务状态目录无限增长；模型、单片动画、
-   Blender 派生和批量动画准备均已任务化；
+2. 用普通模型、AvatarMesh、单动画和批量动画真实样本完成后台任务端到端浏览器审计；任务
+   记录已有七天/512 项保留策略，所有模型与动画长链均已任务化；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
 4. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点。
