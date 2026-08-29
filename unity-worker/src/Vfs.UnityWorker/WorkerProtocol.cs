@@ -13,7 +13,7 @@ public static class WorkerProtocol
 {
     public const string ProtocolName = "vfs-unity-worker";
     public const string ProtocolVersion = "1.0.0";
-    public const string WorkerVersion = "0.5.0";
+    public const string WorkerVersion = "0.6.0";
     public const string AnimeStudioUpstreamCommit =
         "8cdec963c4e187ea0a4a339b8969844a9574638b";
 
@@ -42,6 +42,7 @@ public static class WorkerProtocol
                     "decodeProjectileComponent",
                     "buildAssetMap",
                     "buildCabMap",
+                    "exportObjectSnapshots",
                 ]));
         }
 
@@ -79,8 +80,9 @@ public static class WorkerProtocol
                 "exportMonoBehaviourRaw" => HandleMonoBehaviourRawExport(request),
                 "exportMonoBehaviourTypeTreeDump" => HandleMonoBehaviourTypeTreeDumpExport(request),
                 "decodeProjectileComponent" => HandleProjectileComponentExport(request),
-            "buildAssetMap" => HandleAssetMapExport(request),
-            "buildCabMap" => HandleCabMapExport(request),
+                "buildAssetMap" => HandleAssetMapExport(request),
+                "buildCabMap" => HandleCabMapExport(request),
+                "exportObjectSnapshots" => HandleObjectSnapshotExport(request),
                 _ => WorkerResponse.Failure(new WorkerError(
                     "unknown_operation",
                     $"未知的 worker 操作：{request.Operation}",
@@ -155,6 +157,14 @@ public static class WorkerProtocol
         var arguments = request.Arguments.Deserialize<CabMapExportRequest>(JsonOptions)
             ?? throw new JsonException("buildCabMap 缺少 arguments。");
         var result = CabMapExporter.Export(arguments);
+        return WorkerResponse.Success(result, request.RequestId);
+    }
+
+    private static WorkerResponse HandleObjectSnapshotExport(WorkerRequest request)
+    {
+        var arguments = request.Arguments.Deserialize<ObjectSnapshotExportRequest>(JsonOptions)
+            ?? throw new JsonException("exportObjectSnapshots 缺少 arguments。");
+        var result = ObjectSnapshotExporter.Export(arguments);
         return WorkerResponse.Success(result, request.RequestId);
     }
 }

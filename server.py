@@ -55,11 +55,11 @@ from manifest_index import ManifestIndex
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
     build_cab_map_command,
-    build_object_export_command,
     build_texture_export_command,
     load_exported_objects,
     load_texture_paths,
     material_texture_names,
+    selected_container_paths,
 )
 from npc_avatar_model import build_static_avatar_mesh_document
 from string_path_hash import StringPathHashIndex
@@ -243,6 +243,8 @@ def build_health_document() -> dict:
         "exportMonoBehaviourRaw",
         "exportMonoBehaviourTypeTreeDump",
         "buildAssetMap",
+        "buildCabMap",
+        "exportObjectSnapshots",
     ])
     return {
         "apiVersion": 1,
@@ -303,8 +305,8 @@ MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
 PROJECTILE_COMPONENT_EXPORT_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
-MODEL_SNAPSHOT_VERSION = 29
-AVATAR_MODEL_SNAPSHOT_VERSION = 2
+MODEL_SNAPSHOT_VERSION = 30
+AVATAR_MODEL_SNAPSHOT_VERSION = 3
 ANIMATION_CLIP_EXPORT_VERSION = 4
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
@@ -385,7 +387,6 @@ MODEL_SNAPSHOT_TYPES = (
     "Material",
     "Animator",
     "Avatar",
-    "LODGroup",
 )
 AUDIO_ENTRY_RE = re.compile(r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$", re.IGNORECASE)
 PAGE_SIZE_MAX = 500
@@ -3095,7 +3096,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 for dependency, dependency_chunk in dependency_sources
             ],
             "missingDependencyBundles": missing_dependency_bundles,
-            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CLI),
+            "toolArtifacts": {
+                "unityWorker": UNITY_WORKER.artifact_identity(),
+                "legacyTextureExporter": dotnet_tool_identity(ANIMESTUDIO_CLI),
+            },
             "toolManifest": tool_manifest,
         }
         if model_path.exists() and run_path.exists():
@@ -3124,66 +3128,46 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.write_file_slice(dependency, dependency_chunk, dependency_path)
         shutil.rmtree(object_root, ignore_errors=True)
         object_root.mkdir(parents=True, exist_ok=True)
-        map_name = f"vfs-model-{int(record['id'])}-{int(asset['asset_index'])}"
-        build_map_command = [
-            str(ANIMESTUDIO_CLI),
-            str(input_root),
-            str(object_root),
-            "--game",
-            "ArknightsEndfield",
-            "--map_op",
-            "BuildCABMap",
-            "--map_name",
-            map_name,
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
-        ]
-        command = [
-            str(ANIMESTUDIO_CLI),
-            str(source_path),
-            str(object_root),
-            "--game",
-            "ArknightsEndfield",
-            "--map_op",
-            "UseCABMap",
-            "--map_name",
-            map_name,
-            "--types",
-            *MODEL_SNAPSHOT_TYPES,
-            "--export_type",
-            "ObjectJSON",
-            "--group_assets",
-            "ByType",
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
-        ]
-        completed_steps = []
-        for step_name, step_command in (("buildCABMap", build_map_command), ("export", command)):
-            completed = subprocess.run(
-                step_command,
-                cwd=str(ANIMESTUDIO_CLI.parent),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=300,
-                check=False,
-            )
-            completed_steps.append(
+        staged_inputs = [
+            {"inputId": "manifest:primary", "inputPath": str(source_path)},
+            *[
                 {
-                    "name": step_name,
-                    "command": step_command,
-                    "returncode": completed.returncode,
-                    "stdout": completed.stdout,
-                    "stderr": completed.stderr,
+                    "inputId": f"record:{int(dependency['id'])}",
+                    "inputPath": str(input_root / f"dependency-{int(dependency['id'])}.ab"),
                 }
-            )
-            if completed.returncode != 0:
-                break
+                for dependency, _dependency_chunk in dependency_sources
+            ],
+        ]
+        cab_root = object_root.parent / "cab-map"
+        shutil.rmtree(cab_root, ignore_errors=True)
+        cab_result = UNITY_WORKER.build_cab_map(
+            inputs=staged_inputs,
+            output_directory=cab_root,
+            request_id=(
+                f"model-cab-{int(record['id'])}-{int(asset['asset_index'])}-"
+                f"{time.time_ns()}"
+            ),
+        )
+        validate_worker_artifacts(cab_root, cab_result)
+        object_result = UNITY_WORKER.export_object_snapshots(
+            inputs=staged_inputs,
+            cab_map_path=cab_root / "cab-map.json",
+            primary_input_id="manifest:primary",
+            selection_input_ids=[value["inputId"] for value in staged_inputs],
+            included_types=MODEL_SNAPSHOT_TYPES,
+            containers=[],
+            output_directory=object_root,
+            request_id=(
+                f"model-objects-{int(record['id'])}-{int(asset['asset_index'])}-"
+                f"{time.time_ns()}"
+            ),
+        )
+        validate_worker_artifacts(object_root, object_result)
+        map_name = f"vfs-model-{int(record['id'])}-{int(asset['asset_index'])}"
+        completed_steps = [
+            {"name": "buildCABMap", "workerResult": cab_result},
+            {"name": "exportObjectSnapshots", "workerResult": object_result},
+        ]
         run_meta = {
             "version": MODEL_SNAPSHOT_VERSION,
             "source": source_identity,
@@ -3193,11 +3177,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "dependencyBundles": dependency_bundles,
             "missingDependencyBundles": missing_dependency_bundles,
         }
-        run_path.write_text(json.dumps(run_meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        if len(completed_steps) != 2 or completed_steps[-1]["returncode"] != 0:
-            failed_step = completed_steps[-1]["name"]
-            raise RuntimeError(f"AnimeStudio model snapshot step failed: {failed_step}")
-
         objects = load_animestudio_objects(object_root)
         if not objects:
             bare_snapshots = sum(
@@ -3234,6 +3213,44 @@ class BrowserHandler(BaseHTTPRequestHandler):
             texture_names = sorted(
                 {str(texture.get("name") or "") for texture in textures.values()} - {""}
             )
+            # IdentifiedTexture 尚未迁入 worker；只为这一条遗留转换链建立旧 CABMap。
+            # 对象快照本身已经不再消费进程级 Maps 状态。
+            legacy_map_command = [
+                str(ANIMESTUDIO_CLI),
+                str(input_root),
+                str(texture_root),
+                "--game",
+                "ArknightsEndfield",
+                "--map_op",
+                "BuildCABMap",
+                "--map_name",
+                map_name,
+                "--logger_flags",
+                "Error",
+                "Warning",
+                "Info",
+            ]
+            legacy_map = subprocess.run(
+                legacy_map_command,
+                cwd=str(ANIMESTUDIO_CLI.parent),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+                check=False,
+            )
+            completed_steps.append(
+                {
+                    "name": "buildLegacyTextureCABMap",
+                    "command": legacy_map_command,
+                    "returncode": legacy_map.returncode,
+                    "stdout": legacy_map.stdout,
+                    "stderr": legacy_map.stderr,
+                }
+            )
+            if legacy_map.returncode != 0:
+                raise RuntimeError("AnimeStudio texture CABMap build failed")
             texture_command = [
                 str(ANIMESTUDIO_CLI),
                 str(source_path),
@@ -3314,14 +3331,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         validation_errors = validate_model_document(document)
         if validation_errors:
             run_meta["validationErrors"] = validation_errors
-            run_path.write_text(json.dumps(run_meta, ensure_ascii=False, indent=2), encoding="utf-8")
             raise RuntimeError("generated ModelDocument failed semantic validation")
-        run_path.write_text(json.dumps(run_meta, ensure_ascii=False, indent=2), encoding="utf-8")
         model_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         if geometry:
             geometry_path.write_bytes(geometry)
         elif geometry_path.exists():
             geometry_path.unlink()
+        temporary_run_path = run_path.with_name(f".{run_path.name}.{uuid.uuid4().hex}.tmp")
+        temporary_run_path.write_text(
+            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary_run_path, run_path)
         return document, run_meta
 
     def load_avatar_mesh_plan(
@@ -3403,7 +3424,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         tool_manifest = load_animestudio_tool_manifest(ANIMESTUDIO_CLI)
         builder_paths = [
             Path(build_static_avatar_mesh_document.__code__.co_filename),
-            Path(build_object_export_command.__code__.co_filename),
+            Path(selected_container_paths.__code__.co_filename),
             Path(__file__).with_name("animestudio_model.py"),
         ]
         source_identity = {
@@ -3432,7 +3453,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "builders": {
                 path.name: path.stat().st_mtime_ns for path in builder_paths
             },
-            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CLI),
+            "toolArtifacts": {
+                "unityWorker": UNITY_WORKER.artifact_identity(),
+                "legacyTextureExporter": dotnet_tool_identity(ANIMESTUDIO_CLI),
+            },
             "toolManifest": tool_manifest,
         }
         if model_path.is_file() and run_path.is_file():
@@ -3461,29 +3485,63 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 input_root / f"bundle-{int(record['id'])}.ab",
             )
 
+        staged_inputs = [
+            {
+                "inputId": f"record:{int(record['id'])}",
+                "inputPath": str(input_root / f"bundle-{int(record['id'])}.ab"),
+            }
+            for record, _chunk in bundle_sources
+        ]
+        if not staged_inputs:
+            raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
+        primary_input_id = staged_inputs[0]["inputId"]
         map_name = (
             f"vfs-avatar-{int(bundle_record['id'])}-"
             f"{int(asset['asset_index'])}-lod{lod}"
         )
-        commands = [
-            ("buildCABMap", build_cab_map_command(
-                ANIMESTUDIO_CLI,
-                input_root,
-                object_root,
-                map_name,
-            )),
-            ("exportObjects", build_object_export_command(
-                ANIMESTUDIO_CLI,
-                input_root,
-                object_root,
-                map_name,
-                plan,
-            )),
+        cab_root = object_root.parent / "cab-map"
+        shutil.rmtree(cab_root, ignore_errors=True)
+        cab_result = UNITY_WORKER.build_cab_map(
+            inputs=staged_inputs,
+            output_directory=cab_root,
+            request_id=(
+                f"avatar-cab-{int(bundle_record['id'])}-"
+                f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
+            ),
+        )
+        validate_worker_artifacts(cab_root, cab_result)
+        object_result = UNITY_WORKER.export_object_snapshots(
+            inputs=staged_inputs,
+            cab_map_path=cab_root / "cab-map.json",
+            primary_input_id=primary_input_id,
+            selection_input_ids=[value["inputId"] for value in staged_inputs],
+            included_types=["Mesh", "Material", "Avatar"],
+            containers=selected_container_paths(plan),
+            output_directory=object_root,
+            request_id=(
+                f"avatar-objects-{int(bundle_record['id'])}-"
+                f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
+            ),
+        )
+        validate_worker_artifacts(object_root, object_result)
+        completed_steps = [
+            {"name": "buildCABMap", "workerResult": cab_result},
+            {"name": "exportObjectSnapshots", "workerResult": object_result},
         ]
-        completed_steps = []
-        for step_name, command in commands:
-            completed = subprocess.run(
-                command,
+
+        meshes, materials, avatar = load_exported_objects(object_root, plan)
+        texture_names = material_texture_names(materials)
+        texture_uris = {}
+        if texture_names:
+            texture_root.mkdir(parents=True, exist_ok=True)
+            legacy_map_command = build_cab_map_command(
+                ANIMESTUDIO_CLI,
+                input_root,
+                texture_root,
+                map_name,
+            )
+            legacy_map = subprocess.run(
+                legacy_map_command,
                 cwd=str(ANIMESTUDIO_CLI.parent),
                 capture_output=True,
                 text=True,
@@ -3493,20 +3551,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 check=False,
             )
             completed_steps.append({
-                "name": step_name,
-                "command": command,
-                "returncode": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
+                "name": "buildLegacyTextureCABMap",
+                "command": legacy_map_command,
+                "returncode": legacy_map.returncode,
+                "stdout": legacy_map.stdout,
+                "stderr": legacy_map.stderr,
             })
-            if completed.returncode != 0:
-                raise RuntimeError(f"AnimeStudio AvatarMesh step failed: {step_name}")
-
-        meshes, materials, avatar = load_exported_objects(object_root, plan)
-        texture_names = material_texture_names(materials)
-        texture_uris = {}
-        if texture_names:
-            texture_root.mkdir(parents=True, exist_ok=True)
+            if legacy_map.returncode != 0:
+                raise RuntimeError("AnimeStudio AvatarMesh texture CABMap build failed")
             command = build_texture_export_command(
                 ANIMESTUDIO_CLI,
                 input_root,
@@ -3569,10 +3621,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
             encoding="utf-8",
         )
         geometry_path.write_bytes(geometry)
-        run_path.write_text(
+        temporary_run_path = run_path.with_name(f".{run_path.name}.{uuid.uuid4().hex}.tmp")
+        temporary_run_path.write_text(
             json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        os.replace(temporary_run_path, run_path)
         return document, run_meta, model_path
 
     def assetbundle_cache_paths(self, record: dict) -> tuple[Path, Path, Path]:

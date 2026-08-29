@@ -4,9 +4,9 @@ import unittest
 from pathlib import Path
 
 from avatar_mesh_snapshot import (
-    build_object_export_command,
     load_exported_objects,
     material_texture_names,
+    selected_container_paths,
     selected_object_names,
 )
 
@@ -31,32 +31,75 @@ def plan():
 
 
 class AvatarMeshSnapshotTests(unittest.TestCase):
-    def test_builds_deduplicated_object_selection_and_escaped_filter(self):
+    def test_builds_deduplicated_object_and_container_selection(self):
         names = selected_object_names(plan())
         self.assertEqual(["Body", "Eyes"], names["Mesh"])
         self.assertEqual(["Body", "Eyes"], names["Material"])
         self.assertEqual(["CharacterAvatar"], names["Avatar"])
-        command = build_object_export_command(
-            Path("cli.exe"), Path("inputs"), Path("objects"), "sample", plan()
+        self.assertEqual(
+            [
+                "assets/npc/character.fbx",
+                "assets/npc/body.asset",
+                "assets/npc/body.mat",
+                "assets/npc/eyes.mat",
+            ],
+            selected_container_paths(plan()),
         )
-        self.assertEqual(["Mesh", "Material", "Avatar"], command[command.index("--types") + 1:command.index("--names")])
-        self.assertIn("CharacterAvatar", command[command.index("--names") + 1])
 
     def test_loads_exact_mesh_material_and_avatar_exports(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for kind in ("Mesh", "Material", "Avatar"):
                 (root / kind).mkdir()
-            for name in ("Body", "Eyes"):
+            for path_id, name in enumerate(("Body", "Eyes"), start=1):
+                mesh_container = (
+                    "assets/npc/body.asset"
+                    if name == "Body"
+                    else "assets/npc/character.fbx"
+                )
+                material_container = f"assets/npc/{name.casefold()}.mat"
                 (root / "Mesh" / f"{name}.json").write_text(
-                    json.dumps({"m_Name": name}), encoding="utf-8"
+                    json.dumps({
+                        "$animestudio": {
+                            "contract": "AnimeStudioObjectSnapshot",
+                            "version": "1.0.0",
+                            "sourceFile": "CAB-test",
+                            "pathId": path_id,
+                            "type": "Mesh",
+                            "container": mesh_container,
+                        },
+                        "m_Name": name,
+                    }),
+                    encoding="utf-8",
                 )
                 (root / "Material" / f"{name}.json").write_text(
-                    json.dumps({"m_Name": name, "m_SavedProperties": {}}),
+                    json.dumps({
+                        "$animestudio": {
+                            "contract": "AnimeStudioObjectSnapshot",
+                            "version": "1.0.0",
+                            "sourceFile": "CAB-test",
+                            "pathId": path_id + 10,
+                            "type": "Material",
+                            "container": material_container,
+                        },
+                        "m_Name": name,
+                        "m_SavedProperties": {},
+                    }),
                     encoding="utf-8",
                 )
             (root / "Avatar" / "CharacterAvatar.json").write_text(
-                json.dumps({"m_Name": "CharacterAvatar", "m_Avatar": {}}),
+                json.dumps({
+                    "$animestudio": {
+                        "contract": "AnimeStudioObjectSnapshot",
+                        "version": "1.0.0",
+                        "sourceFile": "CAB-test",
+                        "pathId": 99,
+                        "type": "Avatar",
+                        "container": "assets/npc/character.fbx",
+                    },
+                    "m_Name": "CharacterAvatar",
+                    "m_Avatar": {},
+                }),
                 encoding="utf-8",
             )
 

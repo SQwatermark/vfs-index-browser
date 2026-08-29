@@ -277,8 +277,8 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
-`exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap` 和
-`buildCabMap`，worker 版本已升至 `0.5.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
+`exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap`、
+`buildCabMap` 和 `exportObjectSnapshots`，worker 版本已升至 `0.6.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
 主特效结束条件；未知尾部完整保留为 Raw words，公开结果明确为 `partial`。下一项代码工作
 已用 Python 唯一 `UnityWorkerClient` 把 Projectile 和共用 MonoBehaviour Raw 调用切换到
 新 worker。Projectile、Raw 和 TypeTree Dump 复用同一个多产物原子导出框架：每次构建
@@ -287,8 +287,9 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 AvatarMesh TypeTree 因此不再通过旧 CLI 获取这些输入。Projectile 已具备落盘任务状态、
 HTTP 创建/查询/取消入口及进程级终止，结果不保存在全局变量中。单 Bundle AssetMap 也已
 迁移到相同原子 run 框架，输出中的 `Source` 被规范化为稳定逻辑标识，不携带临时路径。
-跨 Bundle CABMap 已有无机器路径的 VFS JSON 契约和 worker 构建能力；下一步让对象导出
-在同一请求内显式消费该契约，替换旧 `UseCABMap`。不能把权威提交中只包含
+跨 Bundle CABMap 已有无机器路径的 VFS JSON 契约，新的对象快照操作会在同一请求中显式
+绑定物理输入、CABMap、主输入、选择 input ID、类型和 container。模型与 AvatarMesh 生产路径
+均已切换并完成真实下游验证；下一步迁移仍使用旧 `UseCABMap` 的 IdentifiedTexture。不能把权威提交中只包含
 对象外壳的通用 `JSON` 冒充领域解码能力，也不能复制旧 CLI 的全局 `Maps/` 隐式状态。
 
 ### 当前调用与依赖清单
@@ -299,7 +300,7 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | --- | --- | --- | --- |
 | 组件原始数据 | MonoBehaviour + `Raw`/`Dump`/`JSON` | `server.py` | P3.1 |
 | 资源映射 | `AssetMap` 已迁移；`BuildCABMap` worker 已实现；`UseCABMap` 待迁移 | `server.py`、`avatar_mesh_snapshot.py` | P3.2 |
-| 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar、LODGroup + `ObjectJSON` | `server.py` | P3.2/P3.3 |
+| 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 不输出伪快照 | worker + `server.py` | P3.2 |
 | 通用资源 | Texture2D、Sprite、TextAsset、AudioClip、VideoClip、AnimationClip + `Convert` | `server.py` | P3.2/P3.3 |
 | 纹理身份 | Texture2D + `IdentifiedTexture` | `server.py`、`avatar_mesh_snapshot.py` | P3.3 |
 | Cubemap | Cubemap + `Convert` | `server.py` | P3.3 |
@@ -338,19 +339,21 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 ## 当前交接断点
 
-截至 2026-08-25，本轮按用户要求停在“对象快照迁移开始前”。当前工作树的可交付边界为：
+截至 2026-08-29，当前工作树的可交付边界为：
 
-- worker `0.5.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
-  聚焦解码、单 Bundle AssetMap 和多输入 CABMap 构建；
-- Python 已通过唯一 `UnityWorkerClient` 使用前五项生产能力；`buildCabMap` 已有客户端封装，
-  但尚未接入 `server.py` 的模型/AvatarMesh 生产路径；
-- `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。通用 `Convert`、
-  `ObjectJSON`、`IdentifiedTexture`、Cubemap 与动画仍由旧 CLI 执行；
-- CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。它尚未被对象导出消费，
-  因而旧 `BuildCABMap + UseCABMap` 组合不能删除，也不能宣称 P3.2 已完成；
-- 已完成对旧 `UseCABMap + ObjectJSON` 调用链的只读审计，没有开始实现对象快照 exporter。
-  权威证据入口为 `AnimeStudio.CLI/Program.cs`、`Studio.BuildAssetData/ExportAssets`、
-  `Exporter.ExportObjectJSONFile` 和 `ObjectSnapshotExporter.Build`；
+- worker `0.6.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
+  聚焦解码、单 Bundle AssetMap、多输入 CABMap 构建和对象快照导出；
+- Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap` 与 `exportObjectSnapshots`，模型和
+  AvatarMesh 生产路径均已接入；
+- `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
+  对象快照不再调用旧 `ObjectJSON`；通用 `Convert`、`IdentifiedTexture`、Cubemap 与动画仍由
+  旧 CLI 执行；
+- CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
+  服务端模型路径均已直接消费该契约；旧 `BuildCABMap + UseCABMap` 目前只为尚未迁移的
+  IdentifiedTexture 临时保留，因此仍不能宣称 P3.2 全部完成；
+- 对象 exporter 只迁移权威 `ObjectSnapshotExporter` 所需最小契约，没有复制巨型
+  `Exporter.cs`；公共快照已移除 `sourceOriginalPath`、`loadedSourceOriginalPath` 和
+  `targetSourceOriginalPath`，以稳定 input ID 补充来源绑定；
 - 旧 ObjectJSON 会把 `sourceOriginalPath`、`loadedSourceOriginalPath` 等物理路径写入快照。
   新协议必须用稳定 input ID 替换这些字段，不能把开发机路径带回产品契约；
 - 对象身份仍必须保持 `sourceFile + pathId`，container 必须来自 AssetBundle/ResourceManager
@@ -358,22 +361,31 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. 先把 CABMap 的“读取一次得到稳定映射”与对象加载所需的运行期物理路径绑定分层，公共
-   解析不得分别在 CABMap 和 ObjectJSON 中重复实现；
-2. 定义一个请求内完成的对象快照操作：显式多输入、主输入/选择范围、类型列表、精确
-   container 列表、独占输出目录；不要暴露旧 CLI 参数或全局 `Maps/`；
-3. 从权威 `ObjectSnapshotExporter` 迁移最小快照契约，不复制巨型 `Exporter.cs`。首先只覆盖
-   当前模型消费者实际需要的 GameObject、Transform、Mesh/Renderer、Material、Animator、
-   Avatar；LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；
-4. 用死亡少女骨骼及现有 Prefab/AvatarMesh 样本对比对象数量、`sourceFile + pathId`、container、
-   PPtr 解析和下游 ModelDocument，不以“进程成功”代替等价验证；
-5. 等对象导出真正消费新 CABMap 后，再将 `server.py` 和 `avatar_mesh_snapshot.py` 切换到
-   worker 原子 run，并删除旧 `BuildCABMap/UseCABMap` 调用。
+1. 迁移 IdentifiedTexture，使模型和 AvatarMesh 纹理导出直接消费显式输入/CABMap，并删除
+   服务端最后的旧 `BuildCABMap + UseCABMap`；
+2. 将对象快照固定目录进一步收口到共用独占 run 框架，保持模型 `run.json` 为最后发布指针；
+3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
+   不输出只有对象外壳的伪 LODGroup 快照；
+4. 再迁移通用 Texture2D/Sprite/Cubemap 与模型层级之外的 Convert 消费者。
 
-最近一次完整验证：Python `274` 项通过；.NET 常规 `18` 项通过、`4` 项本机证据测试未配置
-时跳过；死亡少女 AssetMap/CABMap 两项本机证据测试单独通过；Release 构建 0 警告、0 错误，
-产品自有文件的 `git diff --check` 通过。锁定导入的上游 vendor 保留其原始尾随空白，不以
-格式化改写破坏来源比对。真实 fixture 位于被忽略的研究目录，不进入提交。
+2026-08-29 本机使用庄方宜 PostModel 的 71 Bundle 闭包完成新旧对象快照审计：忽略旧流程中
+没有专用 CLR 解析器的 LODGroup 后，旧 1252 个 `sourceFile + pathId` 身份全部存在于新结果，
+共同对象 container 0 差异；新结果额外成功导出 1 个 Animator。20 个 Material 的 Shader 名
+由旧结果空字符串变为已解析身份，不作为字节等价失败。全部新 JSON 均未包含输入物理路径。
+该证据已固化为可选 `VFS_WORKER_OBJECT_SNAPSHOT_FIXTURE_ROOT` 本机回归。
+
+同日以一个 56 Bundle AvatarMesh LOD0 闭包复核：精确选择 23 个 container 后得到 13 Mesh、
+13 Material 输入，派生 ModelDocument 的 437 节点、13 Mesh、11 Material、13 Skin 均与旧结果
+一致；`geometry.bin` 为 3,381,104 字节且 SHA-256 逐字节一致。模型生产路径完整执行还验证了
+565 节点、44 Mesh、17 Material、52 Skin、9,971,028 字节 geometry，并成功发布 run 指针。
+
+本轮验证：.NET `35` 项通过、`4` 项未配置的外部证据测试跳过，其中对象快照真实闭包测试已
+显式启用并通过；Python worker、健康检查、AvatarMesh 与 ModelDocument 聚焦测试 `32` 项
+通过；模型生产路径另以临时缓存完成端到端验证。全量 Python discovery 的 263 项仍有 3 失败、
+5 错误，集中在动画版本旧 fixture、两项已知 MemoryPack override、runtime probe 导入、Humanoid
+oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结果。Release 构建 0 警告、0 错误，产品自有文件的
+`git diff --check` 通过。锁定导入的上游 vendor 保留其原始尾随空白，不以格式化改写破坏
+来源比对。真实 fixture 位于被忽略的研究目录，不进入提交。
 
 ## 变更记录
 

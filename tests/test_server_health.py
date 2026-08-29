@@ -29,6 +29,8 @@ class ServerHealthTests(unittest.TestCase):
                 "exportMonoBehaviourRaw",
                 "exportMonoBehaviourTypeTreeDump",
                 "buildAssetMap",
+                "buildCabMap",
+                "exportObjectSnapshots",
             ],
             worker.required_capabilities,
         )

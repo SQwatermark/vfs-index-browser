@@ -314,6 +314,40 @@ class UnityWorkerClient:
             cancel_event=cancel_event,
         )
 
+    def export_object_snapshots(
+        self,
+        *,
+        inputs: Sequence[Mapping[str, str]],
+        cab_map_path: Path,
+        primary_input_id: str,
+        selection_input_ids: Sequence[str],
+        included_types: Sequence[str],
+        containers: Sequence[str],
+        output_directory: Path,
+        request_id: str,
+        cancel_event: object | None = None,
+    ) -> dict:
+        return self.request(
+            "exportObjectSnapshots",
+            {
+                "inputs": [
+                    {
+                        "inputId": value["inputId"],
+                        "inputPath": str(Path(value["inputPath"]).resolve()),
+                    }
+                    for value in inputs
+                ],
+                "cabMapPath": str(cab_map_path.resolve()),
+                "primaryInputId": primary_input_id,
+                "selectionInputIds": list(selection_input_ids),
+                "includedTypes": list(included_types),
+                "containers": list(containers),
+                "outputDirectory": str(output_directory.resolve()),
+            },
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def _run(
         self,
         command: Sequence[str],

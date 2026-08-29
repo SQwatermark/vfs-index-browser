@@ -15,7 +15,7 @@
 | Shader 解包与反编译 | 支线 | 在 AnimeStudio 中保存完整编译载荷，逐层识别 GPU 程序封装 |
 | 模型与动画 | 维护线 | 已具备网页预览和 Blender 导出；只处理阻塞性问题与低风险收口 |
 | 音频 | 维护线 | 对话逻辑路径已可浏览；继续保留索引能力，不抢占主线 |
-| VFS 产品化 | 当前执行主线 | worker 0.5.0 已覆盖 MonoBehaviour、Projectile、AssetMap 与 CABMap 构建；下一步迁移对象快照消费链路 |
+| VFS 产品化 | 当前执行主线 | 模型与 AvatarMesh 对象快照已切到 worker 0.6.0；下一步迁移 IdentifiedTexture，清除最后的旧 CABMap 消费 |
 | VFS 与配置解码 | 基础设施 | 为研究与上层消费者提供稳定定位、解码和可部署接口 |
 
 ## 已稳定的基础能力

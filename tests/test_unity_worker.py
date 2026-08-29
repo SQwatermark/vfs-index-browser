@@ -221,6 +221,52 @@ class UnityWorkerClientTests(unittest.TestCase):
         )
         self.assertTrue(Path(observed["arguments"]["outputDirectory"]).is_absolute())
 
+    def test_export_object_snapshots_uses_cab_map_and_explicit_selection(self):
+        observed = {}
+
+        def run(command, **kwargs):
+            request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
+            observed.update(request)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "requestId": request["requestId"],
+                    "ok": True,
+                    "result": {"objectCount": 4},
+                }),
+                "",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = UnityWorkerClient(["fake-worker"], runner=run).export_object_snapshots(
+                inputs=[
+                    {"inputId": "bundle:primary", "inputPath": str(root / "entry.ab")},
+                    {"inputId": "bundle:dependency", "inputPath": str(root / "dep.ab")},
+                ],
+                cab_map_path=root / "cab-map.json",
+                primary_input_id="bundle:primary",
+                selection_input_ids=["bundle:primary", "bundle:dependency"],
+                included_types=["GameObject", "Transform"],
+                containers=["assets/characters/test.prefab"],
+                output_directory=root / "objects",
+                request_id="object-snapshot-1",
+            )
+
+        self.assertEqual({"objectCount": 4}, result)
+        self.assertEqual("exportObjectSnapshots", observed["operation"])
+        arguments = observed["arguments"]
+        self.assertEqual("bundle:primary", arguments["primaryInputId"])
+        self.assertEqual(
+            ["bundle:primary", "bundle:dependency"],
+            arguments["selectionInputIds"],
+        )
+        self.assertEqual(["GameObject", "Transform"], arguments["includedTypes"])
+        self.assertEqual(["assets/characters/test.prefab"], arguments["containers"])
+        self.assertTrue(Path(arguments["cabMapPath"]).is_absolute())
+        self.assertTrue(Path(arguments["inputs"][1]["inputPath"]).is_absolute())
+
     def test_translates_structured_worker_error(self):
         def run(command, **kwargs):
             return subprocess.CompletedProcess(
