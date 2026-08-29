@@ -69,7 +69,7 @@ manifest 中的 `.asset`、`.prefab` 如果无法按常规资源类型导出，�
 manifest 中的 Cubemap 会由 worker 按 container 精确导出六个面，并在预览区组成可逐面打开、
 下载的画廊。
 
-Cubemap 缓存会记录 EXE、CLI DLL 和核心 DLL 的文件身份，工具重新构建后自动失效。
+Cubemap 缓存会记录 VFS Unity worker 及其运行依赖的文件身份，worker 重新构建后自动失效。
 
 模型预览页可以直接生成并下载 `.blend`，Prefab 与 AvatarMesh（含 `lod`）使用同一
 导出链路。服务默认查找 PATH 中的 Blender，然后选择标准 Windows 安装目录下版本号

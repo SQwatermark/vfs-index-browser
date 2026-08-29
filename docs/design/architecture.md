@@ -23,7 +23,7 @@ SQLite 主索引保存逻辑文件、来源、物理 chunk、偏移、长度、�
 
 ### 3. 内容解析层
 
-manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务根据 Bundle 名称定位 Effective `.ab`，调用 AnimeStudio，并用 AssetMap 的 `Container` 精确匹配导出文件。常规资源类型无法导出时，`.asset` 和 `.prefab` 可按同一 container 精确回退到 MonoBehaviour TypeTree Dump；同一逻辑资源关联的多个组件会合并为一份可预览文本，而不会扫描整个 Bundle。Cubemap 也按 container 独立解析，但一个逻辑资源会产生六个带方向身份的面，HTTP 层以多产物预览返回，不能套用普通资源“一项对应一个文件”的假设。PCK、USM、TableCfg 和 MemoryPack 采用相同的按需解析原则。
+manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用户选择资源后，服务根据 Bundle 名称定位 Effective `.ab`，调用仓库内 VFS Unity worker，并用 AssetMap 的 `Container` 精确匹配导出文件。常规资源类型无法导出时，`.asset` 和 `.prefab` 可按同一 container 精确回退到 MonoBehaviour TypeTree Dump；同一逻辑资源关联的多个组件会合并为一份可预览文本，而不会扫描整个 Bundle。Cubemap 也按 container 独立解析，但一个逻辑资源会产生六个带方向身份的面，HTTP 层以多产物预览返回，不能套用普通资源“一项对应一个文件”的假设。PCK、USM、TableCfg 和 MemoryPack 采用相同的按需解析原则。
 
 Prefab 模型恢复使用 VFS Unity worker 的版本化对象快照协议。内嵌 AnimeStudio 核心负责
 Unity 对象身份、TypeTree 载荷和跨 Bundle PPtr 解析；服务负责从 manifest 构造依赖闭包、
@@ -34,7 +34,8 @@ SerializedFile 偏移后再导出，不依赖旧 CLI 的进程级 `Maps/` 状态
 
 模型对象和纹理由仓库内 `unity-worker/` 的版本化构建提供。纹理选择使用精确
 `sourceFile + pathId`，不能按可能重复的资源名称猜测。Cubemap 由 worker 按精确 container
-输出六个带方向身份的面；尚未迁移的通用 Convert 和动画入口仍临时使用旧 CLI。
+输出六个带方向身份的面。通用 Bundle 预览与模型播放所需动画均由 worker 的固定白名单协议
+提供；没有任意类型 Convert 回退，也不再定位外部 AnimeStudio CLI。
 
 Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
 

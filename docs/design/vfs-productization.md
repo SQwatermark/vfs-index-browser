@@ -596,3 +596,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - 生产服务已删除最后的 AnimeStudio CLI 定位、健康检查和任意 Convert 回退。无当前消费者的
   AudioClip 不引入 FMOD；若 AssetMap 只含无预览契约的类型，服务会发布带
   `unsupportedPreviewTypes` 的可验证空 run，而不是伪造成功产物或依赖外部 CLI。
+- 已删除只为外部 `AnimeStudio.CLI.exe` 校验 `vfs-tool-manifest.json` 的孤立 Python 模块、
+  静态工具清单和对应测试；架构与启动文档统一改述为仓库内 VFS Unity worker。保留的旧 CLI
+  名称只用于迁移历史、逐字节等价证据和 vendor 来源说明，不再构成发布配置。

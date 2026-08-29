@@ -1,4 +1,3 @@
-import json
 import struct
 import tempfile
 import unittest
@@ -17,7 +16,6 @@ from animestudio_model import (
     load_standalone_material_payloads,
 )
 from model_document import validate_model_document
-from animestudio_tool import load_animestudio_tool_manifest
 
 
 def make_object(source_file, path_id, type_name, name, payload, references=(), metadata=None):
@@ -61,28 +59,6 @@ class AnimeStudioModelTests(unittest.TestCase):
                     "pathId": 1,
                 }
             })
-
-    def test_validates_packaged_animestudio_capabilities(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            executable = root / "AnimeStudio.CLI.exe"
-            executable.write_bytes(b"")
-            (root / "vfs-tool-manifest.json").write_text(json.dumps({
-                "objectSnapshot": {
-                    "contract": "AnimeStudioObjectSnapshot",
-                    "version": "1.0.0",
-                },
-                "capabilities": [
-                    "BuildCABMap",
-                    "UseCABMap",
-                    "ObjectJSON",
-                    "IdentifiedTexture",
-                ],
-            }), encoding="utf-8")
-
-            manifest = load_animestudio_tool_manifest(executable)
-
-        self.assertIn("ObjectJSON", manifest["capabilities"])
 
     def test_skin_signature_takes_precedence_over_eye_highlight(self):
         role = infer_character_material_role(
