@@ -599,3 +599,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - 已删除只为外部 `AnimeStudio.CLI.exe` 校验 `vfs-tool-manifest.json` 的孤立 Python 模块、
   静态工具清单和对应测试；架构与启动文档统一改述为仓库内 VFS Unity worker。保留的旧 CLI
   名称只用于迁移历史、逐字节等价证据和 vendor 来源说明，不再构成发布配置。
+- `task_service.py` 已成为任务请求的首个应用服务边界：状态查询、取消状态码和已登记产物解析
+  不再由 `BrowserHandler` 直接读取注册表异常与私有元数据。真实 HTTP 回归保持成功查询 200、
+  终态取消 200、未知任务 404、产物下载 200；下一步将四类任务创建与领域构建编排沿同一
+  边界移出 Handler。

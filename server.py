@@ -103,6 +103,7 @@ from projectile_data import (
 )
 from unity_worker import UnityWorkerClient, UnityWorkerError
 from task_registry import BackgroundTaskRegistry, TaskNotFoundError
+from task_service import TaskApplicationService
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -167,6 +168,7 @@ WWISE_DB = Path(
 PUBLIC_DIR = PROJECT_ROOT / "public"
 INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
 TASKS = BackgroundTaskRegistry(lambda: INTERNAL_CACHE_DIR / "tasks")
+TASK_API = TaskApplicationService(TASKS)
 SHADER_ARCHIVE_ROOT = Path(
     os.environ.get(
         "VFS_BROWSER_SHADER_ARCHIVE_ROOT",
@@ -1790,8 +1792,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def handle_task_status(self, query: dict[str, list[str]]) -> None:
         task_id = query.get("taskId", [""])[0]
         try:
-            snapshot = TASKS.snapshot(task_id)
-        except (TaskNotFoundError, OSError, json.JSONDecodeError):
+            snapshot = TASK_API.snapshot(task_id)
+        except TaskNotFoundError:
             self.send_error_json(404, "task not found")
             return
         self.send_json(snapshot, cache_control="no-store")
@@ -1799,30 +1801,33 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def handle_cancel_task(self, query: dict[str, list[str]]) -> None:
         task_id = query.get("taskId", [""])[0]
         try:
-            snapshot = TASKS.cancel(task_id)
-        except (TaskNotFoundError, OSError, json.JSONDecodeError):
+            cancellation = TASK_API.cancel(task_id)
+        except TaskNotFoundError:
             self.send_error_json(404, "task not found")
             return
-        status = 202 if snapshot["state"] == "cancelling" else 200
-        self.send_json(snapshot, status=status, cache_control="no-store")
+        self.send_json(
+            cancellation.snapshot,
+            status=cancellation.http_status,
+            cache_control="no-store",
+        )
 
     def handle_task_artifact(self, query: dict[str, list[str]]) -> None:
         task_id = query.get("taskId", [""])[0]
         try:
-            artifact_path, name, content_type = TASKS.artifact(task_id)
-        except (TaskNotFoundError, OSError, json.JSONDecodeError):
+            artifact = TASK_API.artifact(task_id)
+        except TaskNotFoundError:
             self.send_error_json(404, "task artifact not found")
             return
         self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(artifact_path.stat().st_size))
+        self.send_header("Content-Type", artifact.content_type)
+        self.send_header("Content-Length", str(artifact.path.stat().st_size))
         self.send_header(
             "Content-Disposition",
-            f"attachment; filename*=UTF-8''{quote(name)}",
+            f"attachment; filename*=UTF-8''{quote(artifact.name)}",
         )
         self.send_header("Cache-Control", "private, max-age=3600")
         self.end_headers()
-        with artifact_path.open("rb") as source:
+        with artifact.path.open("rb") as source:
             while data := source.read(STREAM_CHUNK_SIZE):
                 try:
                     self.wfile.write(data)

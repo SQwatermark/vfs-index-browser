@@ -45,6 +45,13 @@ run 内完成标记写入后，缓存根目录的 `run.json` 才会原子切换�
 
 AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 并从本地 VFS 的 effective `StringPathHash.bin` 恢复引用候选，`npc_avatar_resources.py` 再通过 manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和 Bundle。HTTP API `/api/manifest-asset/avatar-plan` 暂时暴露这份中间计划以便真实样本验证；它不是第二种公开模型格式。对象提取完成后仍进入同一个 ModelDocument 和[角色材质恢复管线](material-pipeline.md)。
 
+### 后台任务边界
+
+`task_registry.py` 只负责状态文件、原子结果发布、当前进程取消句柄和保留策略；
+`task_service.py` 将存储损坏或缺失统一映射成应用层的任务不存在，并给请求层提供状态、取消
+响应和已登记产物。`server.py` 只解析 HTTP 参数、选择状态码并流式写出产物，不直接解释任务
+目录或私有结果字段。后续模型与动画任务的创建编排也应沿这一边界移出 Handler。
+
 ## 关键约束
 
 - 普通目录是否含 `.ab` 不再影响目录结构。

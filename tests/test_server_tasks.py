@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import server
+from task_service import TaskApplicationService
 
 
 class ServerTaskTests(unittest.TestCase):
@@ -31,7 +32,7 @@ class ServerTaskTests(unittest.TestCase):
             handler.send_header = lambda *_args: None
             handler.end_headers = lambda: None
 
-            with patch.object(server, "TASKS", tasks):
+            with patch.object(server, "TASK_API", TaskApplicationService(tasks)):
                 handler.handle_task_artifact({"taskId": ["a" * 32]})
 
         self.assertEqual("a" * 32, tasks.task_id)
@@ -87,7 +88,7 @@ class ServerTaskTests(unittest.TestCase):
         handler.send_error_json = lambda status, message: self.fail(f"{status}: {message}")
         query = {"taskId": ["b" * 32]}
 
-        with patch.object(server, "TASKS", FakeTasks()):
+        with patch.object(server, "TASK_API", TaskApplicationService(FakeTasks())):
             handler.handle_task_status(query)
             handler.handle_cancel_task(query)
 
