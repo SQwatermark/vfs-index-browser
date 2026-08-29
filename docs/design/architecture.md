@@ -145,6 +145,9 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 模型，再按资源路径严格区分 AnimationClip 与 Dialog Morph：前者使用精确 Worker 导出并绑定，
 后者调用 skeletal morph builder；取消检查位于模型、导出、绑定和发布结果边界，进度保持
 `model → animation → binding → ready` 契约（Morph 无独立 binding 阶段）。
+模型动画候选查询由 `model_animation_catalog_service.py` 协调。服务保留 ManifestIndex 的搜索和
+分页语义，统一计算路径默认查询与显式查询，验证 Avatar LOD，并为普通/Avatar 候选分别组装带
+缓存版本的单动画和 Blender URL。Handler 只负责解析模型来源并把查询或索引错误映射为 HTTP 400。
 
 ## 关键约束
 

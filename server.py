@@ -118,6 +118,7 @@ from model_artifact_resolver import (
     ModelArtifactRunNotFound,
 )
 from model_single_animation_service import ModelSingleAnimationService
+from model_animation_catalog_service import ModelAnimationCatalogService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2871,6 +2872,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             bind_animation_clip,
         )
 
+    def model_animation_catalog_service(self) -> ModelAnimationCatalogService:
+        return ModelAnimationCatalogService(
+            default_model_animation_query,
+            animation_version=MODEL_ANIMATION_CACHE_REVISION,
+            blend_version=MODEL_BLEND_VERSION,
+        )
+
     def ensure_animation_clip_export(
         self,
         record: dict,
@@ -4315,53 +4323,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
         resolved = self.resolve_manifest_model_source(query)
         if resolved is None:
             return
-        index, model_asset, _, _ = resolved
-        default_query = query.get(
-            "queryHint",
-            [default_model_animation_query(str(model_asset["path"]))],
-        )[0].strip()
-        search_query = query.get("q", [default_query])[0].strip()
         try:
-            page = int(query.get("page", ["1"])[0])
-            page_size = int(query.get("pageSize", ["50"])[0])
-            lod = int(query.get("lod", ["0"])[0])
-            if is_avatar_mesh_asset_path(str(model_asset["path"])) and lod not in range(4):
-                raise ValueError("invalid AvatarMesh LOD")
-            result = index.search_animation_assets(
-                search_query,
-                page=page,
-                page_size=page_size,
-            )
+            payload = self.model_animation_catalog_service().search(query, resolved)
         except (ValueError, sqlite3.Error) as error:
             self.send_error_json(400, str(error))
             return
-        manifest_id = int(query["manifestId"][0])
-        model_asset_index = int(model_asset["asset_index"])
-        lod_parameter = (
-            f"&lod={lod}" if is_avatar_mesh_asset_path(str(model_asset["path"])) else ""
-        )
-        for animation_asset in result["files"]:
-            animation_index = int(animation_asset["assetIndex"])
-            parameters = (
-                f"manifestId={manifest_id}&assetIndex={model_asset_index}{lod_parameter}"
-                f"&animationAssetIndex={animation_index}"
-            )
-            animation_asset["previewUrl"] = (
-                f"/api/manifest-asset/model-animation?{parameters}"
-                f"&v={MODEL_ANIMATION_CACHE_REVISION}"
-            )
-            animation_asset["blendUrl"] = (
-                f"/api/manifest-asset/model-blend?{parameters}&v={MODEL_BLEND_VERSION}"
-            )
-        self.send_json(
-            {
-                "kind": "modelAnimationCandidates",
-                "modelAsset": model_asset,
-                "defaultQuery": default_query,
-                **result,
-            },
-            compress=True,
-        )
+        self.send_json(payload, compress=True)
 
     def handle_manifest_asset_model_buffer(self, query: dict[str, list[str]]) -> None:
         try:

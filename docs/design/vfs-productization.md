@@ -815,3 +815,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   进度和 Morph 不调用 clip exporter。额外执行既有 skeletal morph 测试仍有仓库已记录的“期望
   1 条、实际 2 条轨道”断言失败，本次未修改相关代码或 fixture，不作为此重构放行门禁。下一阶段
   抽取动画候选搜索和 URL 组装。
+- 动画候选的默认查询、显式查询、分页、Avatar LOD 校验及单动画/Blender 稳定 URL 组装已移入
+  `model_animation_catalog_service.py`。Handler 只保留模型来源解析和 HTTP 错误映射；合成回归覆盖
+  普通模型不携带 LOD、Avatar 携带合法 LOD、查询裁剪、分页传递、无效 LOD 提前失败和两类缓存
+  版本。模型 HTTP 应用层拆分至此形成完整边界，下一阶段转向其他大型 Handler 领域。
