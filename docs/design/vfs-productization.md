@@ -351,7 +351,7 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
-  协议；同 Bundle 的 AudioClip 暂作为逐文件校验的派生产物，纯 AudioClip Bundle 仍走旧缓存；
+  协议；AudioClip 暂无样本，只保留 AssetMap 身份并报告为无预览协议，不再走旧缓存或 CLI；
   模型动画入口则已通过 AssetMap 锁定唯一 `PathID + Name`，并使用独占 run、哈希校验和
   原子指针发布 `AnimeStudioAnimationClip/1.1.0`；
 - CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
@@ -372,7 +372,7 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
-4. 迁移其余确有消费者、需要独立语义契约的旧 CLI 调用。
+4. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点。
 
 2026-08-29 本机使用庄方宜 PostModel 的 71 Bundle 闭包完成新旧对象快照审计：忽略旧流程中
 没有专用 CLR 解析器的 LODGroup 后，旧 1252 个 `sourceFile + pathId` 身份全部存在于新结果，
@@ -562,3 +562,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `918b1637d8ca340fa4a8d60aa85ebf7d428b4c5be9bcdaf58816c69545cb389b`；佩丽卡 ACL 压缩
   idle YAML 为 28,140,391 字节，SHA-256 为
   `7b050e940a718ee6feddbe37ec701f4105a11bb103b8e372df729942098d8ff3`，均与当前旧 CLI 一致。
+- 生产服务已删除最后的 AnimeStudio CLI 定位、健康检查和任意 Convert 回退。无当前消费者的
+  AudioClip 不引入 FMOD；若 AssetMap 只含无预览契约的类型，服务会发布带
+  `unsupportedPreviewTypes` 的可验证空 run，而不是伪造成功产物或依赖外部 CLI。

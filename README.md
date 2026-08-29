@@ -57,24 +57,17 @@ python server.py `
   --rebuild
 ```
 
-MonoBehaviour Raw、TypeTree Dump、Projectile 领域解码和单 Bundle AssetMap 由仓库内
-`unity-worker/` 提供；开发构建可通过 `VFS_BROWSER_UNITY_WORKER` 显式覆盖。内部索引和
-导出缓存位于 `data/internal-cache/`，每次 worker 操作写入独占 run，校验后才原子发布
-当前指针。
-
-尚未迁移的 CABMap、通用对象/AssetBundle、模型、动画和 Cubemap 导出暂时仍使用旧 CLI，可通过
-`VFS_BROWSER_ANIMESTUDIO_CLI` 覆盖。其存在状态可在 `/api/health` 的 `legacyTools` 中查看。
+MonoBehaviour Raw、TypeTree Dump、Projectile 领域解码、AssetMap/CABMap、通用 Bundle 预览、
+对象快照、模型纹理、Cubemap 和动画均由仓库内 `unity-worker/` 提供；开发构建可通过
+`VFS_BROWSER_UNITY_WORKER` 显式覆盖。内部索引和导出缓存位于 `data/internal-cache/`，每次
+worker 操作写入独占 run，校验后才原子发布当前指针。生产服务不再定位或调用旧
+AnimeStudio CLI。
 
 manifest 中的 `.asset`、`.prefab` 如果无法按常规资源类型导出，服务会让 VFS worker 按
 精确 container 尝试 TypeTree Dump，用于查看 VolumeProfile 等自定义 Unity 组件。
 
-manifest 中的 Cubemap 会按 container 精确导出六个面，并在预览区组成可逐面打开、
-下载的画廊。若主 CLI 是模型快照专用的定制构建，可把支持六面导出的标准构建单独配置为：
-
-```powershell
-$env:ANIMESTUDIO_CUBEMAP_CLI =
-  "D:\Projects\AnimeStudio\AnimeStudio.CLI\bin\Release\net10.0-windows\AnimeStudio.CLI.exe"
-```
+manifest 中的 Cubemap 会由 worker 按 container 精确导出六个面，并在预览区组成可逐面打开、
+下载的画廊。
 
 Cubemap 缓存会记录 EXE、CLI DLL 和核心 DLL 的文件身份，工具重新构建后自动失效。
 
@@ -191,7 +184,7 @@ Projectile API 不走模糊路径搜索。它把 `projectileId` 映射为
 会把尚未完全语义化但已经过字节边界校验的字段标为 `partial`。
 
 错误状态固定为：无效 ID 返回 `400`，manifest 中不存在返回 `404`，Unity 对象无法形成
-唯一组件结果返回 `422`，本地 manifest、AB chunk 或 AnimeStudio CLI 不可用返回 `503`。
+唯一组件结果返回 `422`，本地 manifest、AB chunk 或 Unity worker 不可用返回 `503`。
 首次请求会构建 manifest SQLite 缓存并导出目标对象，后续请求复用带源文件和工具身份的缓存。
 研究证据和当前解码边界见
 [ProjectileComponentData 本地解析链](docs/research/projectile-component-data.md)。

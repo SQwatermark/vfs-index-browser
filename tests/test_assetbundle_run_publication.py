@@ -1,5 +1,4 @@
 import hashlib
-import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -133,13 +132,11 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
                 (first_root / "Texture2D/CAB-test/icon_p0000000000000011.png").read_bytes(),
             )
 
-    def test_remaining_legacy_type_is_hashed_before_run_publication(self):
+    def test_audio_clip_is_reported_without_invoking_a_legacy_tool(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source = root / "bundle.ab"
             source.write_bytes(b"fixture-bundle")
-            legacy_cli = root / "AnimeStudio.CLI.exe"
-            legacy_cli.write_bytes(b"test-cli")
             worker = FakePreviewWorker()
             map_meta = {
                 "selectedRun": "map-2",
@@ -156,30 +153,17 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
             handler = self.make_handler()
             handler.ensure_assetbundle_map = lambda *_args, **_options: map_meta
 
-            def run_legacy(command, **_options):
-                export_root = Path(command[2])
-                target = export_root / "AudioClip" / "voice.wav"
-                target.parent.mkdir(parents=True)
-                target.write_bytes(b"legacy-wav")
-                return subprocess.CompletedProcess(command, 0, "ok", "")
-
             with (
                 patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
                 patch.object(server, "UNITY_WORKER", worker),
-                patch.object(server, "ANIMESTUDIO_CLI", legacy_cli),
-                patch.object(server.subprocess, "run", run_legacy),
             ):
                 export_root, meta = handler.ensure_assetbundle_export(
                     self.make_record(source), source,
                 )
 
-            identity = meta["derivedFiles"]["legacy:AudioClip/voice.wav"]
-            self.assertEqual(len(b"legacy-wav"), identity["byteCount"])
-            self.assertEqual(
-                hashlib.sha256(b"legacy-wav").hexdigest(),
-                identity["sha256"],
-            )
-            self.assertEqual(b"legacy-wav", (export_root / "AudioClip/voice.wav").read_bytes())
+            self.assertEqual(["AudioClip"], meta["unsupportedPreviewTypes"])
+            self.assertEqual({}, meta["derivedFiles"])
+            self.assertFalse((export_root / "AudioClip").exists())
 
     def test_animation_yaml_uses_worker_run_without_legacy_cli(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -202,17 +186,46 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
             with (
                 patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
                 patch.object(server, "UNITY_WORKER", worker),
-                patch.object(server, "ANIMESTUDIO_CLI", root / "missing-cli.exe"),
             ):
                 export_root, meta = handler.ensure_assetbundle_export(
                     self.make_record(source), source,
                 )
 
             self.assertEqual(["AnimationClip"], worker.included_types)
-            self.assertEqual([], meta["source"]["legacyTypes"])
+            self.assertEqual([], meta["source"]["unsupportedPreviewTypes"])
             self.assertTrue(
                 (export_root / "AnimationClip/CAB-test/Idle_p0000000000000017.anim").is_file()
             )
+
+    def test_pure_unsupported_bundle_publishes_an_empty_run(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "bundle.ab"
+            source.write_bytes(b"fixture-bundle")
+            worker = FakePreviewWorker()
+            map_meta = {
+                "selectedRun": "map-audio",
+                "assetEntries": [{
+                    "Type": "AudioClip",
+                    "Name": "voice",
+                    "PathID": 29,
+                    "Container": "assets/voice.wav",
+                }],
+            }
+            handler = self.make_handler()
+            handler.ensure_assetbundle_map = lambda *_args, **_options: map_meta
+
+            with (
+                patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
+                patch.object(server, "UNITY_WORKER", worker),
+            ):
+                first = handler.ensure_assetbundle_export(self.make_record(source), source)
+                second = handler.ensure_assetbundle_export(self.make_record(source), source)
+
+            self.assertEqual(first, second)
+            self.assertEqual(0, worker.calls)
+            self.assertEqual(["AudioClip"], first[1]["unsupportedPreviewTypes"])
+            self.assertEqual([], list(first[0].iterdir()))
 
 
 if __name__ == "__main__":

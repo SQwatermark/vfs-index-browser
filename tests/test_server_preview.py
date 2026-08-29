@@ -5,7 +5,6 @@ from tempfile import TemporaryDirectory
 from server import (
     ASSETBUNDLE_EXPORT_TYPES,
     BrowserHandler,
-    assetbundle_export_types_match,
     internal_preview_kind,
     manifest_asset_entries,
 )
@@ -15,12 +14,6 @@ class ServerPreviewTests(unittest.TestCase):
     def test_animation_clips_are_exported_and_previewed_as_text(self):
         self.assertIn("AnimationClip", ASSETBUNDLE_EXPORT_TYPES)
         self.assertEqual("text", internal_preview_kind(Path("idle.anim")))
-
-    def test_export_type_changes_invalidate_assetbundle_cache(self):
-        self.assertTrue(
-            assetbundle_export_types_match({"exportTypes": list(ASSETBUNDLE_EXPORT_TYPES)})
-        )
-        self.assertFalse(assetbundle_export_types_match({"exportTypes": ["Texture2D"]}))
 
     def test_manifest_fbx_sub_asset_matches_unique_export_name(self):
         entry = {"Name": "Idle", "Container": "", "Type": "AnimationClip"}

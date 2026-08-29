@@ -82,8 +82,8 @@ Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已�
   未提交修正；当前已迁移可由三份真实样本验证的结构，并保留未理解尾部。对象快照 worker
   已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；Bundle
   预览的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入独占 run；
-  模型动画所需的 AnimationJSON 也已接入精确身份的独占 run。AudioClip 仍保留旧边界，
-  不能据此宣称旧 CLI 已无调用者。
+  模型动画所需的 AnimationJSON 也已接入精确身份的独占 run。AudioClip 没有当前样本，
+  服务只保留 AssetMap 身份并明确报告无预览协议，不再为它回退旧 CLI。
 
 AnimationJSON 的真实等价证据包括：未压缩 `Recorded (16)` 输出 4,751 字节、SHA-256
 `ccaf4d97bb11a38083ad86e8662f898f373b05f81c025c05faf0382d8406f479`；Endfield ACL 压缩的

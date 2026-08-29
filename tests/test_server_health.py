@@ -18,7 +18,6 @@ class ServerHealthTests(unittest.TestCase):
             patch.object(server, "VGMSTREAM_CLI", server.Path("missing-vgmstream.exe")),
             patch.object(server, "USM_CONVERT", server.Path("missing-usm.exe")),
             patch.object(server, "FFMPEG", "missing-ffmpeg-command"),
-            patch.object(server, "ANIMESTUDIO_CLI", server.Path("missing-animestudio.exe")),
         ):
             document = server.build_health_document()
 
@@ -39,7 +38,7 @@ class ServerHealthTests(unittest.TestCase):
             worker.required_capabilities,
         )
         self.assertTrue(all(not item["available"] for item in document["optionalTools"]))
-        self.assertTrue(document["legacyTools"][0]["requiredByUnmigratedPaths"])
+        self.assertEqual([], document["legacyTools"])
 
     def test_health_is_degraded_when_worker_is_not_ready(self):
         class BrokenWorker:
