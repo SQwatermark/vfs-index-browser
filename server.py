@@ -2939,9 +2939,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
             cached = self.manifest_indexes.get(key)
             if cached is not None:
                 return cached
-            index = ManifestIndex.ensure(
-                self.read_file_slice(record, chunk_path),
+            content_md5 = str(record.get("file_data_md5") or "").casefold()
+            source_identity = (
+                f"vfs-md5:{content_md5}:length:{int(record['length'])}"
+                if content_md5
+                else None
+            )
+            index = ManifestIndex.ensure_for_source(
+                lambda: self.read_file_slice(record, chunk_path),
                 INTERNAL_CACHE_DIR / "manifests",
+                source_identity,
             )
             self.manifest_indexes[key] = index
             return index

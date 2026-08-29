@@ -617,3 +617,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - Blender `.blend` 构建已移入 `blender_export.py`，保留缓存新鲜度、取消时 terminate/kill、
   五分钟超时和临时文件原子发布；WEM→WAV 已移入 `audio_export.py`，失败不会留下或发布半成品。
   `server.py` 不再直接调用 `subprocess.run`/`Popen`，P2 Python 调用收口门禁完成。
+- manifest 派生 SQLite 增加稳定 VFS 内容身份别名。别名只在完整读取并验证 SHA-256 缓存后原子
+  发布，schema/fingerprint 不符或 JSON 损坏会回退重读。本机 46 MB manifest 首次冷读约 60 秒，
+  建立别名后跨进程重启的模型任务创建降至 161 ms。该优化不替代主索引新鲜度校验：当前
+  `451359` Persistent chunk 已缺失，实际回退到旧 Streaming 来源，健康状态仍需下一阶段明确
+  报告 stale 并接入自动重建。

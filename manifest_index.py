@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import struct
+import uuid
 from contextlib import contextmanager
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
 
 import brotli
@@ -108,6 +110,61 @@ class ManifestIndex:
         data = brotli.decompress(compressed_payload)
         index._build(data, fingerprint)
         return index
+
+    @classmethod
+    def ensure_for_source(
+        cls,
+        payload_loader: Callable[[], bytes],
+        cache_dir: Path,
+        source_identity: str | None,
+    ) -> "ManifestIndex":
+        """Reuse a verified cache without rereading an unchanged VFS payload."""
+
+        alias_path = cls._source_alias_path(cache_dir, source_identity)
+        if alias_path is not None:
+            try:
+                alias = json.loads(alias_path.read_text(encoding="utf-8"))
+                fingerprint = str(alias["fingerprint"])
+                if (
+                    alias.get("version") == 1
+                    and alias.get("sourceIdentity") == source_identity
+                    and len(fingerprint) == 64
+                ):
+                    cached = cls(cache_dir / f"manifest-{fingerprint}.sqlite")
+                    if cached._valid(fingerprint):
+                        return cached
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                pass
+
+        payload = payload_loader()
+        index = cls.ensure(payload, cache_dir)
+        if alias_path is not None:
+            fingerprint = hashlib.sha256(payload).hexdigest()
+            alias_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = alias_path.with_name(f".{alias_path.name}.{uuid.uuid4().hex}.tmp")
+            try:
+                temporary.write_text(
+                    json.dumps(
+                        {
+                            "version": 1,
+                            "sourceIdentity": source_identity,
+                            "fingerprint": fingerprint,
+                        },
+                        sort_keys=True,
+                    ),
+                    encoding="utf-8",
+                )
+                temporary.replace(alias_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return index
+
+    @staticmethod
+    def _source_alias_path(cache_dir: Path, source_identity: str | None) -> Path | None:
+        if not source_identity:
+            return None
+        identity_hash = hashlib.sha256(source_identity.encode("utf-8")).hexdigest()
+        return cache_dir / f"source-{identity_hash}.json"
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:

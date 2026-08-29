@@ -1,13 +1,81 @@
+import hashlib
+import json
 import sqlite3
 import struct
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from manifest_index import ManifestIndex, _ref_int_array
 
 
 class ManifestDependencyTests(unittest.TestCase):
+    @staticmethod
+    def write_valid_cache(path: Path, fingerprint: str) -> None:
+        conn = sqlite3.connect(path)
+        try:
+            conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            conn.executemany(
+                "INSERT INTO meta VALUES (?, ?)",
+                [
+                    ("schemaVersion", "3"),
+                    ("fingerprint", fingerprint),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_reuses_verified_cache_by_stable_source_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_dir = Path(directory)
+            fingerprint = "a" * 64
+            cache_path = cache_dir / f"manifest-{fingerprint}.sqlite"
+            self.write_valid_cache(cache_path, fingerprint)
+            identity = "vfs-md5:abcd:length:42"
+            alias_path = ManifestIndex._source_alias_path(cache_dir, identity)
+            alias_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "sourceIdentity": identity,
+                        "fingerprint": fingerprint,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            index = ManifestIndex.ensure_for_source(
+                lambda: self.fail("payload should not be read"),
+                cache_dir,
+                identity,
+            )
+
+            self.assertEqual(cache_path, index.cache_path)
+
+    def test_invalid_alias_falls_back_and_is_republished_atomically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_dir = Path(directory)
+            identity = "vfs-md5:abcd:length:42"
+            alias_path = ManifestIndex._source_alias_path(cache_dir, identity)
+            alias_path.write_text("not json", encoding="utf-8")
+            payload = b"compressed manifest"
+            rebuilt = ManifestIndex(cache_dir / "rebuilt.sqlite")
+
+            with patch.object(ManifestIndex, "ensure", return_value=rebuilt) as ensure:
+                index = ManifestIndex.ensure_for_source(
+                    lambda: payload,
+                    cache_dir,
+                    identity,
+                )
+
+            self.assertIs(rebuilt, index)
+            ensure.assert_called_once_with(payload, cache_dir)
+            alias = json.loads(alias_path.read_text(encoding="utf-8"))
+            self.assertEqual(hashlib.sha256(payload).hexdigest(), alias["fingerprint"])
+            self.assertEqual([], list(cache_dir.glob(".*.tmp")))
+
     def test_reads_reference_integer_array(self):
         data = b"head" + struct.pack("<i3i", 3, 1, 4, 2)
         self.assertEqual([1, 4, 2], _ref_int_array(data, 4, 0, 5))
