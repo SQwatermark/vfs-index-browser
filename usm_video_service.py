@@ -147,7 +147,9 @@ class UsmVideoService:
     ) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         run_id = f"{os.getpid()}.{time.time_ns()}.{uuid.uuid4().hex}"
-        temporary_video = target.with_name(f".{target.name}.{run_id}.tmp")
+        temporary_video = target.with_name(
+            f".{target.stem}.{run_id}.tmp{target.suffix}"
+        )
         temporary_meta = meta_path.with_name(f".{meta_path.name}.{run_id}.tmp")
         try:
             self._converter(

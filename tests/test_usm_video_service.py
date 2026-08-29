@@ -21,6 +21,7 @@ class UsmVideoServiceTests(unittest.TestCase):
         self.calls = []
 
         def convert(data, output, **options):
+            self.assertEqual(".mp4", output.suffix)
             self.calls.append((data, options))
             output.write_bytes(b"mp4:" + data)
 
