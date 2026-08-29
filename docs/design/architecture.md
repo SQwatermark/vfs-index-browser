@@ -96,6 +96,9 @@ PCK，只有 banks 与 stream 均可读的语言才进入候选；PCK 目录元�
 `secondary_audio_startup.py` 统一协调两类索引的启动审计、逐项重建和发布后重审计。一个索引构建
 失败不会阻止另一个索引尝试修复；最终 rebuilt/failed/notNeeded 报告由协调器合成，`server.py`
 只注入数据库、PCK 服务、解密函数和结构化日志出口。
+普通 VFS 目录的当前目录查询、子目录统计、分页文件 ID 批量回填及 `manifest.hgmmap` 虚拟目录
+占位由 `vfs_directory_service.py` 负责。Manifest 内容计数仍通过注入的已发布 ManifestIndex
+解析边界获取；HTTP Handler 只解析页码、分派虚拟路径并映射目录不存在错误。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

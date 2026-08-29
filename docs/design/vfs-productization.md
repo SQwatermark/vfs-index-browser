@@ -884,3 +884,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   AudioDialog/Wwise 独立修复、每次成功发布后的重审计及 rebuilt/failed/notNeeded 合成；其中一个
   索引失败不会阻断另一个。Handler/启动入口只注入正式服务与日志出口，合成测试覆盖无需重建、
   双重建、单项失败继续推进和 `--no-auto-rebuild` 四条路径，继续缩小 P4 单体边界。
+- 普通 `/api/list` 的目录 SQL 与响应组装已抽到 `vfs_directory_service.py`：服务统一当前目录、
+  子目录、分页文件批量回填和 manifest 虚拟目录占位，ManifestIndex 资源数通过依赖注入获取；
+  Handler 只保留查询参数与虚拟路径分派。合成测试覆盖第二页批量回填、虚拟目录统计和 404，
+  真实重启前后根目录 22 项、Manifest 331,714 项及物理文件分页完全一致。

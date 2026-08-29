@@ -68,6 +68,13 @@ from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
 from index_freshness import inspect_index_freshness
 from secondary_audio_startup import ensure_secondary_audio_indexes
+from vfs_directory_service import (
+    MANIFEST_VIRTUAL_DIR,
+    MANIFEST_VIRTUAL_NAME,
+    VfsDirectoryService,
+    join_manifest_virtual_path,
+    split_manifest_virtual_path,
+)
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -353,8 +360,6 @@ MODEL_SNAPSHOT_TYPES = (
     "LODGroup",
 )
 PAGE_SIZE_MAX = 500
-MANIFEST_VIRTUAL_DIR = "__manifest_assets__"
-MANIFEST_VIRTUAL_NAME = "Manifest 资源"
 
 
 @dataclass(frozen=True)
@@ -1032,20 +1037,6 @@ def safe_relative_path(root: Path, raw_path: str) -> Path | None:
     except ValueError:
         return None
     return candidate
-
-
-def split_manifest_virtual_path(path: str) -> tuple[str, str] | None:
-    parts = [part for part in path.replace("\\", "/").strip("/").split("/") if part]
-    if MANIFEST_VIRTUAL_DIR not in parts:
-        return None
-    marker = parts.index(MANIFEST_VIRTUAL_DIR)
-    return "/".join(parts[:marker]), "/".join(parts[marker + 1 :])
-
-
-def join_manifest_virtual_path(base_path: str, inner_path: str = "") -> str:
-    return "/".join(
-        part for part in (base_path.strip("/"), MANIFEST_VIRTUAL_DIR, inner_path.strip("/")) if part
-    )
 
 
 class BrowserHandler(BaseHTTPRequestHandler):
@@ -1790,126 +1781,39 @@ class BrowserHandler(BaseHTTPRequestHandler):
         path = unquote(query.get("path", [""])[0]).strip("/")
         page = max(int(query.get("page", ["1"])[0]), 1)
         page_size = min(max(int(query.get("pageSize", ["100"])[0]), 10), PAGE_SIZE_MAX)
-        offset = (page - 1) * page_size
         virtual_path = split_manifest_virtual_path(path)
         if virtual_path is not None:
             self.handle_manifest_virtual_list(scope, *virtual_path, page, page_size)
             return
 
-        with self.connect() as conn:
-            current = conn.execute(
-                "SELECT * FROM directories WHERE scope = ? AND path = ?",
-                (scope, path),
-            ).fetchone()
-            if current is None:
-                self.send_error_json(404, "directory not found")
-                return
-            dirs = [
-                row_to_dict(row)
-                for row in conn.execute(
-                    """
-                    SELECT path, name, file_count, total_bytes, encrypted_count,
-                           missing_chunk_count
-                    FROM entries
-                    WHERE scope = ? AND parent = ? AND type = 'dir'
-                    ORDER BY name COLLATE NOCASE
-                    """,
-                    (scope, path),
-                )
-            ]
-            manifest_entry = conn.execute(
-                """
-                SELECT e.file_id, f.length, f.chunk_exists
-                FROM entries e JOIN files f ON f.id = e.file_id
-                WHERE e.scope = ? AND e.parent = ? AND e.type = 'file'
-                  AND e.name = 'manifest.hgmmap'
-                LIMIT 1
-                """,
-                (scope, path),
-            ).fetchone()
-            if manifest_entry is not None:
-                manifest_count = 0
-                if manifest_entry["chunk_exists"]:
-                    manifest_record = self.original_file_record(conn, int(manifest_entry["file_id"]))
-                    resolved_manifest = (
-                        self.resolve_file_record_quiet(conn, manifest_record)
-                        if manifest_record is not None
-                        else None
-                    )
-                    if resolved_manifest is not None:
-                        manifest_record, manifest_chunk = resolved_manifest
-                        try:
-                            manifest_count = self.manifest_index(
-                                manifest_record,
-                                manifest_chunk,
-                            ).summary()["assetCount"]
-                        except (ValueError, OSError, sqlite3.Error):
-                            manifest_count = 0
-                dirs.append(
-                    {
-                        "path": join_manifest_virtual_path(path),
-                        "name": MANIFEST_VIRTUAL_NAME,
-                        "file_count": manifest_count,
-                        "total_bytes": int(manifest_entry["length"]),
-                        "encrypted_count": 0,
-                        "missing_chunk_count": 0 if manifest_entry["chunk_exists"] else 1,
-                        "virtualKind": "bundleManifest",
-                    }
-                )
-            total_files = conn.execute(
-                "SELECT COUNT(*) AS count FROM entries WHERE scope = ? AND parent = ? AND type = 'file'",
-                (scope, path),
-            ).fetchone()["count"]
-            entry_rows = [
-                row_to_dict(row)
-                for row in conn.execute(
-                    """
-                    SELECT path, name, file_id
-                    FROM entries
-                    WHERE scope = ? AND parent = ? AND type = 'file'
-                    ORDER BY name COLLATE NOCASE
-                    LIMIT ? OFFSET ?
-                    """,
-                    (scope, path, page_size, offset),
-                )
-            ]
-            files_by_id = {}
-            if entry_rows:
-                placeholders = ",".join("?" for _ in entry_rows)
-                files_by_id = {
-                    row["id"]: row_to_dict(row)
-                    for row in conn.execute(
-                        f"""
-                        SELECT id, source, block_name, block_hash, file_name, logical_id,
-                               source_logical_id, chunk_file, chunk_exists, offset, length,
-                               encrypted, iv_seed, file_data_md5
-                        FROM files
-                        WHERE id IN ({placeholders})
-                        """,
-                        [row["file_id"] for row in entry_rows],
-                    )
-                }
-            files = []
-            for entry in entry_rows:
-                file = files_by_id.get(entry["file_id"])
-                if not file:
-                    continue
-                files.append({**file, "path": entry["path"], "name": entry["name"]})
-            self.send_json(
-                {
-                    "scope": scope,
-                    "path": path,
-                    "directory": row_to_dict(current),
-                    "dirs": dirs,
-                    "files": files,
-                    "filePage": {
-                        "page": page,
-                        "pageSize": page_size,
-                        "total": total_files,
-                        "pages": max((total_files + page_size - 1) // page_size, 1),
-                    },
-                }
+        def manifest_asset_count(conn: sqlite3.Connection, file_id: int) -> int:
+            manifest_record = self.original_file_record(conn, file_id)
+            resolved_manifest = (
+                self.resolve_file_record_quiet(conn, manifest_record)
+                if manifest_record is not None
+                else None
             )
+            if resolved_manifest is None:
+                return 0
+            record, chunk = resolved_manifest
+            try:
+                return self.manifest_index(record, chunk).summary()["assetCount"]
+            except (ValueError, OSError, sqlite3.Error):
+                return 0
+
+        with self.connect() as conn:
+            try:
+                document = VfsDirectoryService(manifest_asset_count).list_directory(
+                    conn,
+                    scope,
+                    path,
+                    page=page,
+                    page_size=page_size,
+                )
+            except FileNotFoundError as error:
+                self.send_error_json(404, str(error))
+                return
+        self.send_json(document)
 
     def handle_manifest_virtual_list(
         self,
