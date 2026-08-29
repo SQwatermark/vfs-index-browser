@@ -15,7 +15,7 @@
 | Shader 解包与反编译 | 支线 | 在 AnimeStudio 中保存完整编译载荷，逐层识别 GPU 程序封装 |
 | 模型与动画 | 维护线 | 已具备网页预览和 Blender 导出；只处理阻塞性问题与低风险收口 |
 | 音频 | 维护线 | 对话逻辑路径已可浏览；继续保留索引能力，不抢占主线 |
-| VFS 产品化 | 当前执行主线 | worker 0.10.0 的 Texture2D/Sprite/TextAsset/VideoClip 已接入通用导出独占 run；下一步拆 Audio/AnimationClip |
+| VFS 产品化 | 当前执行主线 | worker 0.11.0 的 Texture2D/Sprite/TextAsset/VideoClip 已接入通用导出独占 run；实测剩余消费者只有 77 个 AnimationClip |
 | VFS 与配置解码 | 基础设施 | 为研究与上层消费者提供稳定定位、解码和可部署接口 |
 
 ## 已稳定的基础能力

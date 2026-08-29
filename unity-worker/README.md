@@ -32,7 +32,7 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 - 协议所有权：VFS；
 - 进程边界：单次 worker 进程，后续按性能证据决定是否改为常驻；
 - 权威 AnimeStudio 来源提交：`8cdec963c4e187ea0a4a339b8969844a9574638b`；
-- worker 版本：`0.10.0`；
+- worker 版本：`0.11.0`；
 - 已实现能力：`handshake`、`exportMonoBehaviourRaw`、`exportMonoBehaviourTypeTreeDump`、
   `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`、
   `exportIdentifiedTextures`、`exportCubemapFaces`、`exportBundlePreviewMedia`；
@@ -66,7 +66,7 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 - `exportCubemapFaces` 只接受精确 container，验证像素流由六份连续完整 mip 链组成，并按
   Unity 的 `PositiveX` 至 `NegativeZ` 顺序无垂直翻转地输出六张 PNG；
 - `exportBundlePreviewMedia` 只接受固定白名单中的 `Texture2D`、`Sprite`、`TextAsset` 和 `VideoClip`，
-  不转发任意 `Convert` 类型。每个文件使用 `_p<16 位 PathID>` 保持身份，并返回 source file、
+  不转发任意 `Convert` 类型。每个文件使用 `类型/source file/名称_p<16 位 PathID>` 保持身份，并返回 source file、
   container、长度、SHA-256 与结构化跳过原因；AudioClip、AnimationClip 保留独立边界；
 - 旧 CLI 的通用 `JSON` 只序列化 MonoBehaviour 外壳，不是 managed-reference 领域解码。
   Projectile 的聚焦解码器主体存在于被忽略的旧研究副本提交 `03336c4`，其上另有 85 行

@@ -25,7 +25,7 @@ class FakePreviewWorker:
         self.calls += 1
         self.included_types = list(included_types)
         payload = b"worker-png"
-        relative = "Texture2D/icon_p0000000000000011.png"
+        relative = "Texture2D/CAB-test/icon_p0000000000000011.png"
         target = output_directory / relative
         target.parent.mkdir(parents=True)
         target.write_bytes(payload)
@@ -34,7 +34,10 @@ class FakePreviewWorker:
             "artifacts": [{
                 "relativePath": relative,
                 "type": "Texture2D",
+                "sourceFile": "CAB-test",
                 "pathId": 17,
+                "name": "icon",
+                "container": "assets/icon.png",
                 "byteCount": len(payload),
                 "sha256": hashlib.sha256(payload).hexdigest(),
             }],
@@ -92,7 +95,10 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
             self.assertEqual(["Texture2D"], worker.included_types)
             self.assertEqual(first_root, second_root)
             self.assertEqual(first_meta["selectedRun"], second_meta["selectedRun"])
-            self.assertEqual(b"worker-png", (first_root / "Texture2D/icon_p0000000000000011.png").read_bytes())
+            self.assertEqual(
+                b"worker-png",
+                (first_root / "Texture2D/CAB-test/icon_p0000000000000011.png").read_bytes(),
+            )
 
     def test_remaining_legacy_type_is_hashed_before_run_publication(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -105,7 +111,12 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
             map_meta = {
                 "selectedRun": "map-2",
                 "assetEntries": [
-                    {"Type": "Texture2D", "Name": "icon", "PathID": 17},
+                    {
+                        "Type": "Texture2D",
+                        "Name": "icon",
+                        "PathID": 17,
+                        "Container": "assets/icon.png",
+                    },
                     {"Type": "AudioClip", "Name": "voice", "PathID": 23},
                 ],
             }

@@ -21,6 +21,7 @@ import tarfile
 import threading
 import time
 import uuid
+from collections import Counter
 from contextlib import closing
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -4101,11 +4102,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     cancel_event=cancel,
                 )
 
-            expected_worker_assets = {
-                (str(entry.get("Type") or ""), int(entry.get("PathID")))
+            expected_worker_assets = Counter(
+                (
+                    str(entry.get("Type") or ""),
+                    int(entry.get("PathID")),
+                    str(entry.get("Name") or ""),
+                    str(entry.get("Container") or "").replace("\\", "/"),
+                )
                 for entry in asset_entries
                 if str(entry.get("Type") or "") in worker_types
-            }
+            )
 
             def validate_worker_media(
                 _media_root: Path,
@@ -4113,11 +4119,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 result: dict,
             ) -> None:
                 described = list(result.get("artifacts") or []) + list(result.get("skipped") or [])
-                actual = {
-                    (str(item.get("type") or ""), int(item.get("pathId")))
+                actual = Counter(
+                    (
+                        str(item.get("type") or ""),
+                        int(item.get("pathId")),
+                        str(item.get("name") or ""),
+                        str(item.get("container") or "").replace("\\", "/"),
+                    )
                     for item in described
                     if isinstance(item, dict)
-                }
+                )
                 if actual != expected_worker_assets:
                     raise RuntimeError("worker preview media identities do not match AssetMap")
                 if set(result.get("includedTypes") or []) != set(worker_types):

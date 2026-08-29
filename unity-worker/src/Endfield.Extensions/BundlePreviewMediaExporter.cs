@@ -137,6 +137,7 @@ public static class BundlePreviewMediaExporter
         };
         var relativePath = Path.Combine(
             asset.type.ToString(),
+            StableSourceDirectory(asset.assetsFile.fileName),
             $"{SafeName(asset.Name, asset.type.ToString())}_p{unchecked((ulong)asset.m_PathID):X16}{extension}");
         var outputPath = Path.Combine(outputDirectory, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
@@ -276,5 +277,17 @@ public static class BundlePreviewMediaExporter
             name = name.Replace(character, '_');
         }
         return name.Length < 160 ? name : name[..160];
+    }
+
+    private static string StableSourceDirectory(string sourceFile)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFile) ||
+            !string.Equals(Path.GetFileName(sourceFile), sourceFile, StringComparison.Ordinal))
+        {
+            throw new MonoBehaviourExportException(
+                "invalid_source_file",
+                $"SerializedFile 名称不能安全用于产物路径：{sourceFile}");
+        }
+        return sourceFile;
     }
 }
