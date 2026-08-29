@@ -35,7 +35,7 @@ Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已�
 - 协议所有权：VFS；
 - 进程边界：单次 worker 进程，后续按性能证据决定是否改为常驻；
 - 权威 AnimeStudio 来源提交：`8cdec963c4e187ea0a4a339b8969844a9574638b`；
-- worker 版本：`0.13.0`；
+- worker 版本：`0.14.0`；
 - 已实现能力：`handshake`、`exportMonoBehaviourRaw`、`exportMonoBehaviourTypeTreeDump`、
   `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`、
   `exportIdentifiedTextures`、`exportCubemapFaces`、`exportBundlePreviewMedia`、
@@ -63,7 +63,9 @@ Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已�
   SerializedFile 偏移与外部 CAB 依赖。重复输入或 CAB 名碰撞会明确失败，不再静默选中首项；
 - `exportObjectSnapshots` 在单次请求中显式接收物理输入闭包、CABMap、主输入、允许选择的
   input ID、类型与精确 container。它验证 CAB 名、input ID 和 SerializedFile 偏移一致后才
-  导出 `sourceFile + pathId` 身份的快照；公共 JSON 只附加稳定 input ID，不保存物理路径；
+  导出 `sourceFile + pathId` 身份的快照；公共 JSON 只附加稳定 input ID，不保存物理路径。
+  LODGroup 必须由资源内嵌 TypeTree 完整读取层级参数及 Renderer PPtr；没有 TypeTree 时明确
+  失败，不输出只有 Unity 对象外壳的伪快照；
 - `exportIdentifiedTextures` 复用相同的显式输入与 CABMap 绑定，只接受精确
   `sourceFile + pathId` 选择，不按可能重复的对象名筛选；PNG 继续使用
   `_p<16 位 PathID>.png` 命名，并返回尺寸、字节数和 SHA-256；

@@ -207,6 +207,13 @@ async function postJson(url, body) {
 
 const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
+class TaskCancelledError extends Error {
+  constructor() {
+    super('后台任务已取消')
+    this.name = 'TaskCancelledError'
+  }
+}
+
 async function waitForTask(taskId, onProgress = null) {
   for (;;) {
     const snapshot = await getJson(`/api/task?taskId=${encodeURIComponent(taskId)}`)
@@ -214,7 +221,7 @@ async function waitForTask(taskId, onProgress = null) {
     if (snapshot.state === 'failed') {
       throw new Error(snapshot.error?.message || '后台任务失败')
     }
-    if (snapshot.state === 'cancelled') throw new Error('后台任务已取消')
+    if (snapshot.state === 'cancelled') throw new TaskCancelledError()
     if (onProgress && snapshot.progress) onProgress(snapshot.progress)
     await wait(250)
   }
@@ -799,6 +806,7 @@ function renderModelPreview(data) {
       })
     } catch (error) {
       if (animationTaskId === task.taskId) animationTaskId = null
+      if (error instanceof TaskCancelledError || !active || requestId !== animationRequestId) return
       throw error
     }
     if (!active || requestId !== animationRequestId || animationTaskId !== task.taskId) return

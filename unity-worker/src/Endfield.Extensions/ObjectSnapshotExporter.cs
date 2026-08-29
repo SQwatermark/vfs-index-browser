@@ -69,6 +69,7 @@ public static class ObjectSnapshotExporter
         ClassIDType.Material,
         ClassIDType.Animator,
         ClassIDType.Avatar,
+        ClassIDType.LODGroup,
     ];
 
     public static ObjectSnapshotExportResult Export(ObjectSnapshotExportRequest request)
@@ -283,6 +284,13 @@ public static class ObjectSnapshotExporter
         if (asset is Animator && asset.ToType() is { } animatorValue)
         {
             value = animatorValue;
+        }
+        else if (asset.type == ClassIDType.LODGroup)
+        {
+            value = asset.ToType()
+                ?? throw new MonoBehaviourExportException(
+                    "object_type_tree_missing",
+                    $"LODGroup 缺少可用于快照的内嵌 TypeTree：{asset.assetsFile.fileName} / {asset.m_PathID}");
         }
         var payload = JObject.FromObject(value, serializer);
         var rawData = asset.GetRawData();

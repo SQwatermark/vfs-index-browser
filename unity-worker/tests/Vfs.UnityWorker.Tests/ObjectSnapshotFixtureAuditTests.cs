@@ -52,11 +52,12 @@ public sealed class ObjectSnapshotFixtureAuditTests
                 [
                     "GameObject", "Transform", "MeshFilter", "MeshRenderer",
                     "SkinnedMeshRenderer", "Mesh", "Material", "Animator", "Avatar",
+                    "LODGroup",
                 ],
                 [],
                 exportRoot));
 
-            var legacy = ReadIdentities(legacyRoot, excludeLodGroup: true);
+            var legacy = ReadIdentities(legacyRoot, excludeLodGroup: false);
             var current = ReadIdentities(exportRoot, excludeLodGroup: false);
             CollectionAssert.IsSubsetOf(legacy.Keys.ToArray(), current.Keys.ToArray());
             foreach (var identity in legacy.Keys)
@@ -65,6 +66,27 @@ public sealed class ObjectSnapshotFixtureAuditTests
                     legacy[identity].Container,
                     current[identity].Container,
                     $"container mismatch for {identity}");
+            }
+
+            var lodSnapshots = Directory.GetFiles(
+                Path.Combine(exportRoot, "LODGroup"),
+                "*.json",
+                SearchOption.AllDirectories);
+            Assert.IsTrue(lodSnapshots.Length > 0, "fixture did not export a real LODGroup");
+            foreach (var lodSnapshot in lodSnapshots)
+            {
+                using var lodDocument = JsonDocument.Parse(File.ReadAllText(lodSnapshot));
+                var lods = lodDocument.RootElement.GetProperty("m_LODs");
+                Assert.IsTrue(lods.GetArrayLength() > 0, $"LODGroup has no levels: {lodSnapshot}");
+                var references = lodDocument.RootElement
+                    .GetProperty("$animestudio")
+                    .GetProperty("pptrReferences");
+                Assert.IsTrue(
+                    references.EnumerateArray().Any(reference =>
+                        reference.GetProperty("path").GetString()?.StartsWith(
+                            "$.m_LODs[",
+                            StringComparison.Ordinal) == true),
+                    $"LODGroup has no renderer references: {lodSnapshot}");
             }
 
             var exportedText = string.Join(

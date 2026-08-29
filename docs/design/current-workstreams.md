@@ -15,7 +15,7 @@
 | Shader 解包与反编译 | 支线 | 在 AnimeStudio 中保存完整编译载荷，逐层识别 GPU 程序封装 |
 | 模型与动画 | 维护线 | 已具备网页预览和 Blender 导出；只处理阻塞性问题与低风险收口 |
 | 音频 | 维护线 | 对话逻辑路径已可浏览；继续保留索引能力，不抢占主线 |
-| VFS 产品化 | 当前执行主线 | worker 0.13.0 已接管精确 AnimationJSON 和通用 AnimationClip YAML；旧通用类型只剩暂无实测消费者的 AudioClip |
+| VFS 产品化 | 当前执行主线 | worker 0.14.0 已接管模型 LODGroup TypeTree、精确 AnimationJSON 和通用 AnimationClip YAML；旧通用类型只剩暂无实测消费者的 AudioClip |
 | VFS 与配置解码 | 基础设施 | 为研究与上层消费者提供稳定定位、解码和可部署接口 |
 
 ## 已稳定的基础能力
@@ -72,6 +72,8 @@
   双动画 Blender 导出；快速切换动画会取消旧任务，公开任务状态不泄露产物绝对路径。
   下一步回到阻塞性模型装配问题，并逐步拆分 `server.py` 的任务与资源服务边界；
 - 继续统一 Prefab、PostModel、AvatarMesh、NPC 与怪物的装配输入；
+- 普通模型 LODGroup 已从内嵌 TypeTree 严格恢复层级和 Renderer 引用；继续补充多种角色与
+  怪物样本，确认无法按显式组恢复时才允许使用 `_lod0` 名称回退；
 - 补全材质、Shader、特效和运行时角色光照，而不是把快速 PBR 预览当作最终还原。
 
 当前批量动画真实样本为：79 项候选中 59 项成功、20 项产生结构化诊断。完全静态轨道

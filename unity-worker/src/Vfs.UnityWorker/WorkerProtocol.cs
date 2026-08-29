@@ -13,7 +13,7 @@ public static class WorkerProtocol
 {
     public const string ProtocolName = "vfs-unity-worker";
     public const string ProtocolVersion = "1.0.0";
-    public const string WorkerVersion = "0.13.0";
+    public const string WorkerVersion = "0.14.0";
     public const string AnimeStudioUpstreamCommit =
         "8cdec963c4e187ea0a4a339b8969844a9574638b";
 

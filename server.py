@@ -270,7 +270,7 @@ MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
 PROJECTILE_COMPONENT_EXPORT_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 2
-MODEL_SNAPSHOT_VERSION = 32
+MODEL_SNAPSHOT_VERSION = 33
 AVATAR_MODEL_SNAPSHOT_VERSION = 5
 ANIMATION_CLIP_EXPORT_VERSION = 5
 # Increment when the GLB representation changes without changing ModelDocument.
@@ -359,6 +359,7 @@ MODEL_SNAPSHOT_TYPES = (
     "Material",
     "Animator",
     "Avatar",
+    "LODGroup",
 )
 AUDIO_ENTRY_RE = re.compile(r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$", re.IGNORECASE)
 PAGE_SIZE_MAX = 500

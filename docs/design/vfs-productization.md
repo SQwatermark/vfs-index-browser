@@ -284,7 +284,7 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap`、
 `buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces`、
-`exportBundlePreviewMedia` 和 `exportAnimationClipJson`，worker 版本已升至 `0.13.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
+`exportBundlePreviewMedia` 和 `exportAnimationClipJson`，worker 版本已升至 `0.14.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
 主特效结束条件；未知尾部完整保留为 Raw words，公开结果明确为 `partial`。下一项代码工作
 已用 Python 唯一 `UnityWorkerClient` 把 Projectile 和共用 MonoBehaviour Raw 调用切换到
 新 worker。Projectile、Raw 和 TypeTree Dump 复用同一个多产物原子导出框架：每次构建
@@ -307,7 +307,7 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | --- | --- | --- | --- |
 | 组件原始数据 | MonoBehaviour + `Raw`/`Dump`/`JSON` | `server.py` | P3.1 |
 | 资源映射 | `AssetMap`、显式多输入 CABMap 已迁移；模型链不再使用旧 `UseCABMap` | worker、`server.py` | P3.2 |
-| 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 不输出伪快照 | worker + `server.py` | P3.2 |
+| 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 从内嵌 TypeTree 严格恢复 | worker + `server.py` | P3.2 |
 | 通用资源 | Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已迁入 worker 与独占 run；AudioClip 暂无样本 | worker、`server.py` | P3.2/P3.3 |
 | 纹理身份 | 精确 Texture2D `sourceFile + pathId` 已迁移 | worker、`server.py`、`avatar_mesh_snapshot.py` | P3.3 |
 | Cubemap | 精确 container + 六面 PNG 已迁移 | worker、`server.py` | P3.3 |
@@ -348,7 +348,7 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 截至 2026-08-29，当前工作树的可交付边界为：
 
-- worker `0.13.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
+- worker `0.14.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
   聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理、Cubemap 六面和固定
   白名单的 Bundle 预览媒体导出，以及精确 AnimationClip 的 AnimationJSON；
 - Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap`、`exportObjectSnapshots` 与
@@ -395,11 +395,11 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
    `Convert`；
-2. 用普通模型、AvatarMesh、单动画和批量动画真实样本完成后台任务端到端浏览器审计；任务
-   记录已有七天/512 项保留策略，所有模型与动画长链均已任务化；
-3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
-   不输出只有对象外壳的伪 LODGroup 快照；
-4. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点。
+2. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点；
+3. 将持续增长的 `server.py` 按请求、资源服务和后台任务边界逐步拆分，拆分过程中保持当前
+   同步兼容入口和任务协议不变；
+4. 为 LODGroup 增加普通角色、NPC 和怪物多样本审计；资源没有完整 TypeTree 时必须明确失败，
+   不得重新引入只有对象外壳的伪快照。
 
 2026-08-29 本机使用庄方宜 PostModel 的 71 Bundle 闭包完成新旧对象快照审计：忽略旧流程中
 没有专用 CLR 解析器的 LODGroup 后，旧 1252 个 `sourceFile + pathId` 身份全部存在于新结果，
@@ -589,6 +589,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `918b1637d8ca340fa4a8d60aa85ebf7d428b4c5be9bcdaf58816c69545cb389b`；佩丽卡 ACL 压缩
   idle YAML 为 28,140,391 字节，SHA-256 为
   `7b050e940a718ee6feddbe37ec701f4105a11bb103b8e372df729942098d8ff3`，均与当前旧 CLI 一致。
+- worker `0.14.0` 将 LODGroup 加入对象快照白名单，但不依赖不存在的专用 CLR 类型，而是
+  严格读取资源内嵌 TypeTree。庄方宜真实闭包恢复 4 个 LOD 层级及各层 Renderer PPtr；本地
+  证据测试同时要求导出身份/container 与旧缓存一致、`m_LODs` 非空且引用元数据实际包含
+  `$.m_LODs[...]` 路径。缺失 TypeTree 会返回 `object_type_tree_missing`，不发布伪成功结果。
 - 生产服务已删除最后的 AnimeStudio CLI 定位、健康检查和任意 Convert 回退。无当前消费者的
   AudioClip 不引入 FMOD；若 AssetMap 只含无预览契约的类型，服务会发布带
   `unsupportedPreviewTypes` 的可验证空 run，而不是伪造成功产物或依赖外部 CLI。
