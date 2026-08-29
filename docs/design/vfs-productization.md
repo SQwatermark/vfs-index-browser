@@ -780,3 +780,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   和 metadata 分别通过 UUID 临时文件替换发布，失败现场不会遗留临时产物。Handler 的动画循环
   只负责精确片段导出、逐项绑定和 skip-incompatible 决策。回归覆盖动画选择顺序、附加 geometry、
   缓存复用、metadata 和临时文件清理；下一阶段抽取动画请求 identity、结果清单与绑定应用服务。
+- 多动画请求 identity、请求缓存恢复、逐片 AnimationJSON 导出、文档副本绑定、无兼容轨道拒绝、
+  `clipExport`/`modelBinding` 诊断、全失败回退基础 GLB、动画 GLB 调用和结果清单发布已移入
+  `model_animation_service.py`。`AnimationExportIssue` 与 `AnimatedModelBundle` 领域结果也迁出
+  `server.py`，原模块继续导入名称以保持调用兼容。请求清单改用 UUID 临时文件原子替换；合成与
+  既有路由回归覆盖排序、累计 geometry、缓存复用、两类跳过和全失败。Handler 的
+  `ensure_animated_model_glb` 现为薄转发，下一阶段收口模型 Blender 应用服务。

@@ -33,6 +33,10 @@ class ModelGlbService:
         self._shader_root = shader_archive_root
         self._character_shader_path = character_shader_path
 
+    @property
+    def exporter_mtime_ns(self) -> int:
+        return self._exporter_path.stat().st_mtime_ns
+
     def load_inputs(
         self,
         asset: dict,

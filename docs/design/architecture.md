@@ -126,6 +126,10 @@ build session、Worker、文档服务与 run store。Handler 只注入索引相�
 动画片段、绑定器、导出器和材质计划身份决定是否重建基础或动画 GLB。两类 GLB 与 metadata
 均以唯一临时文件替换发布；动画与 Blender 上层仍通过 Handler 的兼容方法消费该稳定边界，
 不再自行解释基础模型纹理路径或复制 GLB 发布规则。
+多动画请求的稳定 identity、缓存清单、逐片 AnimationJSON 导出、绑定隔离、兼容性跳过和最终
+动画 GLB 协调位于 `model_animation_service.py`。每个片段先在文档副本上绑定，只有产生兼容
+轨道才提交到累计结果；失败片段在允许跳过时形成区分 `clipExport` 与 `modelBinding` 的诊断。
+请求清单通过唯一临时文件原子切换，缓存恢复仍会复核有效动画集合对应的 GLB 是否存在。
 
 ## 关键约束
 
