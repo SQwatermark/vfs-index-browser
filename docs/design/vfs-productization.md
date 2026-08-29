@@ -688,4 +688,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - 已发布 AssetBundle run 的安全目录解析、递归目录统计、预览条目构造和 AssetMap 元数据回绑
   已移入 `assetbundle_browser.py`。带十六进制 PathID 后缀的导出文件会恢复有符号 64 位 ID 后
   精确匹配；同类型同名但无法唯一确定的文件不会猜测元数据。合成测试覆盖路径逃逸、歧义拒绝、
-  递归统计和精确文件查找；worker 调度与 run 发布仍留在下一阶段继续拆分。
+  递归统计和精确文件查找。真实缓存 `100542` 的 Sprite 与 Texture2D 分支均能递归列出各自
+  `deco_bg04_p<pathId>.png`，两个文件都精确回绑到正确 AssetMap 类型；worker 调度与 run 发布
+  仍留在下一阶段继续拆分。
