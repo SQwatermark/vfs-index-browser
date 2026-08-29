@@ -350,8 +350,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
   对象快照与引用纹理不再调用旧 `ObjectJSON`/`IdentifiedTexture`；通用 `Convert`、Cubemap
   与动画仍由旧 CLI 执行；
 - CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
-  服务端模型路径均已直接消费该契约；这两条路径已删除旧 `BuildCABMap + UseCABMap`，但
-  对象固定目录尚未收口到共用独占 run，因此 P3.2 尚未全部完成；
+  服务端模型路径均已直接消费该契约；这两条路径已删除旧 `BuildCABMap + UseCABMap`，并将
+  输入、CABMap、对象、纹理、模型文档和几何收口到独占 run，由根 `run.json` 原子发布；
 - 对象 exporter 只迁移权威 `ObjectSnapshotExporter` 所需最小契约，没有复制巨型
   `Exporter.cs`；公共快照已移除 `sourceOriginalPath`、`loadedSourceOriginalPath` 和
   `targetSourceOriginalPath`，以稳定 input ID 补充来源绑定；
@@ -362,8 +362,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. 将模型对象与纹理的固定目录进一步收口到共用独占 run 框架，保持模型 `run.json` 为最后发布指针；
-2. 迁移通用 Texture2D/Sprite/Cubemap 与模型层级之外的 Convert 消费者；
+1. 迁移通用 Texture2D/Sprite/Cubemap 与模型层级之外的 Convert 消费者；
+2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
 4. 最后迁移动画等需要独立语义契约的旧 CLI 调用。
@@ -382,8 +382,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 PNG 与旧产物逐字节一致，并成功发布 run 指针。
 
 本轮验证：.NET `36` 项通过、`4` 项未配置的外部证据测试跳过，其中对象与纹理真实闭包测试已
-显式启用并通过；Python worker、健康检查、AvatarMesh 与 ModelDocument 聚焦测试 `33` 项
-通过；模型生产路径另以临时缓存完成端到端验证。全量 Python discovery 的 264 项仍有 3 失败、
+显式启用并通过；Python worker、健康检查、模型 run、AvatarMesh 与 ModelDocument 聚焦测试 `35` 项
+通过；模型生产路径另以临时缓存完成端到端验证。全量 Python discovery 的 266 项仍有 3 失败、
 5 错误，集中在动画版本旧 fixture、两项已知 MemoryPack override、runtime probe 导入、Humanoid
 oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结果。Release 构建 0 警告、0 错误，产品自有文件的
 `git diff --check` 通过。锁定导入的上游 vendor 保留其原始尾随空白，不以格式化改写破坏
@@ -511,3 +511,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `sourceFile + pathId` 精确选择并返回 PNG 的尺寸、字节数和 SHA-256。模型与 AvatarMesh
   生产调用已迁移，旧名称正则、全局 CABMap 和相关命令辅助函数已删除；真实证据为普通模型
   39/39、AvatarMesh 38/38 张 PNG 与旧产物逐字节一致。
+- 普通模型与 AvatarMesh 构建改为独占 run：每轮输入、CABMap、对象、纹理、ModelDocument
+  和 geometry 不再覆盖固定目录；run 内完成标记先落盘，根 `run.json` 最后原子切换。几何与
+  纹理 URL 绑定 run ID，可继续读取历史已发布 run。庄方宜完整链路后的故意 CABMap 失败验证
+  了发布指针、旧 run 和 9,971,028 字节 geometry 均未变化；56 Bundle AvatarMesh 完整链路
+  仍得到 437 节点、13 Mesh、11 Material、13 Skin、38 张纹理，3,381,104 字节 geometry 与
+  旧产物逐字节一致。

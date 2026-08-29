@@ -30,6 +30,10 @@ manifest.hgmmap
 5. `gltf_export.py` 从 ModelDocument 选择预览资源并生成自包含 GLB，不重新解释 Unity 对象。
 6. 前端通过 Three.js 加载 GLB，普通文件浏览行为不受模型预览入口影响。
 
+上述第 2 至第 5 步在每次构建的独占 `runs/<run-id>/` 中完成。只有对象、纹理、
+`model.json`、`geometry.bin` 和 run 内完成标记全部落盘后，缓存根目录 `run.json` 才原子指向
+该 run。几何及纹理 URI 同时携带 run ID，保证并发重建和缓存切换期间的读取一致性。
+
 当前 Prefab 快照适配器要求 worker 输出 `$animestudio` 身份与 PPtr 元数据，并严格接受 `AnimeStudioObjectSnapshot/1.0.0`。标准 `JSON` 只写对象载荷，不属于模型恢复协议。`sourceFile + pathId` 是对象和纹理身份；跨 Bundle 引用由内嵌核心在加载 manifest 依赖闭包并校验显式 CABMap 后解析。消费端不能退回按导出文件名或对象名猜测，也不能通过全量导出依赖闭包规避问题。
 
 ## ModelDocument 边界

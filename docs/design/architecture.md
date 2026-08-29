@@ -38,6 +38,10 @@ SerializedFile 偏移后再导出，不依赖旧 CLI 的进程级 `Maps/` 状态
 
 Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
 
+一次模型构建的输入、CABMap、对象、纹理、ModelDocument 和几何全部写入同一个不可变 run。
+run 内完成标记写入后，缓存根目录的 `run.json` 才会原子切换；失败构建不会覆盖上一份结果。
+文档中的几何和纹理 URL 携带 run 身份，因此发布新模型不会让已打开页面混读两代产物。
+
 AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 并从本地 VFS 的 effective `StringPathHash.bin` 恢复引用候选，`npc_avatar_resources.py` 再通过 manifest 唯一确定 Mesh、按槽位排序的 Material、Avatar 和 Bundle。HTTP API `/api/manifest-asset/avatar-plan` 暂时暴露这份中间计划以便真实样本验证；它不是第二种公开模型格式。对象提取完成后仍进入同一个 ModelDocument 和[角色材质恢复管线](material-pipeline.md)。
 
 ## 关键约束

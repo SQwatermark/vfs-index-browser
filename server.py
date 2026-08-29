@@ -302,8 +302,8 @@ MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
 PROJECTILE_COMPONENT_EXPORT_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 1
-MODEL_SNAPSHOT_VERSION = 31
-AVATAR_MODEL_SNAPSHOT_VERSION = 4
+MODEL_SNAPSHOT_VERSION = 32
+AVATAR_MODEL_SNAPSHOT_VERSION = 5
 ANIMATION_CLIP_EXPORT_VERSION = 4
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
@@ -1279,6 +1279,35 @@ def safe_relative_path(root: Path, raw_path: str) -> Path | None:
     except ValueError:
         return None
     return candidate
+
+
+def resolve_published_model_run(cache_root: Path, requested_run: str = "") -> Path | None:
+    """Resolve one immutable model run without scanning unpublished directories."""
+
+    runs_root = cache_root / "runs"
+    run_name = requested_run.strip()
+    if not run_name:
+        meta_path = cache_root / "run.json"
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            run_name = str(meta.get("selectedRun") or "").strip()
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+    selected = safe_relative_path(runs_root, run_name)
+    if (
+        not run_name
+        or selected is None
+        or selected.parent != runs_root.resolve()
+        or not selected.is_dir()
+    ):
+        return None
+    try:
+        completion = json.loads((selected / "run.json").read_text(encoding="utf-8"))
+        if str(completion.get("selectedRun") or "") != run_name:
+            return None
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+    return selected
 
 
 def validate_worker_artifacts(export_root: Path, result: object) -> list[Path]:
@@ -2926,16 +2955,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     remaining -= len(data)
         os.replace(tmp, target)
 
-    def model_snapshot_paths(self, record: dict, asset_index: int) -> tuple[Path, Path, Path, Path]:
+    def model_snapshot_cache_paths(self, record: dict, asset_index: int) -> tuple[Path, Path, Path]:
         root = INTERNAL_CACHE_DIR / str(record["id"]) / "models" / str(asset_index)
-        return root / "source.ab", root / "objects", root / "model.json", root / "run.json"
+        return root, root / "runs", root / "run.json"
 
-    def avatar_model_snapshot_paths(
+    def avatar_model_snapshot_cache_paths(
         self,
         record: dict,
         asset_index: int,
         lod: int,
-    ) -> tuple[Path, Path, Path, Path]:
+    ) -> tuple[Path, Path, Path]:
         root = (
             INTERNAL_CACHE_DIR
             / str(record["id"])
@@ -2943,7 +2972,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             / str(asset_index)
             / f"avatar-lod-{lod}"
         )
-        return root / "inputs", root / "objects", root / "model.json", root / "run.json"
+        return root, root / "runs", root / "run.json"
 
     def animation_clip_export_paths(
         self,
@@ -3061,11 +3090,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         dependency_sources: list[tuple[dict, Path]],
         missing_dependency_bundles: list[dict],
     ) -> tuple[dict, dict]:
-        source_path, object_root, model_path, run_path = self.model_snapshot_paths(
+        cache_root, runs_root, run_path = self.model_snapshot_cache_paths(
             record, int(asset["asset_index"])
         )
-        geometry_path = model_path.with_name("geometry.bin")
-        texture_root = model_path.parent / "textures"
         model_builder_path = Path(build_hierarchy_document.__code__.co_filename)
         source_identity = {
             "recordId": int(record["id"]),
@@ -3092,9 +3119,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "missingDependencyBundles": missing_dependency_bundles,
             "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
-        if model_path.exists() and run_path.exists():
+        published_root = resolve_published_model_run(cache_root)
+        if published_root is not None and run_path.exists():
             try:
                 run_meta = json.loads(run_path.read_text(encoding="utf-8"))
+                model_path = published_root / "model.json"
+                geometry_path = published_root / "geometry.bin"
+                texture_root = published_root / "textures"
                 document = json.loads(model_path.read_text(encoding="utf-8"))
                 if (
                     run_meta.get("version") == MODEL_SNAPSHOT_VERSION
@@ -3107,16 +3138,22 @@ class BrowserHandler(BaseHTTPRequestHandler):
             except (OSError, json.JSONDecodeError):
                 pass
 
-        source_path.parent.mkdir(parents=True, exist_ok=True)
-        input_root = source_path.parent / "inputs"
-        shutil.rmtree(input_root, ignore_errors=True)
+        request_id = (
+            f"model-{int(record['id'])}-{int(asset['asset_index'])}-"
+            f"{time.time_ns()}-{uuid.uuid4().hex}"
+        )
+        run_root = runs_root / request_id
+        input_root = run_root / "inputs"
         input_root.mkdir(parents=True, exist_ok=True)
         source_path = input_root / "entry.ab"
+        object_root = run_root / "objects"
+        model_path = run_root / "model.json"
+        geometry_path = run_root / "geometry.bin"
+        texture_root = run_root / "textures"
         self.write_file_slice(record, chunk_path, source_path)
         for dependency, dependency_chunk in dependency_sources:
             dependency_path = input_root / f"dependency-{int(dependency['id'])}.ab"
             self.write_file_slice(dependency, dependency_chunk, dependency_path)
-        shutil.rmtree(object_root, ignore_errors=True)
         object_root.mkdir(parents=True, exist_ok=True)
         staged_inputs = [
             {"inputId": "manifest:primary", "inputPath": str(source_path)},
@@ -3128,8 +3165,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 for dependency, _dependency_chunk in dependency_sources
             ],
         ]
-        cab_root = object_root.parent / "cab-map"
-        shutil.rmtree(cab_root, ignore_errors=True)
+        cab_root = run_root / "cab-map"
         cab_result = UNITY_WORKER.build_cab_map(
             inputs=staged_inputs,
             output_directory=cab_root,
@@ -3160,6 +3196,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         run_meta = {
             "version": MODEL_SNAPSHOT_VERSION,
             "source": source_identity,
+            "selectedRun": request_id,
             "steps": completed_steps,
             "builtAtEpoch": int(time.time()),
             "scope": "manifestDependencyClosure",
@@ -3192,6 +3229,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             buffer_uri=(
                 f"/api/manifest-asset/model-buffer?recordId={int(record['id'])}"
                 f"&assetIndex={int(asset['asset_index'])}"
+                f"&run={quote(request_id)}"
             ),
         )
         textures = collect_material_textures(document, objects)
@@ -3231,6 +3269,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     image_uris[identity] = (
                         f"/api/manifest-asset/model-texture?recordId={int(record['id'])}"
                         f"&assetIndex={int(asset['asset_index'])}"
+                        f"&run={quote(request_id)}"
                         f"&path={quote(str(artifact['relativePath']))}"
                     )
             attach_texture_images(document, textures, image_uris)
@@ -3264,6 +3303,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             geometry_path.write_bytes(geometry)
         elif geometry_path.exists():
             geometry_path.unlink()
+        (run_root / "run.json").write_text(
+            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        cache_root.mkdir(parents=True, exist_ok=True)
         temporary_run_path = run_path.with_name(f".{run_path.name}.{uuid.uuid4().hex}.tmp")
         temporary_run_path.write_text(
             json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
@@ -3339,13 +3383,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             names = ", ".join(str(bundle["name"]) for bundle in missing_bundles)
             raise FileNotFoundError(f"AvatarMesh dependency bundles are missing: {names}")
 
-        input_root, object_root, model_path, run_path = self.avatar_model_snapshot_paths(
+        cache_root, runs_root, run_path = self.avatar_model_snapshot_cache_paths(
             bundle_record,
             int(asset["asset_index"]),
             lod,
         )
-        geometry_path = model_path.with_name("geometry.bin")
-        texture_root = model_path.parent / "textures"
         builder_paths = [
             Path(build_static_avatar_mesh_document.__code__.co_filename),
             Path(selected_container_paths.__code__.co_filename),
@@ -3379,23 +3421,35 @@ class BrowserHandler(BaseHTTPRequestHandler):
             },
             "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
-        if model_path.is_file() and run_path.is_file():
+        published_root = resolve_published_model_run(cache_root)
+        if published_root is not None and run_path.is_file():
             try:
                 run_meta = json.loads(run_path.read_text(encoding="utf-8"))
+                model_path = published_root / "model.json"
+                geometry_path = published_root / "geometry.bin"
+                texture_root = published_root / "textures"
                 document = json.loads(model_path.read_text(encoding="utf-8"))
                 if (
                     run_meta.get("version") == AVATAR_MODEL_SNAPSHOT_VERSION
                     and run_meta.get("source") == source_identity
                     and geometry_path.is_file()
+                    and (not document.get("images") or texture_root.is_dir())
                     and not validate_model_document(document)
                 ):
                     return document, run_meta, model_path
             except (OSError, json.JSONDecodeError):
                 pass
 
-        shutil.rmtree(input_root, ignore_errors=True)
-        shutil.rmtree(object_root, ignore_errors=True)
-        shutil.rmtree(texture_root, ignore_errors=True)
+        request_id = (
+            f"avatar-{int(bundle_record['id'])}-{int(asset['asset_index'])}-lod{lod}-"
+            f"{time.time_ns()}-{uuid.uuid4().hex}"
+        )
+        run_root = runs_root / request_id
+        input_root = run_root / "inputs"
+        object_root = run_root / "objects"
+        model_path = run_root / "model.json"
+        geometry_path = run_root / "geometry.bin"
+        texture_root = run_root / "textures"
         input_root.mkdir(parents=True, exist_ok=True)
         object_root.mkdir(parents=True, exist_ok=True)
         for record, chunk in bundle_sources:
@@ -3415,8 +3469,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not staged_inputs:
             raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
         primary_input_id = staged_inputs[0]["inputId"]
-        cab_root = object_root.parent / "cab-map"
-        shutil.rmtree(cab_root, ignore_errors=True)
+        cab_root = run_root / "cab-map"
         cab_result = UNITY_WORKER.build_cab_map(
             inputs=staged_inputs,
             output_directory=cab_root,
@@ -3479,6 +3532,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     texture_uris[name] = (
                         f"/api/manifest-asset/model-texture?recordId={int(bundle_record['id'])}"
                         f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
+                        f"&run={quote(request_id)}"
                         f"&path={quote(str(artifact['relativePath']))}"
                     )
 
@@ -3492,11 +3546,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             buffer_uri=(
                 f"/api/manifest-asset/model-buffer?recordId={int(bundle_record['id'])}"
                 f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
+                f"&run={quote(request_id)}"
             ),
         )
         run_meta = {
             "version": AVATAR_MODEL_SNAPSHOT_VERSION,
             "source": source_identity,
+            "selectedRun": request_id,
             "scope": "avatarMeshBundleClosure",
             "resourcePlan": plan,
             "planRun": plan_meta,
@@ -3509,6 +3565,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             encoding="utf-8",
         )
         geometry_path.write_bytes(geometry)
+        (run_root / "run.json").write_text(
+            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        cache_root.mkdir(parents=True, exist_ok=True)
         temporary_run_path = run_path.with_name(f".{run_path.name}.{uuid.uuid4().hex}.tmp")
         temporary_run_path.write_text(
             json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
@@ -5536,7 +5597,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         else:
             dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
             dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, _ = self.ensure_model_hierarchy(
+            document, run_meta = self.ensure_model_hierarchy(
                 bundle_record,
                 bundle_chunk,
                 asset,
@@ -5544,9 +5605,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 dependency_sources,
                 missing_dependencies,
             )
-            _, _, model_path, _ = self.model_snapshot_paths(
+            cache_root, _, _ = self.model_snapshot_cache_paths(
                 bundle_record, int(asset["asset_index"])
             )
+            published_root = resolve_published_model_run(
+                cache_root,
+                str(run_meta.get("selectedRun") or ""),
+            )
+            if published_root is None:
+                raise RuntimeError("published model run is unavailable")
+            model_path = published_root / "model.json"
         document, geometry, image_paths = self.load_model_glb_inputs(
             asset,
             bundle_record,
@@ -5624,6 +5692,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 not image_lod or int(image_lod[0]) != lod
             ):
                 raise ValueError("model image LOD does not match the current AvatarMesh")
+            image_run = image_query.get("run", [""])[0]
+            if image_run != model_path.parent.name:
+                raise ValueError("model image run does not match the current model")
             relative = unquote(image_query.get("path", [""])[0]).replace("\\", "/").strip("/")
             target = (texture_root / relative).resolve()
             if not relative or texture_root not in target.parents or not target.is_file():
@@ -6113,8 +6184,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
         root = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index)
         if lod is not None:
             root /= f"avatar-lod-{lod}"
-        target = root / "geometry.bin"
-        if not target.is_file():
+        published_root = resolve_published_model_run(
+            root,
+            query.get("run", [""])[0],
+        )
+        target = published_root / "geometry.bin" if published_root is not None else None
+        if target is None or not target.is_file():
             self.send_error_json(404, "model geometry buffer not found")
             return
         self.send_response(200)
@@ -6142,7 +6217,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         root = INTERNAL_CACHE_DIR / str(record_id) / "models" / str(asset_index)
         if lod is not None:
             root /= f"avatar-lod-{lod}"
-        root = (root / "textures").resolve()
+        published_root = resolve_published_model_run(
+            root,
+            query.get("run", [""])[0],
+        )
+        if published_root is None:
+            self.send_error_json(404, "model texture run not found")
+            return
+        root = (published_root / "textures").resolve()
         relative = unquote(query.get("path", [""])[0]).replace("\\", "/").strip("/")
         target = (root / relative).resolve()
         if not relative or root not in target.parents or not target.is_file():
