@@ -316,8 +316,8 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | Shader | Shader 二进制包及终末地扩展 | AnimeStudio 定制源码、离线工具 | P3.5 |
 
 外部可选工具为 Blender、vgmstream、usm-convert 和 ffmpeg。它们不属于 Unity worker，
-后续进入统一能力注册表。当前 Blender 仍会扫描 `C:\Program Files`，其他工具可由环境变量
-覆盖；这些均属于 P4 待收口项。
+环境配置已由 `runtime_config.py` 集中读取；Blender 依次使用显式 override、PATH 和标准 Windows
+安装目录，其他工具可由环境变量覆盖。下一步把可用性与能力判断也收进统一注册表。
 
 权威 AnimeStudio 工程依赖初步分为：
 
@@ -644,3 +644,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   所有数据查询及任务创建只有在 `indexFreshness.status=current` 时执行；其他状态返回不缓存的
   HTTP 503，载荷包含 `code=index_stale`、完整 freshness 报告和 rebuild 状态，不会再从陈旧库
   回退旧来源或误报 404。
+- `runtime_config.py` 已成为环境配置的单一加载入口。`VFS_BROWSER_DATA_ROOT` 统一迁移主库、
+  manifest/任务缓存、AudioDialog/Wwise 索引和 Shader 归档，原有单项 override 保持兼容；默认
+  JSONL 也改为 data root 内路径，删除了对相邻 Endaxis checkout 的隐式依赖。P4 配置项尚余
+  端口/日志结构化与缓存版本注册表，故总门禁仍保持未完成。

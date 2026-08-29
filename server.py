@@ -130,6 +130,7 @@ from task_requests import (
     TaskInputError,
 )
 from task_operations import BackgroundTaskOperations
+from runtime_config import RuntimeConfig
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -141,6 +142,7 @@ except ImportError:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
+RUNTIME_CONFIG = RuntimeConfig.load(PROJECT_ROOT)
 UNITY_WORKER = UnityWorkerClient.discover(PROJECT_ROOT)
 INDEX_FRESHNESS_REPORT = {
     "status": "unverified",
@@ -178,47 +180,19 @@ class AnimatedModelBundle:
     issues: list[AnimationExportIssue]
 
 
-DEFAULT_INDEX = (
-    PROJECT_ROOT.parent
-    / "Endaxis"
-    / "zmd-research"
-    / "analysis"
-    / "database"
-    / "facts"
-    / "endfield-vfs-index-20260727-234026.jsonl.tgz"
-)
-DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"
-AUDIO_DIALOG_DB = Path(
-    os.environ.get(
-        "VFS_BROWSER_AUDIO_DIALOG_DB",
-        PROJECT_ROOT / "data" / "audio-dialog-index.sqlite",
-    )
-)
-WWISE_DB = Path(
-    os.environ.get(
-        "VFS_BROWSER_WWISE_DB",
-        PROJECT_ROOT / "data" / "wwise-index.sqlite",
-    )
-)
-PUBLIC_DIR = PROJECT_ROOT / "public"
-INTERNAL_CACHE_DIR = Path(os.environ.get("VFS_BROWSER_INTERNAL_CACHE", PROJECT_ROOT / "data" / "internal-cache"))
+DEFAULT_INDEX = RUNTIME_CONFIG.default_index
+DEFAULT_DB = RUNTIME_CONFIG.database
+AUDIO_DIALOG_DB = RUNTIME_CONFIG.audio_dialog_database
+WWISE_DB = RUNTIME_CONFIG.wwise_database
+PUBLIC_DIR = RUNTIME_CONFIG.public_dir
+INTERNAL_CACHE_DIR = RUNTIME_CONFIG.internal_cache
 TASKS = BackgroundTaskRegistry(lambda: INTERNAL_CACHE_DIR / "tasks")
 TASK_API = TaskApplicationService(TASKS)
-SHADER_ARCHIVE_ROOT = Path(
-    os.environ.get(
-        "VFS_BROWSER_SHADER_ARCHIVE_ROOT",
-        PROJECT_ROOT / "data" / "shader-archives" / "1.4.4",
-    )
-)
+SHADER_ARCHIVE_ROOT = RUNTIME_CONFIG.shader_archive_root
 # 调试时可以分别覆盖特定导出链路，生产环境统一使用已验证的打包构建。
-VGMSTREAM_CLI = Path(
-    os.environ.get(
-        "VGMSTREAM_CLI",
-        PROJECT_ROOT / "tools" / "vgmstream" / "vgmstream-cli.exe",
-    )
-)
-USM_CONVERT = Path(os.environ.get("USM_CONVERT", PROJECT_ROOT / "tools" / "usm-convert.exe"))
-FFMPEG = os.environ.get("FFMPEG", "ffmpeg")
+VGMSTREAM_CLI = RUNTIME_CONFIG.vgmstream_cli
+USM_CONVERT = RUNTIME_CONFIG.usm_convert
+FFMPEG = RUNTIME_CONFIG.ffmpeg
 
 
 def executable_diagnostic(name: str, configured: str | Path) -> dict:
@@ -288,24 +262,9 @@ def unity_worker_is_unavailable(error: UnityWorkerError) -> bool:
     }
 
 
-def find_blender_executable() -> Path:
-    configured = os.environ.get("BLENDER_EXE") or shutil.which("blender")
-    if configured:
-        return Path(configured)
-    install_root = Path(r"C:\Program Files\Blender Foundation")
-    installed = sorted(
-        install_root.glob("Blender */blender.exe"),
-        key=lambda path: tuple(
-            int(value) for value in re.findall(r"\d+", path.parent.name)
-        ),
-        reverse=True,
-    )
-    return installed[0] if installed else install_root / "Blender 4.3" / "blender.exe"
-
-
-BLENDER_EXE = find_blender_executable()
-BLENDER_MODEL_IMPORTER = PROJECT_ROOT / "tools" / "blender_import_model.py"
-BLENDER_ACTION_SWITCHER = PROJECT_ROOT / "tools" / "blender_action_switcher.py"
+BLENDER_EXE = RUNTIME_CONFIG.blender_executable
+BLENDER_MODEL_IMPORTER = RUNTIME_CONFIG.blender_model_importer
+BLENDER_ACTION_SWITCHER = RUNTIME_CONFIG.blender_action_switcher
 
 CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
@@ -331,12 +290,8 @@ PROJECTILE_API_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
-MEMORYPACK_SCHEMA = Path(
-    os.environ.get("VFS_BROWSER_MEMORYPACK_SCHEMA", PROJECT_ROOT / "schemas" / "memorypack-known-schema.json")
-)
-MEMORYPACK_UNION_MAP = Path(
-    os.environ.get("VFS_BROWSER_MEMORYPACK_UNION_MAP", PROJECT_ROOT / "schemas" / "memorypack-known-unions.json")
-)
+MEMORYPACK_SCHEMA = RUNTIME_CONFIG.memorypack_schema
+MEMORYPACK_UNION_MAP = RUNTIME_CONFIG.memorypack_union_map
 
 
 def material_plan_cache_identity() -> dict:

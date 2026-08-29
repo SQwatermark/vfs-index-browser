@@ -51,6 +51,16 @@ python server.py
 
 默认地址为 `http://127.0.0.1:8765`。局域网访问可添加 `--host 0.0.0.0`。
 
+持久数据默认位于仓库的 `data/`。可用一个环境变量整体迁移数据库、缓存和派生索引：
+
+```powershell
+$env:VFS_BROWSER_DATA_ROOT = "D:\EndfieldTools\vfs-data"
+```
+
+`VFS_BROWSER_DB`、`VFS_BROWSER_INDEX`、`VFS_BROWSER_INTERNAL_CACHE`、
+`VFS_BROWSER_AUDIO_DIALOG_DB`、`VFS_BROWSER_WWISE_DB` 和
+`VFS_BROWSER_SHADER_ARCHIVE_ROOT` 可继续覆盖单项。默认配置不再引用相邻 Endaxis 仓库。
+
 常用参数：
 
 ```powershell
@@ -92,6 +102,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | 路径 | 职责 |
 | --- | --- |
 | `server.py` | VFS SQLite、HTTP API、文件读取以及各容器适配入口 |
+| `runtime_config.py` | 数据根目录、数据库、缓存、schema 与外部工具的统一环境配置 |
 | `unity_worker.py` | VFS 自有 Unity worker 的唯一 Python 进程适配器与健康诊断 |
 | `unity-worker/` | 可独立构建和发布的 .NET Unity 资源 worker |
 | `task_registry.py` | 任务状态落盘、原子结果发布与当前进程取消控制 |
