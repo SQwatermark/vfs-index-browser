@@ -89,10 +89,9 @@ from manifest_asset_requests import (
 from manifest_worker_service import CUBEMAP_FACE_NAMES, ManifestWorkerService
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
-    load_exported_objects,
-    material_texture_selections,
     selected_container_paths,
 )
+from avatar_model_document_service import AvatarModelDocumentService
 from npc_avatar_model import build_static_avatar_mesh_document
 from string_path_hash import StringPathHashIndex
 from npc_avatar_config import (
@@ -2774,6 +2773,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def ordinary_model_document_service(self) -> OrdinaryModelDocumentService:
         return OrdinaryModelDocumentService()
 
+    def avatar_model_document_service(self) -> AvatarModelDocumentService:
+        return AvatarModelDocumentService()
+
     def avatar_model_snapshot_cache_paths(
         self,
         record: dict,
@@ -3165,12 +3167,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             {"name": "exportObjectSnapshots", "workerResult": object_result},
         ]
 
-        meshes, materials, avatar = load_exported_objects(object_root, plan)
-        texture_selections = material_texture_selections(materials)
-        texture_uris = {}
+        document_service = self.avatar_model_document_service()
+        assembly = document_service.load(object_root, plan)
         if progress is not None:
             progress({"stage": "textures", "completed": 4, "total": 5})
-        if texture_selections:
+        if assembly.texture_selections:
             texture_result = worker_service.export_textures(
                 staged_inputs,
                 cab_root / "cab-map.json",
@@ -3180,38 +3181,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
                 ),
                 primary_input_id=primary_input_id,
-                selections=texture_selections,
+                selections=assembly.texture_selections,
                 cancel_event=cancel_event,
             )
             completed_steps.append({
                 "name": "exportIdentifiedTextures",
                 "workerResult": texture_result,
             })
-            selection_names = {
-                (str(value["sourceFile"]).casefold(), int(value["pathId"])): str(value["name"])
-                for value in texture_selections
-            }
-            for artifact in texture_result.get("artifacts", []):
-                name = selection_names.get(
-                    (str(artifact.get("sourceFile") or "").casefold(), int(artifact["pathId"]))
-                )
-                if name:
-                    if name in texture_uris:
-                        raise RuntimeError(f"AvatarMesh selects duplicate Texture2D name: {name}")
-                    texture_uris[name] = (
+            document_service.attach_exported_textures(
+                assembly,
+                texture_result,
+                lambda relative: (
                         f"/api/manifest-asset/model-texture?recordId={int(bundle_record['id'])}"
                         f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
                         f"&run={quote(request_id)}"
-                        f"&path={quote(str(artifact['relativePath']))}"
-                    )
+                        f"&path={quote(relative)}"
+                ),
+            )
 
-        document, geometry = build_static_avatar_mesh_document(
+        document, geometry = document_service.build(
             avatar_mesh,
-            meshes,
+            assembly,
             lod=lod,
-            avatar=avatar,
-            material_payloads=materials,
-            texture_uris=texture_uris,
             buffer_uri=(
                 f"/api/manifest-asset/model-buffer?recordId={int(bundle_record['id'])}"
                 f"&assetIndex={int(asset['asset_index'])}&lod={lod}"

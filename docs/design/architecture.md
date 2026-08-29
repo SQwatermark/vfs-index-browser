@@ -106,6 +106,9 @@ Avatar 模型则始终要求 geometry。HTTP 按显式 run 读取旧资源也复
 选择唯一 container 根节点、构造层级与 geometry、收集材质 Texture2D 身份，再按
 `sourceFile + pathId` 回绑 Worker 图片。缺失纹理和依赖 Bundle 形成稳定诊断，最终文档必须
 通过 ModelDocument 语义校验后才能交给 run store 发布。
+Avatar 模型的已选 Mesh/Material/Avatar 解释、材质纹理 selection、导出图片名称回绑和静态
+ModelDocument/geometry 构建由 `avatar_model_document_service.py` 负责；资源闭包和 container
+仍由 Avatar 资源计划决定，重复 Texture2D 名称不会被后到产物静默覆盖。
 
 ## 关键约束
 

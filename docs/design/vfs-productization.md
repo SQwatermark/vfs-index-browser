@@ -737,4 +737,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Texture2D 收集、精确图片回绑、缺失纹理/Bundle 诊断和最终语义校验已移入
   `ordinary_model_document_service.py`。缓存 identity 仍读取原层级 builder 的文件时间，纯重构
   不会让全部真实模型失效。回归覆盖最小完整层级、裸 JSON 拒绝和 `sourceFile + pathId` 纹理
-  回绑。下一阶段处理 Avatar 模型领域组装，P4 总门禁保持未完成。
+  回绑。Avatar 模型领域组装在紧随阶段继续拆分，P4 总门禁保持未完成。
+- Avatar 模型的已选对象解释、材质纹理 selection、`sourceFile + pathId` 到纹理名称/URI 回绑、
+  重名拒绝以及静态 ModelDocument/geometry 构建已移入 `avatar_model_document_service.py`。
+  Handler 仍负责 Avatar 资源计划与 Bundle 闭包，但不再解释 Worker 对象或拼装最终文档。合成
+  回归覆盖资源传递、大小写稳定的纹理身份、最终 builder 参数和重复名称拒绝。普通与 Avatar
+  两条模型领域组装边界至此均已拆出，P4 总门禁仍因 Handler 中的高层协调逻辑保持未完成。
