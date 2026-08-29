@@ -852,3 +852,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Windows 上审计后锁住数据库、阻塞原子替换。当前真实审计确认 AudioDialog schema 2 为 current；
   Wwise 15 个包中 10 个 current，5 个 Hotfix 包长度变化，整体准确报告 stale。下一阶段对 stale
   Wwise 执行原子重建，并把这一步接到启动编排而非只报告。
+- 已用当前主索引把 Wwise 原子重建到临时库并通过 `integrity_check` 与二级审计后切换；旧库保留为
+  `data/wwise-index.pre-audit-backup.sqlite`。新库覆盖 20 个可读 PCK、20,917 Banks、117,556 Media、
+  327,465 HIRC 对象，20/20 稳定路径和长度均为 current。服务重启后的 `/api/health` 为 ready，
+  AudioDialog/Wwise 均为 current；随机 Media WEM 仍返回 200/8,299 字节。AudioDialog 旧 schema 1
+  库同样保留为 `data/audio-dialog-index.schema1-backup.sqlite`。下一阶段把已验证的“临时构建→完整性
+  与 freshness 门禁→原子替换→保留旧库”流程实现为启动时自动重建服务。

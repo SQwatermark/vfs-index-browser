@@ -91,12 +91,14 @@ python tools/index_wwise_pck.py path/to/default_banks.pck `
 
 ## 已验证样本
 
-当前本机安装中 15 个可读 PCK 的完整构建结果包括：
+2026-08-29 针对当前主 VFS 索引重建的 20 个可读 PCK 包括：
 
-- 19,693 个 Bank；
-- 21,705 个 Event；
+- 20,917 个 Bank；
+- 22,929 个 Event；
+- 117,556 个 Media；
+- 327,465 个 HIRC 对象与 386,425 条关系；
 - 主音频、中文语音、审计、Hotfix 与 Init 的物理 Media；
-- 主 Bank 中 144 个、审计 Bank 中 2 个显式未解析关系诊断。
+- 主 Bank 中 144 个、审计 Bank 中 2 个显式未解析关系诊断，共 146 条。
 
 中文 Event `3537164` 已恢复：
 
