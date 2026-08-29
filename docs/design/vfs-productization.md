@@ -846,3 +846,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   和 `fileName`，离线构建器可把稳定路径与长度写入每个物理媒体证据。schema 1 旧行迁移时保持
   两字段为空，不伪造来源；新行运行时与 Wwise 一样按精确逻辑路径重定位并校验长度/范围。合成
   回归覆盖 schema 迁移、旧 metadata 兼容、新 identity 适配和稳定来源传递。
+- 二级音频索引启动审计已进入 `secondary_audio_freshness.py` 和 `/api/health`。审计分别读取
+  AudioDialog 的 distinct package identity 与 Wwise package 表，按当前 VFS `logical_id` 定位可读
+  chunk 并比较长度；任一 stale/unavailable 会使健康状态降级。所有 SQLite 连接均显式关闭，避免
+  Windows 上审计后锁住数据库、阻塞原子替换。当前真实审计确认 AudioDialog schema 2 为 current；
+  Wwise 15 个包中 10 个 current，5 个 Hotfix 包长度变化，整体准确报告 stale。下一阶段对 stale
+  Wwise 执行原子重建，并把这一步接到启动编排而非只报告。

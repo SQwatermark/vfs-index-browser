@@ -138,6 +138,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `model_single_animation_service.py` | 单 AnimationClip/Dialog Morph 的模型准备、绑定与进度协调 |
 | `model_animation_catalog_service.py` | 模型动画候选查询、分页、Avatar LOD 与稳定预览 URL 组装 |
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
+| `secondary_audio_freshness.py` | AudioDialog/Wwise 稳定 PCK 路径与长度启动审计 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |

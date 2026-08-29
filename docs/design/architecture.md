@@ -83,6 +83,9 @@ Wwise 索引的 Events/Banks/Media 虚拟目录、分页、行到虚拟文件的
 语义名称；Handler 只保留 HTTP 错误映射。`wwise_media_service.py` 再把精确 Media 条目转换为
 `AudioEntry`，按 `wwise_packages.logical_path` 在当前 VFS 索引重定位 PCK，复核建索引时的文件长度
 和媒体范围，再协调 WEM/WAV 缓存产物；HTTP 层仅决定 disposition 和流式发送。
+`secondary_audio_freshness.py` 在 HTTP 服务启动前批量审计 AudioDialog/Wwise 保存的稳定 PCK 路径
+和长度，显式关闭全部 SQLite 连接，并把 current/stale/unavailable 结果写入 `/api/health`。该阶段
+只判定是否需要重建，不在审计函数内修改或猜修二级索引。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

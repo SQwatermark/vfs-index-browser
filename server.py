@@ -67,6 +67,7 @@ from usm import UsmError
 from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
 from index_freshness import inspect_index_freshness
+from secondary_audio_freshness import inspect_secondary_audio_indexes
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -179,6 +180,7 @@ INDEX_FRESHNESS_REPORT = {
 }
 INDEX_REBUILD_REPORT = {"status": "notRun"}
 MANIFEST_INDEX_REPORT = {"status": "notRun"}
+SECONDARY_AUDIO_INDEX_REPORT = {"status": "notRun"}
 WORKER_RUNS = WorkerRunService()
 
 
@@ -245,6 +247,7 @@ def build_health_document() -> dict:
         "exportAnimationClipJson",
     ])
     index_status = INDEX_FRESHNESS_REPORT.get("status")
+    secondary_audio_status = SECONDARY_AUDIO_INDEX_REPORT.get("status")
     return {
         "apiVersion": 1,
         "status": (
@@ -252,11 +255,13 @@ def build_health_document() -> dict:
             if worker["status"] == "ready"
             and index_status not in {"stale", "unavailable"}
             and MANIFEST_INDEX_REPORT.get("status") != "unavailable"
+            and secondary_audio_status not in {"stale", "unavailable"}
             else "degraded"
         ),
         "indexFreshness": INDEX_FRESHNESS_REPORT,
         "indexRebuild": INDEX_REBUILD_REPORT,
         "manifestIndex": MANIFEST_INDEX_REPORT,
+        "secondaryAudioIndexes": SECONDARY_AUDIO_INDEX_REPORT,
         "unityWorker": worker,
         "optionalTools": optional_tool_registry().diagnostics(),
         "cacheVersions": CACHE_VERSIONS.diagnostics(),
@@ -4433,6 +4438,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     global INDEX_FRESHNESS_REPORT, INDEX_REBUILD_REPORT, MANIFEST_INDEX_REPORT
+    global SECONDARY_AUDIO_INDEX_REPORT
 
     args = parse_args(argv or sys.argv[1:])
     configure_service_logging(args.log_level, args.log_format)
@@ -4467,6 +4473,16 @@ def main(argv: list[str] | None = None) -> int:
                 "message": str(error),
             }
             LOGGER.error("index_rebuild_failed", extra={"error": str(error)})
+    SECONDARY_AUDIO_INDEX_REPORT = inspect_secondary_audio_indexes(
+        args.db,
+        AUDIO_DIALOG_DB,
+        WWISE_DB,
+    )
+    if SECONDARY_AUDIO_INDEX_REPORT["status"] != "current":
+        LOGGER.warning(
+            "secondary_audio_index_audit_failed",
+            extra={"report": SECONDARY_AUDIO_INDEX_REPORT},
+        )
     manifest_service = object.__new__(BrowserHandler)
     manifest_service.db_path = args.db
     try:
