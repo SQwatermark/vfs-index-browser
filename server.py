@@ -1823,7 +1823,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self.end_headers()
         with artifact_path.open("rb") as source:
             while data := source.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
+                try:
+                    self.wfile.write(data)
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    # Downloads can be cancelled after headers have been accepted.  The
+                    # artifact remains valid; ending this request quietly avoids a noisy
+                    # socketserver traceback for an ordinary client-side cancellation.
+                    return
 
     def handle_akedb_compatible(self, request_path: str) -> None:
         """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""

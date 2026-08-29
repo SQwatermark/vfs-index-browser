@@ -369,6 +369,11 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 - 任务注册表在创建新任务时清理超过七天或最近 512 项之外的终态记录。清理范围严格限制在
   `internal-cache/tasks/<taskId>`，不会删除领域缓存、未知目录、符号链接或本进程活动任务；上次
   进程遗留的非终态记录先转为 `task_interrupted`，不再永久占用任务目录；
+- 真实浏览器审计已使用当前 manifest 的权威虚拟目录索引完成：庄方宜 PostModel
+  `263486` 构建为 565 节点、44 网格、52 蒙皮，单片攻击动画可播放；120 ms 内连续切换
+  两个动画时前一任务进入 `cancelled`，后一任务成功发布。两片攻击动画的 Blender 任务
+  以 2/2 成功并登记可下载产物，公开任务 JSON 不含 `_artifactPath`。秦桔臣 AvatarMesh
+  `188410` 构建为 321 节点、9 网格、9 蒙皮，通用待机动画绑定并播放成功；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体

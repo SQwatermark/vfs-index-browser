@@ -1,12 +1,41 @@
 import threading
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import server
 
 
 class ServerTaskTests(unittest.TestCase):
+    def test_task_artifact_quietly_stops_when_download_is_cancelled(self):
+        class CancelledDownload:
+            def write(self, _data):
+                raise ConnectionAbortedError("client cancelled download")
+
+        class FakeTasks:
+            def __init__(self, artifact):
+                self.artifact_path = artifact
+
+            def artifact(self, task_id):
+                self.task_id = task_id
+                return self.artifact_path, "model.blend", "application/x-blender"
+
+        with TemporaryDirectory() as directory:
+            artifact = Path(directory) / "model.blend"
+            artifact.write_bytes(b"BLENDER" * 64)
+            tasks = FakeTasks(artifact)
+            handler = object.__new__(server.BrowserHandler)
+            handler.wfile = CancelledDownload()
+            handler.send_response = lambda status: self.assertEqual(200, status)
+            handler.send_header = lambda *_args: None
+            handler.end_headers = lambda: None
+
+            with patch.object(server, "TASKS", tasks):
+                handler.handle_task_artifact({"taskId": ["a" * 32]})
+
+        self.assertEqual("a" * 32, tasks.task_id)
+
     def test_start_projectile_task_uses_detached_service_and_returns_202(self):
         operations = []
         service_instances = []
