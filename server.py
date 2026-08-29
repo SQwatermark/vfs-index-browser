@@ -88,6 +88,7 @@ from file_preview_service import (
     truncate_text,
 )
 from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_file
+from internal_directory_service import InternalDirectoryService
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -3823,104 +3824,54 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             original, record, chunk_path = resolved
 
-        suffix = file_suffix(record["file_name"])
-        if suffix == ".ab":
-            ensured = self.ensure_assetbundle_export(record, chunk_path)
-            if ensured is None:
-                return
-            export_root, meta = ensured
-            try:
-                listing = list_export_directory(
-                    export_root,
-                    path,
-                    meta,
-                    internal_preview_kind,
-                )
-            except FileNotFoundError:
-                self.send_error_json(404, "internal directory not found")
-                return
-            self.send_json(
-                {
-                    "kind": "assetBundle",
-                    "status": "ready",
-                    "file": original,
-                    "resolvedFile": record,
-                    "path": listing["path"],
-                    "dirs": listing["dirs"],
-                    "files": listing["files"],
-                    "meta": {
-                        "returncode": meta.get("returncode"),
-                        "builtAtEpoch": meta.get("builtAtEpoch"),
-                        "exportTypes": meta.get("exportTypes"),
-                    },
-                }
+        vgmstream = optional_tools.capability("vgmstream")
+        usm_convert = optional_tools.capability("usm-convert")
+        ffmpeg = optional_tools.capability("ffmpeg")
+        tool_meta = {
+            "audio": {
+                "wavPreviewAvailable": vgmstream.available,
+                "vgmstreamCli": str(vgmstream.resolved_path or VGMSTREAM_CLI),
+            },
+            "usm": {
+                "usmConvertAvailable": usm_convert.available,
+                "ffmpegAvailable": ffmpeg.available,
+                "usmConvert": str(usm_convert.resolved_path or USM_CONVERT),
+                "ffmpeg": str(ffmpeg.resolved_path or FFMPEG),
+            },
+        }
+        service = InternalDirectoryService(
+            self.ensure_assetbundle_export,
+            lambda root, inner_path, meta: list_export_directory(
+                root,
+                inner_path,
+                meta,
+                internal_preview_kind,
+            ),
+            self.ensure_audio_package_index,
+            self.list_audio_package,
+            lambda source, inner_path: usm_video_service().list_directory(
+                source,
+                inner_path,
+            ),
+        )
+        try:
+            document = service.build(
+                original,
+                record,
+                chunk_path,
+                path,
+                tool_meta,
             )
-            return
-        if suffix == ".pck":
-            try:
-                meta = self.ensure_audio_package_index(record, chunk_path)
-                listing = self.list_audio_package(meta, path)
-            except (FileNotFoundError, ValueError) as error:
-                self.send_error_json(404, str(error))
-                return
-            vgmstream = optional_tools.capability("vgmstream")
-            self.send_json(
-                {
-                    "kind": "audioPackage",
-                    "status": "ready",
-                    "file": original,
-                    "resolvedFile": record,
-                    "path": listing["path"],
-                    "dirs": listing["dirs"],
-                    "files": listing["files"],
-                    "meta": {
-                        "builtAtEpoch": meta.get("builtAtEpoch"),
-                        "entryCount": meta.get("entryCount"),
-                        "wavPreviewAvailable": vgmstream.available,
-                        "vgmstreamCli": (
-                            str(vgmstream.resolved_path)
-                            if vgmstream.resolved_path is not None
-                            else str(VGMSTREAM_CLI)
-                        ),
-                    },
-                }
+        except (FileNotFoundError, ValueError) as error:
+            message = (
+                "internal directory not found"
+                if file_suffix(record["file_name"]) == ".ab"
+                else str(error)
             )
+            self.send_error_json(404, message)
             return
-        if suffix == ".usm":
-            try:
-                listing = usm_video_service().list_directory(record, path)
-            except FileNotFoundError as error:
-                self.send_error_json(404, str(error))
-                return
-            usm_convert = optional_tools.capability("usm-convert")
-            ffmpeg = optional_tools.capability("ffmpeg")
-            self.send_json(
-                {
-                    "kind": "criVideo",
-                    "status": "ready",
-                    "file": original,
-                    "resolvedFile": record,
-                    "path": listing["path"],
-                    "dirs": listing["dirs"],
-                    "files": listing["files"],
-                    "meta": {
-                        "usmConvertAvailable": usm_convert.available,
-                        "ffmpegAvailable": ffmpeg.available,
-                        "usmConvert": (
-                            str(usm_convert.resolved_path)
-                            if usm_convert.resolved_path is not None
-                            else str(USM_CONVERT)
-                        ),
-                        "ffmpeg": (
-                            str(ffmpeg.resolved_path)
-                            if ffmpeg.resolved_path is not None
-                            else str(FFMPEG)
-                        ),
-                    },
-                }
-            )
-            return
-        self.send_json({"kind": "plainFile", "status": "notContainer", "message": "该文件不是当前识别的二级容器。"})
+        if document is not None:
+            self.send_json(document)
 
     def handle_internal_preview(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)

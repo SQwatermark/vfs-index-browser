@@ -105,6 +105,9 @@ TableCfg 与 MemoryPack 等领域解码仍在通用分类前执行，不会被�
 普通 `/api/preview` 的容器说明、TableCfg 成功/失败文档、文本 JSON 美化、MemoryPack 结果和
 binary JSON 诊断由 `vfs_file_preview_service.py` 组装。它通过回调消费物理切片、SparkBuffer 和
 MemoryPack 能力，既不查询 SQLite 也不发送 HTTP；Handler 只解析 ID、定位 fallback 来源并发送结果。
+AB、PCK 与 USM 的内部目录文档由 `internal_directory_service.py` 按容器类型协调。AssetBundle
+导出、音频 metadata 和 USM 目录仍是独立依赖；服务只合并 listing、来源身份、缓存元数据与可选
+工具能力，Handler 负责文件 ID/路径参数和 404 映射。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

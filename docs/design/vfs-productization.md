@@ -898,3 +898,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   解码通过回调注入。`handle_preview` 从 148 行缩到文件 ID/来源定位与一次发送；真实 Lua、普通
   `.bytes` 和 4.7 MiB AudioDialog TableCfg 的 kind、编码、截断、正文/hex 长度、根名及转换 URL
   在重启前后完全一致。
+- `/api/internal/list` 的 AB/PCK/USM 分支与响应组装已抽到 `internal_directory_service.py`；各领域
+  导出/索引服务、内部类型分类和可选工具诊断均通过依赖传入，不在新服务中解析二进制或寻找工具。
+  合成回归覆盖三类容器、AssetBundle 已报告失败和普通文件边界；真实中文 stream PCK 重启前后
+  保持 30,058 条、`wem,wav` 根目录与 WAV 可用状态一致。
