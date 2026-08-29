@@ -1,5 +1,6 @@
 import hashlib
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -140,6 +141,108 @@ class WorkerRunServiceTests(unittest.TestCase):
                     invoke=escape,
                 )
             self.assertEqual([], list((root / "runs").glob("*")))
+
+    def test_same_pointer_concurrent_requests_build_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            service = WorkerRunService()
+            entered = threading.Event()
+            release = threading.Event()
+            calls = []
+            results = []
+
+            def invoke(_run, exported, request_id, _cancel):
+                calls.append(request_id)
+                entered.set()
+                self.assertTrue(release.wait(2))
+                target = exported / "item.bin"
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b"artifact")
+                return {
+                    "artifactCount": 1,
+                    "artifacts": [{
+                        "relativePath": "item.bin",
+                        "byteCount": 8,
+                        "sha256": hashlib.sha256(b"artifact").hexdigest(),
+                    }],
+                }
+
+            options = {
+                "runs_root": root / "runs",
+                "meta_path": root / "meta.json",
+                "request_prefix": "fixture",
+                "version": 1,
+                "source_identity": {},
+                "invoke": invoke,
+            }
+            first = threading.Thread(target=lambda: results.append(service.ensure(**options)))
+            second = threading.Thread(target=lambda: results.append(service.ensure(**options)))
+            first.start()
+            self.assertTrue(entered.wait(2))
+            second.start()
+            release.set()
+            first.join(2)
+            second.join(2)
+
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(1, len(calls))
+            self.assertEqual(2, len(results))
+            self.assertEqual(results[0][2]["selectedRun"], results[1][2]["selectedRun"])
+
+    def test_different_pointers_can_build_concurrently(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            service = WorkerRunService()
+            both_entered = threading.Event()
+            release = threading.Event()
+            entered_guard = threading.Lock()
+            entered = []
+            errors = []
+
+            def invoke(_run, exported, request_id, _cancel):
+                with entered_guard:
+                    entered.append(request_id)
+                    if len(entered) == 2:
+                        both_entered.set()
+                if not release.wait(2):
+                    raise RuntimeError("unrelated publication was serialized")
+                target = exported / "item.bin"
+                target.parent.mkdir(parents=True)
+                target.write_bytes(b"artifact")
+                return {
+                    "artifactCount": 1,
+                    "artifacts": [{
+                        "relativePath": "item.bin",
+                        "byteCount": 8,
+                        "sha256": hashlib.sha256(b"artifact").hexdigest(),
+                    }],
+                }
+
+            def run(name):
+                try:
+                    service.ensure(
+                        runs_root=root / name / "runs",
+                        meta_path=root / name / "meta.json",
+                        request_prefix=name,
+                        version=1,
+                        source_identity={},
+                        invoke=invoke,
+                    )
+                except Exception as error:
+                    errors.append(error)
+
+            threads = [threading.Thread(target=run, args=(name,)) for name in ("a", "b")]
+            for thread in threads:
+                thread.start()
+            concurrent = both_entered.wait(2)
+            release.set()
+            for thread in threads:
+                thread.join(2)
+
+            self.assertTrue(concurrent)
+            self.assertEqual([], errors)
+            self.assertTrue(all(not thread.is_alive() for thread in threads))
 
 
 if __name__ == "__main__":

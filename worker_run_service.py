@@ -10,12 +10,16 @@ import shutil
 import threading
 import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 from urllib.parse import unquote
 
 
-_PUBLICATION_LOCK = threading.Lock()
+class _PublicationSlot:
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.users = 0
 
 
 def _safe_relative_path(root: Path, raw_path: str) -> Path | None:
@@ -105,6 +109,26 @@ def _validate_derived_artifacts(export_root: Path, described: object) -> dict[st
 
 
 class WorkerRunService:
+    def __init__(self) -> None:
+        self._slots_guard = threading.Lock()
+        self._slots: dict[str, _PublicationSlot] = {}
+
+    @contextmanager
+    def _publication_lock(self, meta_path: Path) -> Iterator[None]:
+        key = os.path.normcase(str(meta_path.resolve()))
+        with self._slots_guard:
+            slot = self._slots.setdefault(key, _PublicationSlot())
+            slot.users += 1
+        slot.lock.acquire()
+        try:
+            yield
+        finally:
+            slot.lock.release()
+            with self._slots_guard:
+                slot.users -= 1
+                if slot.users == 0 and self._slots.get(key) is slot:
+                    del self._slots[key]
+
     def ensure(
         self,
         *,
@@ -119,7 +143,7 @@ class WorkerRunService:
         cancel_event: object | None = None,
         allow_empty: bool = False,
     ) -> tuple[Path, list[Path], dict]:
-        with _PUBLICATION_LOCK:
+        with self._publication_lock(meta_path):
             cached = self._load_cached(
                 runs_root,
                 meta_path,
