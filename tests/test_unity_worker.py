@@ -354,13 +354,13 @@ class UnityWorkerClientTests(unittest.TestCase):
             UnityWorkerClient(["fake-worker"], runner=run).export_bundle_preview_media(
                 input_path=root / "source.ab",
                 output_directory=root / "media",
-                included_types=["Texture2D", "TextAsset", "VideoClip"],
+                included_types=["Texture2D", "TextAsset", "VideoClip", "AnimationClip"],
                 request_id="bundle-media-1",
             )
 
         self.assertEqual("exportBundlePreviewMedia", observed["operation"])
         self.assertEqual(
-            ["Texture2D", "TextAsset", "VideoClip"],
+            ["Texture2D", "TextAsset", "VideoClip", "AnimationClip"],
             observed["arguments"]["includedTypes"],
         )
         self.assertTrue(Path(observed["arguments"]["outputDirectory"]).is_absolute())

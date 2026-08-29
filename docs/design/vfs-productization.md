@@ -279,7 +279,7 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap`、
 `buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces`、
-`exportBundlePreviewMedia` 和 `exportAnimationClipJson`，worker 版本已升至 `0.12.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
+`exportBundlePreviewMedia` 和 `exportAnimationClipJson`，worker 版本已升至 `0.13.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
 主特效结束条件；未知尾部完整保留为 Raw words，公开结果明确为 `partial`。下一项代码工作
 已用 Python 唯一 `UnityWorkerClient` 把 Projectile 和共用 MonoBehaviour Raw 调用切换到
 新 worker。Projectile、Raw 和 TypeTree Dump 复用同一个多产物原子导出框架：每次构建
@@ -303,7 +303,7 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | 组件原始数据 | MonoBehaviour + `Raw`/`Dump`/`JSON` | `server.py` | P3.1 |
 | 资源映射 | `AssetMap`、显式多输入 CABMap 已迁移；模型链不再使用旧 `UseCABMap` | worker、`server.py` | P3.2 |
 | 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 不输出伪快照 | worker + `server.py` | P3.2 |
-| 通用资源 | Texture2D、Sprite、TextAsset、VideoClip 已迁入 worker 与独占 run；通用 Convert 尚有 77 个 AnimationClip，AudioClip 暂无样本 | worker、`server.py` | P3.2/P3.3 |
+| 通用资源 | Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已迁入 worker 与独占 run；AudioClip 暂无样本 | worker、`server.py` | P3.2/P3.3 |
 | 纹理身份 | 精确 Texture2D `sourceFile + pathId` 已迁移 | worker、`server.py`、`avatar_mesh_snapshot.py` | P3.3 |
 | Cubemap | 精确 container + 六面 PNG 已迁移 | worker、`server.py` | P3.3 |
 | 动画 | 精确 PathID + 名称的 AnimationClip `AnimationJSON` 已迁入 worker 与独占 run | worker、`server.py` | P3.4 |
@@ -343,15 +343,15 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 截至 2026-08-29，当前工作树的可交付边界为：
 
-- worker `0.12.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
+- worker `0.13.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
   聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理、Cubemap 六面和固定
   白名单的 Bundle 预览媒体导出，以及精确 AnimationClip 的 AnimationJSON；
 - Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap`、`exportObjectSnapshots` 与
   `exportIdentifiedTextures`，模型和 AvatarMesh 生产路径均已接入；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
-  通用预览中的 Texture2D、Sprite、TextAsset、VideoClip 已接入新媒体协议；同 Bundle 的
-  AudioClip、通用 AnimationClip Convert 暂作为逐文件校验的派生产物，纯旧类型 Bundle 仍走旧缓存；
+  通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
+  协议；同 Bundle 的 AudioClip 暂作为逐文件校验的派生产物，纯 AudioClip Bundle 仍走旧缓存；
   模型动画入口则已通过 AssetMap 锁定唯一 `PathID + Name`，并使用独占 run、哈希校验和
   原子指针发布 `AnimeStudioAnimationClip/1.1.0`；
 - CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
@@ -367,8 +367,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. 评估通用浏览的 77 个 AnimationClip 是否直接复用已迁移的 AnimationJSON；AudioClip 等
-   出现真实样本再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型 `Convert`；
+1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
+   `Convert`；
 2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
@@ -536,7 +536,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `SpriteHelper.cs`，没有引入 FMOD 或动画 YAML/ACL 闭包。它保留 atlas、裁剪、packing
   rotation 和 tight mesh mask 逻辑；真实 `deco_bg04` 样本输出 6058 字节 PNG，SHA-256
   `eee6d7af...` 与旧 CLI 逐字节一致。
-- 通用 AssetBundle 浏览已把上述四类切入独占 `asset-export/runs/<id>`：worker 文件先按
+- 通用 AssetBundle 浏览已把上述五类切入独占 `asset-export/runs/<id>`：worker 文件先按
   长度和 SHA-256 校验，尚未迁移的 AudioClip/AnimationClip 只允许写各自类型目录并作为
   derived files 再校验，最后原子替换根 `meta.json`。缓存命中会同时复验主产物和派生产物；
   AssetMap 身份集合还必须与 worker 的 artifact + skipped 集合完全一致。真实 `100542`
@@ -554,3 +554,11 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Endfield ACL 压缩的佩丽卡 idle 两份样本均与旧生产 JSON 逐字节一致，后者包含 696 条曲线、
   3,294,623 字节，SHA-256 为
   `5ae4a043bbceb33655c336605c602448d5ed1d457a5c8613cc857fffbf9d82db`。
+- worker `0.13.0` 将通用 AnimationClip YAML 纳入固定 Bundle 预览白名单，并从旧派生 Convert
+  移入 worker 主产物与 AssetMap 身份门禁。本机全部 5 个缓存 Bundle 共 77 个片段均能输出；
+  逐文件 SHA-256 审计为 77/77 与当前旧 CLI 一致；
+  对话 Bundle 的 72 个片段包含 45 个被严格 AnimationJSON 拒绝的 Euler/PPtr 片段，证明
+  YAML 浏览与播放 JSON 必须保留两个契约。`Recorded (16)` YAML 的 SHA-256 为
+  `918b1637d8ca340fa4a8d60aa85ebf7d428b4c5be9bcdaf58816c69545cb389b`；佩丽卡 ACL 压缩
+  idle YAML 为 28,140,391 字节，SHA-256 为
+  `7b050e940a718ee6feddbe37ec701f4105a11bb103b8e372df729942098d8ff3`，均与当前旧 CLI 一致。

@@ -371,10 +371,10 @@ ASSETBUNDLE_WORKER_MEDIA_TYPES = (
     "Sprite",
     "TextAsset",
     "VideoClip",
+    "AnimationClip",
 )
 ASSETBUNDLE_LEGACY_CONVERT_TYPES = (
     "AudioClip",
-    "AnimationClip",
 )
 CUBEMAP_FACE_NAMES = (
     "PositiveX",
@@ -4030,8 +4030,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if asset_type in present_types
         )
 
-        # 尚无 worker 主产物的纯 Audio/Animation Bundle 暂时沿用旧缓存；不能用派生产物
-        # 冒充一次成功的 worker 请求。
+        # 尚无 worker 主产物的纯 Audio Bundle 暂时沿用旧缓存；不能用派生产物冒充一次
+        # 成功的 worker 请求。
         if worker_types:
             if legacy_types and not ANIMESTUDIO_CLI.exists():
                 if emit_errors:

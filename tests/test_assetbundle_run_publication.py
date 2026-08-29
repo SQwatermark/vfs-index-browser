@@ -47,6 +47,39 @@ class FakePreviewWorker:
         }
 
 
+class FakeAnimationPreviewWorker(FakePreviewWorker):
+    def export_bundle_preview_media(
+        self,
+        *,
+        output_directory,
+        included_types,
+        **_options,
+    ):
+        self.calls += 1
+        self.included_types = list(included_types)
+        payload = b"%YAML 1.1\n--- !u!74 &7400000\nAnimationClip:\n  m_Name: Idle\n"
+        relative = "AnimationClip/CAB-test/Idle_p0000000000000017.anim"
+        target = output_directory / relative
+        target.parent.mkdir(parents=True)
+        target.write_bytes(payload)
+        return {
+            "artifactCount": 1,
+            "artifacts": [{
+                "relativePath": relative,
+                "type": "AnimationClip",
+                "sourceFile": "CAB-test",
+                "pathId": 23,
+                "name": "Idle",
+                "container": "assets/idle.anim",
+                "byteCount": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }],
+            "skippedCount": 0,
+            "skipped": [],
+            "includedTypes": list(included_types),
+        }
+
+
 class AssetBundleRunPublicationTests(unittest.TestCase):
     def make_handler(self):
         handler = object.__new__(server.BrowserHandler)
@@ -147,6 +180,39 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
                 identity["sha256"],
             )
             self.assertEqual(b"legacy-wav", (export_root / "AudioClip/voice.wav").read_bytes())
+
+    def test_animation_yaml_uses_worker_run_without_legacy_cli(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "bundle.ab"
+            source.write_bytes(b"fixture-bundle")
+            worker = FakeAnimationPreviewWorker()
+            map_meta = {
+                "selectedRun": "map-animation",
+                "assetEntries": [{
+                    "Type": "AnimationClip",
+                    "Name": "Idle",
+                    "PathID": 23,
+                    "Container": "assets/idle.anim",
+                }],
+            }
+            handler = self.make_handler()
+            handler.ensure_assetbundle_map = lambda *_args, **_options: map_meta
+
+            with (
+                patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
+                patch.object(server, "UNITY_WORKER", worker),
+                patch.object(server, "ANIMESTUDIO_CLI", root / "missing-cli.exe"),
+            ):
+                export_root, meta = handler.ensure_assetbundle_export(
+                    self.make_record(source), source,
+                )
+
+            self.assertEqual(["AnimationClip"], worker.included_types)
+            self.assertEqual([], meta["source"]["legacyTypes"])
+            self.assertTrue(
+                (export_root / "AnimationClip/CAB-test/Idle_p0000000000000017.anim").is_file()
+            )
 
 
 if __name__ == "__main__":

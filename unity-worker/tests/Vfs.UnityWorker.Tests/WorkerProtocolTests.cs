@@ -218,6 +218,12 @@ public sealed class WorkerProtocolTests
     }
 
     [TestMethod]
+    public void BundlePreviewMediaAcceptsAnimationClipAsAClosedProtocolType()
+    {
+        Assert.IsTrue(BundlePreviewMediaExporter.SupportsType("AnimationClip"));
+    }
+
+    [TestMethod]
     public void CabMapRejectsDuplicateInputIdsBeforeParsingBundles()
     {
         var root = Path.Combine(Path.GetTempPath(), $"vfs-worker-test-{Guid.NewGuid():N}");

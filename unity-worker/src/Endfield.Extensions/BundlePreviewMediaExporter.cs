@@ -36,8 +36,8 @@ public sealed record BundlePreviewMediaExportResult(
     IReadOnlyList<string> IncludedTypes);
 
 /// <summary>
-/// 导出浏览器直接预览的、无需附加原生运行时的 Bundle 媒体。这里的类型集合是协议白名单，
-/// 不是 AnimeStudio Convert 的任意类型转发；AudioClip 和 AnimationClip 各自保留独立协议边界。
+/// 导出浏览器直接预览的 Bundle 资源。这里的类型集合是协议白名单，不是 AnimeStudio
+/// Convert 的任意类型转发；模型播放所需 AnimationJSON 仍保留独立的精确身份协议。
 /// </summary>
 public static class BundlePreviewMediaExporter
 {
@@ -48,7 +48,10 @@ public static class BundlePreviewMediaExporter
             [nameof(ClassIDType.Sprite)] = ClassIDType.Sprite,
             [nameof(ClassIDType.TextAsset)] = ClassIDType.TextAsset,
             [nameof(ClassIDType.VideoClip)] = ClassIDType.VideoClip,
+            [nameof(ClassIDType.AnimationClip)] = ClassIDType.AnimationClip,
         };
+
+    internal static bool SupportsType(string value) => SupportedTypes.ContainsKey(value);
 
     public static BundlePreviewMediaExportResult Export(
         BundlePreviewMediaExportRequest request)
@@ -133,6 +136,7 @@ public static class BundlePreviewMediaExporter
             Sprite => ".png",
             TextAsset => TextAssetExtension(container),
             VideoClip video => VideoExtension(video.m_OriginalPath),
+            AnimationClip => ".anim",
             _ => throw new InvalidOperationException($"未实现的预览媒体类型：{asset.type}"),
         };
         var relativePath = Path.Combine(
@@ -183,6 +187,14 @@ public static class BundlePreviewMediaExporter
                 }
                 File.WriteAllBytes(outputPath, video.m_VideoData.GetData());
                 break;
+            case AnimationClip animation:
+                var yaml = animation.Convert();
+                if (string.IsNullOrEmpty(yaml))
+                {
+                    return null;
+                }
+                File.WriteAllText(outputPath, yaml);
+                break;
         }
         return relativePath;
     }
@@ -192,6 +204,7 @@ public static class BundlePreviewMediaExporter
         Texture2D => "texture_decode_failed",
         Sprite => "sprite_decode_failed",
         VideoClip => "video_payload_empty",
+        AnimationClip => "animation_yaml_empty",
         _ => "payload_unavailable",
     };
 

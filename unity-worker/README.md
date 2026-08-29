@@ -35,7 +35,7 @@ Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已�
 - 协议所有权：VFS；
 - 进程边界：单次 worker 进程，后续按性能证据决定是否改为常驻；
 - 权威 AnimeStudio 来源提交：`8cdec963c4e187ea0a4a339b8969844a9574638b`；
-- worker 版本：`0.12.0`；
+- worker 版本：`0.13.0`；
 - 已实现能力：`handshake`、`exportMonoBehaviourRaw`、`exportMonoBehaviourTypeTreeDump`、
   `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`、
   `exportIdentifiedTextures`、`exportCubemapFaces`、`exportBundlePreviewMedia`、
@@ -69,9 +69,11 @@ Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已�
   `_p<16 位 PathID>.png` 命名，并返回尺寸、字节数和 SHA-256；
 - `exportCubemapFaces` 只接受精确 container，验证像素流由六份连续完整 mip 链组成，并按
   Unity 的 `PositiveX` 至 `NegativeZ` 顺序无垂直翻转地输出六张 PNG；
-- `exportBundlePreviewMedia` 只接受固定白名单中的 `Texture2D`、`Sprite`、`TextAsset` 和 `VideoClip`，
+- `exportBundlePreviewMedia` 只接受固定白名单中的 `Texture2D`、`Sprite`、`TextAsset`、`VideoClip`
+  和用于文本浏览的 AnimationClip YAML，
   不转发任意 `Convert` 类型。每个文件使用 `类型/source file/名称_p<16 位 PathID>` 保持身份，并返回 source file、
-  container、长度、SHA-256 与结构化跳过原因；AudioClip、AnimationClip 保留独立边界；
+  container、长度、SHA-256 与结构化跳过原因；AudioClip 保留独立边界，模型播放所需的
+  AnimationJSON 则使用下述精确选择协议；
 - `exportAnimationClipJson` 只接受 AssetMap 已解析出的精确 `PathID + expectedName`，输出
   `AnimeStudioAnimationClip/1.1.0` 和曲线、时间轴、Humanoid/Endfield ACL 元数据；不扫描
   类型目录，也不按导出文件名猜资源。Euler 与 PPtr 曲线仍以明确错误拒绝；
@@ -79,15 +81,21 @@ Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已�
   Projectile 的聚焦解码器主体存在于被忽略的旧研究副本提交 `03336c4`，其上另有 85 行
   未提交修正；当前已迁移可由三份真实样本验证的结构，并保留未理解尾部。对象快照 worker
   已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；Bundle
-  预览的 Texture2D、Sprite、TextAsset、VideoClip 已接入独占 run；模型动画所需的
-  AnimationJSON 也已接入精确身份的独占 run。通用浏览的 AnimationClip Convert 与
-  AudioClip 仍保留旧边界，不能据此宣称旧 CLI 已无调用者。
+  预览的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入独占 run；
+  模型动画所需的 AnimationJSON 也已接入精确身份的独占 run。AudioClip 仍保留旧边界，
+  不能据此宣称旧 CLI 已无调用者。
 
 AnimationJSON 的真实等价证据包括：未压缩 `Recorded (16)` 输出 4,751 字节、SHA-256
 `ccaf4d97bb11a38083ad86e8662f898f373b05f81c025c05faf0382d8406f479`；Endfield ACL 压缩的
 `A_actor_pelica_idle_loop` 输出 696 条曲线、3,294,623 字节、SHA-256
 `5ae4a043bbceb33655c336605c602448d5ed1d457a5c8613cc857fffbf9d82db`。两份均与旧生产
 AnimationJSON 逐字节一致。
+
+通用 AnimationClip YAML 已审计本机全部 5 个缓存 Bundle、77 个片段：新 worker 输出数量
+完整，77/77 均与当前旧 CLI 逐字节一致。含 Euler/PPtr 的对话
+Bundle 可输出全部 72 个片段，而严格的 AnimationJSON 播放协议只能接受其中 27 个；两种
+契约因此不能合并。ACL 压缩的佩丽卡 idle YAML 为 28,140,391 字节，SHA-256
+`7b050e940a718ee6feddbe37ec701f4105a11bb103b8e372df729942098d8ff3`，与当前旧 CLI 一致。
 
 真实样本边界回归示例：
 
