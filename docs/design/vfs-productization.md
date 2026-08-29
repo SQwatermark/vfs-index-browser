@@ -808,3 +808,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   geometry、编码后的纹理子路径、路径逃逸、无效 LOD 和未完成 run；既有回归继续证明请求旧 run
   不会漂移到当前指针。模型缓存结构至此不再散落于 buffer/texture 路由，下一阶段可转向单动画
   结果服务或模型候选搜索边界。
+- 单动画请求的模型准备、普通/Avatar 分流、三阶段进度、取消检查、AnimationClip 精确导出与
+  绑定，以及 Dialog Morph 分支已移入 `model_single_animation_service.py`。Handler 的
+  `build_model_animation_result` 成为薄转发；服务通过注入接口复用现有 skeletal morph builder，
+  没有重写或猜测 Morph 规则。合成与任务回归覆盖普通 clip 的 worker 取消传播、绑定参数、完整
+  进度和 Morph 不调用 clip exporter。额外执行既有 skeletal morph 测试仍有仓库已记录的“期望
+  1 条、实际 2 条轨道”断言失败，本次未修改相关代码或 fixture，不作为此重构放行门禁。下一阶段
+  抽取动画候选搜索和 URL 组装。

@@ -141,6 +141,10 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 模型文档中的 buffer/texture URL 由 `model_artifact_resolver.py` 解析为不可变 run 内文件。请求
 身份统一校验 record、asset、LOD 与显式 run；纹理路径先 URL 解码再限制于该 run 的 `textures/`
 目录，路径逃逸和未完成 run 都不会返回文件。Handler 只保留 400/404 映射、内容类型与流式发送。
+单片网页动画由 `model_single_animation_service.py` 协调。服务先通过普通或 Avatar 构建入口取得
+模型，再按资源路径严格区分 AnimationClip 与 Dialog Morph：前者使用精确 Worker 导出并绑定，
+后者调用 skeletal morph builder；取消检查位于模型、导出、绑定和发布结果边界，进度保持
+`model → animation → binding → ready` 契约（Morph 无独立 binding 阶段）。
 
 ## 关键约束
 

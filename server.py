@@ -117,6 +117,7 @@ from model_artifact_resolver import (
     ModelArtifactResolver,
     ModelArtifactRunNotFound,
 )
+from model_single_animation_service import ModelSingleAnimationService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2859,6 +2860,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def model_artifact_resolver(self) -> ModelArtifactResolver:
         return ModelArtifactResolver(self.model_run_store())
 
+    def model_single_animation_service(self) -> ModelSingleAnimationService:
+        return ModelSingleAnimationService(
+            self.ensure_avatar_mesh_model,
+            self.ensure_model_hierarchy,
+            self.resolve_bundle_sources,
+            is_dialog_morph_animation_path,
+            self.build_skeletal_morph_animation,
+            self.ensure_animation_clip_export,
+            bind_animation_clip,
+        )
+
     def ensure_animation_clip_export(
         self,
         record: dict,
@@ -3938,76 +3950,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: threading.Event | None = None,
         progress: Callable[[dict], None] | None = None,
     ) -> dict:
-        index, model_asset, model_record, model_chunk = model_resolved
-        _, animation_asset, animation_record, animation_chunk = animation_resolved
-        if not is_model_entry_path(str(model_asset["path"])):
-            raise ValueError("resource is not a supported model entry")
-        if lod not in range(4):
-            raise ValueError("lod is invalid")
-        cancel_options = (
-            {"cancel_event": cancel_event} if cancel_event is not None else {}
+        return self.model_single_animation_service().build(
+            model_resolved,
+            animation_resolved,
+            lod,
+            cancel_event=cancel_event,
+            progress=progress,
         )
-        if progress is not None:
-            progress({"stage": "model", "completed": 0, "total": 3})
-        if is_avatar_mesh_asset_path(str(model_asset["path"])):
-            document, _, _ = self.ensure_avatar_mesh_model(
-                index,
-                model_asset,
-                model_record,
-                model_chunk,
-                lod,
-                **cancel_options,
-            )
-        else:
-            dependencies = index.bundle_dependencies(int(model_asset["bundle_index"]))
-            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, _ = self.ensure_model_hierarchy(
-                model_record,
-                model_chunk,
-                model_asset,
-                dependencies,
-                dependency_sources,
-                missing_dependencies,
-                **cancel_options,
-            )
-        if cancel_event is not None and cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
-        if progress is not None:
-            progress({"stage": "animation", "completed": 1, "total": 3})
-        animation_asset_index = int(animation_asset["asset_index"])
-        if is_dialog_morph_animation_path(str(animation_asset["path"])):
-            animation = self.build_skeletal_morph_animation(
-                index,
-                model_asset,
-                animation_asset,
-                document,
-            )
-        else:
-            clip, _, _ = self.ensure_animation_clip_export(
-                animation_record,
-                animation_chunk,
-                animation_asset,
-                **cancel_options,
-            )
-            if cancel_event is not None and cancel_event.is_set():
-                raise RuntimeError("worker_cancelled")
-            if progress is not None:
-                progress({"stage": "binding", "completed": 2, "total": 3})
-            animation = bind_animation_clip(
-                document,
-                clip,
-                animation_id=f"animation:{animation_asset_index}",
-                source={
-                    "logicalPath": str(animation_asset["path"]),
-                    "bundle": str(animation_asset["bundle_name"]),
-                },
-                bake_humanoid=True,
-            )
-        if cancel_event is not None and cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
-        if progress is not None:
-            progress({"stage": "ready", "completed": 3, "total": 3})
-        return animation
 
     def build_model_preview_result(
         self,

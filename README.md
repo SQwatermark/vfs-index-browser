@@ -135,6 +135,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `model_blend_service.py` | 基础/动画 GLB 选择、Blender 准备进度与 artifact 结果协调 |
 | `model_preview_service.py` | 模型构建选择、公开预览 URL、结果文档与任务进度协调 |
 | `model_artifact_resolver.py` | 不可变模型 run 的 geometry/texture 请求身份与安全文件定位 |
+| `model_single_animation_service.py` | 单 AnimationClip/Dialog Morph 的模型准备、绑定与进度协调 |
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
