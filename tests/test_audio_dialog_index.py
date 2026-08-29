@@ -205,7 +205,30 @@ class AudioDialogMappingTests(unittest.TestCase):
 
         self.assertEqual("chinese", entries[0].language)
         self.assertEqual(45, entries[0].pck_file_id)
+        self.assertIsNone(entries[0].pck_logical_path)
         self.assertEqual("matched", matches[0].status)
+
+    def test_adapts_stable_package_identity_metadata(self):
+        package = {
+            "identity": {
+                "version": 2,
+                "recordId": 45,
+                "length": 1000,
+                "logicalId": "Audio/default_chinese_stream.pck",
+            },
+            "entryCount": 1,
+            "entries": [{
+                "id": 100,
+                "offset": 128,
+                "size": 64,
+                "source": "sound",
+            }],
+        }
+
+        entry = media_entries_from_audio_package_meta(45, package)[0]
+
+        self.assertEqual("Audio/default_chinese_stream.pck", entry.pck_logical_path)
+        self.assertEqual(1000, entry.pck_file_size)
 
     def test_rejects_inconsistent_audio_package_metadata(self):
         with self.assertRaisesRegex(AudioDialogFormatError, "entryCount"):

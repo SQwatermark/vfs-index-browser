@@ -64,6 +64,8 @@ class AudioMediaEntry:
     bank_size: int | None = None
     bank_wem_offset: int | None = None
     bank_encrypted: bool = False
+    pck_logical_path: str | None = None
+    pck_file_size: int | None = None
 
     def __post_init__(self) -> None:
         _validate_uint64(self.media_id, "media_id")
@@ -84,6 +86,16 @@ class AudioMediaEntry:
                 _validate_nonnegative_int64(value, name)
         if not isinstance(self.bank_encrypted, bool):
             raise AudioDialogFormatError("bank_encrypted must be a boolean")
+        if (self.pck_logical_path is None) != (self.pck_file_size is None):
+            raise AudioDialogFormatError(
+                "pck_logical_path and pck_file_size must be provided together"
+            )
+        if self.pck_logical_path is not None:
+            if not self.pck_logical_path.strip() or self.pck_logical_path != self.pck_logical_path.strip():
+                raise AudioDialogFormatError(
+                    "pck_logical_path must be a non-empty trimmed string"
+                )
+            _validate_positive_int64(self.pck_file_size, "pck_file_size")
 
     @property
     def media_id_hex(self) -> str:
@@ -102,6 +114,8 @@ class AudioMediaEntry:
             "bank_size": self.bank_size,
             "bank_wem_offset": self.bank_wem_offset,
             "bank_encrypted": self.bank_encrypted,
+            "pck_logical_path": self.pck_logical_path,
+            "pck_file_size": self.pck_file_size,
         }
 
 
@@ -298,9 +312,17 @@ def media_entries_from_audio_package_meta(
     _validate_nonnegative_int64(pck_file_id, "pck_file_id")
     if not isinstance(payload, dict):
         raise AudioDialogFormatError("audio package metadata must be an object")
-    if payload.get("version") != 1:
+    legacy = payload.get("version") == 1
+    identity = payload.get("identity")
+    if not legacy and not isinstance(identity, dict):
         raise AudioDialogFormatError(
             f"unsupported audio package metadata version: {payload.get('version')!r}"
+        )
+    pck_logical_path = None if legacy else identity.get("logicalId")
+    pck_file_size = None if legacy else identity.get("length")
+    if not legacy and (not pck_logical_path or pck_file_size is None):
+        raise AudioDialogFormatError(
+            "audio package metadata identity is missing logicalId or length"
         )
     entries = payload.get("entries")
     if not isinstance(entries, list):
@@ -328,6 +350,8 @@ def media_entries_from_audio_package_meta(
                     bank_size=entry.get("bankSize"),
                     bank_wem_offset=entry.get("bankWemOffset"),
                     bank_encrypted=entry.get("bankEncrypted", False),
+                    pck_logical_path=pck_logical_path,
+                    pck_file_size=pck_file_size,
                 )
             )
         except KeyError as error:

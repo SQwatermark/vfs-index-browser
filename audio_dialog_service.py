@@ -33,7 +33,7 @@ class AudioDialogService:
     def __init__(
         self,
         connect: Callable,
-        resolve_pck_source: Callable[[int], tuple[dict, Path] | None],
+        resolve_pck_source: Callable[[dict], tuple[dict, Path] | None],
         ensure_media: Callable[[dict, Path, AudioEntry, str, str], Path],
         *,
         page_size_max: int,
@@ -118,11 +118,19 @@ class AudioDialogService:
             bank_wem_offset=media["bank_wem_offset"],
             bank_encrypted=bool(media["bank_encrypted"]),
         )
-        physical = self._resolve_pck_source(int(media["pck_file_id"]))
+        physical = self._resolve_pck_source(media)
         if physical is None:
             raise FileNotFoundError("AudioDialog PCK source is unavailable")
         record, chunk_path = physical
-        validate_indexed_audio_source(record, entry, index_name="AudioDialog index")
+        expected_file_size = media.get("pck_file_size")
+        validate_indexed_audio_source(
+            record,
+            entry,
+            index_name="AudioDialog index",
+            expected_file_size=(
+                int(expected_file_size) if expected_file_size is not None else None
+            ),
+        )
         try:
             target = self._ensure_media(
                 record, chunk_path, entry, mode, "audio-dialog"

@@ -58,6 +58,7 @@ from audio_dialog_service import (
     AudioDialogMediaBuildError,
     AudioDialogService,
 )
+from audio_dialog_store import create_audio_dialog_schema
 from wwise_store import get_wwise_media
 from wwise_catalog_service import WwiseCatalogService
 from wwise_media_service import WwiseMediaBuildError, WwiseMediaService
@@ -1130,7 +1131,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError(
                 f"AudioDialog index not built: {AUDIO_DIALOG_DB}"
             )
-        return sqlite3.connect(AUDIO_DIALOG_DB)
+        conn = sqlite3.connect(AUDIO_DIALOG_DB)
+        create_audio_dialog_schema(conn)
+        conn.commit()
+        return conn
 
     def connect_wwise(self) -> sqlite3.Connection:
         if not WWISE_DB.is_file():
@@ -1143,10 +1147,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def audio_dialog_service(self) -> AudioDialogService:
         return AudioDialogService(
             self.connect_audio_dialog,
-            self.resolve_vfs_file_source,
+            self.resolve_audio_dialog_media_source,
             self.ensure_indexed_audio_media_file,
             page_size_max=PAGE_SIZE_MAX,
         )
+
+    def resolve_audio_dialog_media_source(
+        self, media: dict
+    ) -> tuple[dict, Path] | None:
+        logical_path = str(media.get("pck_logical_path") or "")
+        if logical_path:
+            return self.resolve_logical_file_source(logical_path)
+        return self.resolve_vfs_file_source(int(media["pck_file_id"]))
 
     def lookup_wwise_media(self, pck_file_id: int, ordinal: int) -> dict | None:
         with closing(self.connect_wwise()) as conn:

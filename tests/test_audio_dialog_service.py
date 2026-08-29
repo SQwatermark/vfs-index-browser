@@ -30,6 +30,8 @@ class AudioDialogServiceTests(unittest.TestCase):
             bank_size=200,
             bank_wem_offset=24,
             bank_encrypted=True,
+            pck_logical_path="Audio/default.pck",
+            pck_file_size=1000,
         )
         with closing(sqlite3.connect(self.database)) as conn:
             replace_audio_dialog_language(
@@ -42,10 +44,16 @@ class AudioDialogServiceTests(unittest.TestCase):
     def service(self, calls, *, source=True):
         return AudioDialogService(
             lambda: sqlite3.connect(self.database),
-            lambda pck: (
-                calls.append(("source", pck)),
+            lambda media: (
+                calls.append(
+                    (
+                        "source",
+                        media["pck_file_id"],
+                        media["pck_logical_path"],
+                    )
+                ),
                 (
-                    {"id": pck, "file_name": "default.pck", "length": 1000},
+                    {"id": 99, "file_name": "default.pck", "length": 1000},
                     Path("pck.chk"),
                 )
                 if source
@@ -84,7 +92,7 @@ class AudioDialogServiceTests(unittest.TestCase):
         self.assertEqual(Path("cached.wem"), artifact.target)
         self.assertEqual("story/ready.wav", artifact.logical_path)
         self.assertTrue(artifact.download)
-        self.assertEqual(("source", 99), calls[0])
+        self.assertEqual(("source", 99, "Audio/default.pck"), calls[0])
         entry = calls[1][3]
         self.assertEqual(24, entry.bank_wem_offset)
         self.assertTrue(entry.bank_encrypted)

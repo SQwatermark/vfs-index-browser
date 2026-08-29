@@ -11,20 +11,27 @@ from collections.abc import Iterable
 from audio_dialog_index import AudioDialogMatch, AudioMediaEntry, normalize_audio_language
 
 
-AUDIO_DIALOG_SCHEMA_VERSION = 1
+AUDIO_DIALOG_SCHEMA_VERSION = 2
 
 
 def create_audio_dialog_schema(conn: sqlite3.Connection) -> None:
     existing_version = _existing_schema_version(conn)
     if (
         existing_version is not None
-        and existing_version != AUDIO_DIALOG_SCHEMA_VERSION
+        and existing_version not in {1, AUDIO_DIALOG_SCHEMA_VERSION}
     ):
         raise RuntimeError(
             "unsupported AudioDialog index schema "
             f"{existing_version}; rebuild with schema {AUDIO_DIALOG_SCHEMA_VERSION}"
         )
     conn.execute("PRAGMA foreign_keys = ON")
+    if existing_version == 1:
+        conn.execute("ALTER TABLE audio_media ADD COLUMN pck_logical_path TEXT")
+        conn.execute("ALTER TABLE audio_media ADD COLUMN pck_file_size INTEGER")
+        conn.execute(
+            "UPDATE audio_index_meta SET value = ? WHERE key = 'schema_version'",
+            (str(AUDIO_DIALOG_SCHEMA_VERSION),),
+        )
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS audio_index_meta (
@@ -44,7 +51,9 @@ def create_audio_dialog_schema(conn: sqlite3.Connection) -> None:
             bank_offset INTEGER,
             bank_size INTEGER,
             bank_wem_offset INTEGER,
-            bank_encrypted INTEGER NOT NULL
+            bank_encrypted INTEGER NOT NULL,
+            pck_logical_path TEXT,
+            pck_file_size INTEGER
         );
 
         CREATE TABLE IF NOT EXISTS audio_dialog (
@@ -280,7 +289,8 @@ def get_audio_dialog_entry(
             """
             SELECT m.media_id, m.pck_file_id, m.offset, m.size, m.source,
                    m.language, m.bank_id, m.bank_offset, m.bank_size,
-                   m.bank_wem_offset, m.bank_encrypted
+                   m.bank_wem_offset, m.bank_encrypted,
+                   m.pck_logical_path, m.pck_file_size
             FROM audio_dialog_media dm
             JOIN audio_media m ON m.physical_key = dm.physical_key
             WHERE dm.language = ? AND dm.dialog_key = ?
@@ -331,8 +341,8 @@ def _store_media(conn: sqlite3.Connection, media: AudioMediaEntry) -> str:
         INSERT OR IGNORE INTO audio_media (
             physical_key, media_id, pck_file_id, offset, size, source,
             language, bank_id, bank_offset, bank_size, bank_wem_offset,
-            bank_encrypted
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            bank_encrypted, pck_logical_path, pck_file_size
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             physical_key,
@@ -347,6 +357,8 @@ def _store_media(conn: sqlite3.Connection, media: AudioMediaEntry) -> str:
             record["bank_size"],
             record["bank_wem_offset"],
             int(record["bank_encrypted"]),
+            record["pck_logical_path"],
+            record["pck_file_size"],
         ),
     )
     return physical_key

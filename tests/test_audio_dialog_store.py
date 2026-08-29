@@ -115,8 +115,45 @@ class AudioDialogStoreTests(unittest.TestCase):
             """
         )
 
-        with self.assertRaisesRegex(RuntimeError, "rebuild with schema 1"):
+        with self.assertRaisesRegex(RuntimeError, "rebuild with schema 2"):
             create_audio_dialog_schema(self.conn)
+
+    def test_migrates_schema_one_without_inventing_package_identity(self):
+        self.conn.executescript(
+            """
+            CREATE TABLE audio_index_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            INSERT INTO audio_index_meta VALUES ('schema_version', '1');
+            CREATE TABLE audio_media (
+                physical_key TEXT PRIMARY KEY,
+                media_id TEXT NOT NULL,
+                pck_file_id INTEGER NOT NULL,
+                offset INTEGER NOT NULL,
+                size INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                language TEXT,
+                bank_id INTEGER,
+                bank_offset INTEGER,
+                bank_size INTEGER,
+                bank_wem_offset INTEGER,
+                bank_encrypted INTEGER NOT NULL
+            );
+            """
+        )
+
+        create_audio_dialog_schema(self.conn)
+
+        version = self.conn.execute(
+            "SELECT value FROM audio_index_meta WHERE key = 'schema_version'"
+        ).fetchone()[0]
+        columns = {
+            row[1] for row in self.conn.execute("PRAGMA table_info(audio_media)")
+        }
+        self.assertEqual("2", version)
+        self.assertIn("pck_logical_path", columns)
+        self.assertIn("pck_file_size", columns)
 
 
 if __name__ == "__main__":

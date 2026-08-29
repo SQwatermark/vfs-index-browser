@@ -368,6 +368,8 @@ class AudioPackageIndexService:
             "recordId": int(record["id"]),
             "length": int(record["length"]),
             "offset": int(record.get("offset") or 0),
+            "logicalId": str(record.get("logical_id") or ""),
+            "fileName": str(record.get("file_name") or ""),
             "fileDataMd5": str(record.get("file_data_md5") or ""),
             "fileChunkMd5": str(record.get("file_chunk_md5") or ""),
         }

@@ -841,3 +841,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   与 external/Bank 范围。真实陈旧样本的旧 ID `832796` 可据路径精确迁移到当前 ID `839264`；没有
   路径的旧条目才回退 ID 且继续受门禁保护。后续 Wwise 仍需补内容摘要及启动审计，AudioDialog
   则需先扩 schema 保存同等稳定路径。
+- AudioDialog schema 已从 1 兼容迁移到 2；`audio_media` 新增可空的 `pck_logical_path` 与
+  `pck_file_size`。当前 `audio_package_service.py` 生成的 metadata identity 同步加入 `logicalId`
+  和 `fileName`，离线构建器可把稳定路径与长度写入每个物理媒体证据。schema 1 旧行迁移时保持
+  两字段为空，不伪造来源；新行运行时与 Wwise 一样按精确逻辑路径重定位并校验长度/范围。合成
+  回归覆盖 schema 迁移、旧 metadata 兼容、新 identity 适配和稳定来源传递。
