@@ -785,4 +785,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `model_animation_service.py`。`AnimationExportIssue` 与 `AnimatedModelBundle` 领域结果也迁出
   `server.py`，原模块继续导入名称以保持调用兼容。请求清单改用 UUID 临时文件原子替换；合成与
   既有路由回归覆盖排序、累计 geometry、缓存复用、两类跳过和全失败。Handler 的
-  `ensure_animated_model_glb` 现为薄转发，下一阶段收口模型 Blender 应用服务。
+  `ensure_animated_model_glb` 现为薄转发。当前秦桔臣 AvatarMesh `191036` 与通用待机动画
+  `324382` 已从正式 `POST /api/tasks/model-blend` 冷路径通过：1/1 动画绑定、0 诊断，发布
+  20,357,548 字节动画 GLB、17,021,947 字节 Blender 产物和一致的请求清单，任务约 7.5 秒成功。
+  下一阶段收口模型 Blender 应用服务。
