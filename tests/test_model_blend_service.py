@@ -7,6 +7,30 @@ from model_blend_service import ModelBlendService
 
 
 class ModelBlendServiceTests(unittest.TestCase):
+    def test_sync_preparation_does_not_start_blender_and_builds_http_document(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            glb = root / "model.glb"
+            glb.write_bytes(b"glb")
+            service = ModelBlendService(
+                lambda resolved, **_kwargs: (
+                    {"path": "assets/hero.prefab"},
+                    root / "model.json",
+                    glb,
+                ),
+                lambda *_args, **_kwargs: self.fail("animation path is unexpected"),
+                lambda *_args, **_kwargs: self.fail("Blender must not start"),
+            )
+
+            bundle = service.prepare_bundle(object(), [], 0)
+            document = service.preparation_document(bundle, "/download.blend")
+
+            self.assertFalse(bundle.all_animations_failed)
+            self.assertEqual("modelAnimationBundlePreparation", document["kind"])
+            self.assertEqual(0, document["requestedCount"])
+            self.assertEqual(0, document["exportedCount"])
+            self.assertEqual("/download.blend", document["downloadUrl"])
+
     def test_prepares_base_model_artifact(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -94,6 +118,34 @@ class ModelBlendServiceTests(unittest.TestCase):
         self.assertFalse(result["artifactAvailable"])
         self.assertEqual(0, result["exportedCount"])
         self.assertNotIn("_artifactPath", result)
+
+    def test_all_incompatible_bundle_builds_stable_failure_documents(self):
+        issue = SimpleNamespace(as_json=lambda: {"stage": "modelBinding"})
+        bundle = SimpleNamespace(
+            asset={"path": "assets/hero.prefab"},
+            animations=[],
+            glb_path=Path("base.glb"),
+            issues=[issue],
+        )
+        service = ModelBlendService(
+            lambda *_args, **_kwargs: self.fail("base path is unexpected"),
+            lambda *_args, **_kwargs: bundle,
+            lambda *_args, **_kwargs: self.fail("Blender must not start"),
+        )
+
+        prepared = service.prepare_bundle(object(), [(object(),)], 0)
+
+        self.assertTrue(prepared.all_animations_failed)
+        self.assertIsNone(service.preparation_document(prepared, None)["downloadUrl"])
+        self.assertEqual(
+            {
+                "error": "none of the selected animations could be exported",
+                "issues": [{"stage": "modelBinding"}],
+            },
+            service.failure_document(prepared),
+        )
+        with self.assertRaisesRegex(ValueError, "all selected animations failed"):
+            service.build_artifact(prepared)
 
 
 if __name__ == "__main__":

@@ -183,7 +183,8 @@ build session、Worker、文档服务与 run store。Handler 只注入索引相�
 轨道才提交到累计结果；失败片段在允许跳过时形成区分 `clipExport` 与 `modelBinding` 的诊断。
 请求清单通过唯一临时文件原子切换，缓存恢复仍会复核有效动画集合对应的 GLB 是否存在。
 Blender 派生分成两层：`model_blend_service.py` 选择基础或动画 GLB、处理全部动画不兼容的短路、
-报告 Blender 阶段并构造私有 artifact 结果；`blender_export.py` 只拥有可取消外部进程、输入
+报告 Blender 阶段并构造私有 artifact 结果；同步 prepare/download 与后台任务共享同一个
+`ModelBlendBundle`、问题文档和 artifact 命名。`blender_export.py` 只拥有可取消外部进程、输入
 mtime 缓存和 `.blend` 发布。HTTP Handler 注入两类 GLB provider 与 Blender provider，不再
 拼装后台任务结果或直接构造导出适配器。
 `model_preview_service.py` 是模型网页结果的应用入口：按普通/Avatar 类型选择构建服务，组装

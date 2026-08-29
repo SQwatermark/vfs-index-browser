@@ -943,3 +943,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   完整资源闭包以及 dump/StringPathHash 的最小公开 run 身份，不触发 Worker 或解析 Bundle。
   Handler 仅保留 AvatarMesh 类型门禁、LOD、计划加载和 HTTP 错误映射。真实 Adaxier LOD0 重启后
   仍为 1 个 slot、各 LOD `9/9/7/7` 个 mesh、32 个引用、0 个未解析引用，plan/run 字段完全一致。
+- 同步 `/api/manifest-asset/model-blend` 与后台 Blend 任务现共享 `ModelBlendService.prepare_bundle`：
+  基础/动画 GLB 选择、批量兼容问题、全部动画失败判定、prepare/failure 文档和 artifact 文件名
+  不再在 Handler 重复。`prepare=1` 只构建 bundle 而不启动 Blender，实际下载才调用 artifact 阶段。
+  真实 Adaxier LOD0 prepare 文档逐字段一致，下载仍生成 42,553,475 字节 Blend、原文件名、0 个
+  跳过动画及 private/max-age 缓存头。

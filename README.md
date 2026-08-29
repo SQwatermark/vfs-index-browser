@@ -138,7 +138,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `avatar_resource_plan_service.py` | AvatarMesh 资源计划、摘要与公开 run 身份文档组装 |
 | `model_glb_service.py` | 已发布模型输入校验、材质计划与基础/动画 GLB 缓存派生 |
 | `model_animation_service.py` | 动画请求身份、逐片导出/绑定、诊断清单与动画 GLB 协调 |
-| `model_blend_service.py` | 基础/动画 GLB 选择、Blender 准备进度与 artifact 结果协调 |
+| `model_blend_service.py` | 同步/后台基础或动画 GLB 选择、兼容短路与 Blend artifact 协调 |
 | `model_preview_service.py` | 模型构建选择、公开预览 URL、结果文档与任务进度协调 |
 | `model_artifact_resolver.py` | 不可变模型 run 的 geometry/texture 请求身份与安全文件定位 |
 | `model_single_animation_service.py` | 单 AnimationClip/Dialog Morph 的模型准备、绑定与进度协调 |

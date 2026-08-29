@@ -3408,25 +3408,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             animation_sources = self.resolve_animation_sources(query)
             if animation_sources is None:
                 return
-            animation_issues = []
-            if animation_sources:
-                bundle = self.ensure_animated_model_glb(
-                    resolved,
-                    animation_sources,
-                    lod=lod,
-                    skip_incompatible=len(animation_sources) > 1,
-                )
-                asset = bundle.asset
-                animation_assets = bundle.animations
-                model_path = bundle.model_path
-                glb_path = bundle.glb_path
-                animation_issues = bundle.issues
-            else:
-                asset, model_path, glb_path = self.ensure_manifest_asset_model_glb(
-                    resolved,
-                    lod=lod,
-                )
-                animation_assets = []
+            service = self.model_blend_service()
+            bundle = service.prepare_bundle(resolved, animation_sources, lod)
 
             if query.get("prepare", ["0"])[0] in {"1", "true", "yes"}:
                 download_query = {
@@ -3436,30 +3419,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 }
                 download_url = (
                     f"/api/manifest-asset/model-blend?{urlencode(download_query, doseq=True)}"
-                    if animation_assets or not animation_sources
+                    if not bundle.all_animations_failed
                     else None
                 )
-                self.send_json(
-                    {
-                        "kind": "modelAnimationBundlePreparation",
-                        "requestedCount": len(animation_sources),
-                        "exportedCount": len(animation_assets),
-                        "issues": [issue.as_json() for issue in animation_issues],
-                        "downloadUrl": download_url,
-                    }
-                )
+                self.send_json(service.preparation_document(bundle, download_url))
                 return
 
-            if animation_sources and not animation_assets:
+            if bundle.all_animations_failed:
                 self.send_json(
-                    {
-                        "error": "none of the selected animations could be exported",
-                        "issues": [issue.as_json() for issue in animation_issues],
-                    },
+                    service.failure_document(bundle),
                     status=422,
                 )
                 return
-            blend_path = self.ensure_model_blend_file(glb_path)
+            artifact = service.build_artifact(bundle)
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "Blender timed out while exporting the model")
             return
@@ -3471,17 +3443,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
 
-        suffix = f"-animations-{len(animation_assets)}" if animation_assets else ""
-        name = f"{Path(str(asset['path'])).stem}{suffix}.blend"
         self.send_raw_file(
             RawFileService(STREAM_CHUNK_SIZE).prepare_path(
-                blend_path,
+                artifact.path,
                 download=True,
-                download_name=name,
+                download_name=artifact.name,
                 content_type="application/x-blender",
             ),
             extra_headers={
-                "X-Endfield-Skipped-Animation-Count": str(len(animation_issues)),
+                "X-Endfield-Skipped-Animation-Count": str(
+                    artifact.skipped_animation_count
+                ),
                 "Cache-Control": "private, max-age=3600",
             },
         )
