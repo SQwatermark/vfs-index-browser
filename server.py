@@ -1453,6 +1453,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def send_error_json(self, status: int, message: str) -> None:
         self.send_json({"error": message}, status=status)
 
+    def require_current_index(self) -> bool:
+        if INDEX_FRESHNESS_REPORT.get("status") == "current":
+            return True
+        self.send_json(
+            {
+                "error": "VFS index is stale or has not been verified against the current installation",
+                "code": "index_stale",
+                "indexFreshness": INDEX_FRESHNESS_REPORT,
+                "indexRebuild": INDEX_REBUILD_REPORT,
+            },
+            status=503,
+            cache_control="no-store",
+        )
+        return False
+
     def read_json_body(self, *, maximum_bytes: int = 64 * 1024) -> dict:
         """读取有明确长度的小型 JSON 请求；长任务输入不得藏在无界请求体中。"""
 
@@ -1539,6 +1554,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/task-artifact":
             self.handle_task_artifact(parse_qs(parsed.query))
+            return
+        if parsed.path.startswith("/api/") and not self.require_current_index():
             return
         if parsed.path.startswith("/api/akedb-compatible/"):
             self.handle_akedb_compatible(parsed.path)
@@ -1631,6 +1648,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/") and not self.require_current_index():
+            return
         if parsed.path == "/api/tasks/projectile":
             self.handle_start_projectile_task()
             return

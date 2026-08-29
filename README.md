@@ -46,7 +46,8 @@ python server.py
 
 启动会校验历史 chunk 与已记录的 `.blc` 内容身份。索引陈旧时，服务先在同目录临时 run 中
 重新生成 JSONL 和候选 SQLite，完成完整性及来源身份验证后原子切换；失败则保留旧库并以
-`degraded` 启动。诊断时可用 `--no-auto-rebuild` 只报告陈旧状态。
+`degraded` 启动。诊断时可用 `--no-auto-rebuild` 只报告陈旧状态。此时数据 API 返回 HTTP 503
+及 `code: index_stale`；健康检查、既有任务状态/取消/产物和静态页面仍可使用。
 
 默认地址为 `http://127.0.0.1:8765`。局域网访问可添加 `--host 0.0.0.0`。
 
