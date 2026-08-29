@@ -710,3 +710,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `AssetEntries` JSON 契约已移入 `assetbundle_worker_service.py`。Handler 只保留服务异常到
   既有 `mapFailed` HTTP 响应的适配；动画精确 PathID 选择和媒体预览继续复用同一返回契约。
   合成回归证明缓存仅构建一次、稳定 `sourceLabel` 与六类 included type 均未变化。
+- AssetBundle 媒体类型选择、预览 Worker 调用、AssetMap 多重集合等价验证、无支持类型时的
+  空 run 发布和完整返回元数据也已移入同一服务。Handler 仅先取得 Map 再调用预览服务，并将
+  失败映射到 `exportFailed`。回归覆盖 Texture2D、AnimationClip、AudioClip 降级、缓存复用，
+  以及 Worker 返回错误 PathID 时拒绝发布并清理未完成 run。

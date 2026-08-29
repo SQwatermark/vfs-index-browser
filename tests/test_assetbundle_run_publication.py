@@ -79,6 +79,13 @@ class FakeAnimationPreviewWorker(FakePreviewWorker):
         }
 
 
+class FakeMismatchedPreviewWorker(FakePreviewWorker):
+    def export_bundle_preview_media(self, **options):
+        result = super().export_bundle_preview_media(**options)
+        result["artifacts"][0]["pathId"] = 99
+        return result
+
+
 class AssetBundleRunPublicationTests(unittest.TestCase):
     def make_handler(self):
         handler = object.__new__(server.BrowserHandler)
@@ -226,6 +233,35 @@ class AssetBundleRunPublicationTests(unittest.TestCase):
             self.assertEqual(0, worker.calls)
             self.assertEqual(["AudioClip"], first[1]["unsupportedPreviewTypes"])
             self.assertEqual([], list(first[0].iterdir()))
+
+    def test_mismatched_worker_identity_is_not_published(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "bundle.ab"
+            source.write_bytes(b"fixture-bundle")
+            handler = self.make_handler()
+            handler.ensure_assetbundle_map = lambda *_args, **_options: {
+                "selectedRun": "map-mismatch",
+                "assetEntries": [{
+                    "Type": "Texture2D",
+                    "Name": "icon",
+                    "PathID": 17,
+                    "Container": "assets/icon.png",
+                }],
+            }
+
+            with (
+                patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"),
+                patch.object(server, "UNITY_WORKER", FakeMismatchedPreviewWorker()),
+            ):
+                result = handler.ensure_assetbundle_export(
+                    self.make_record(source), source, emit_errors=False,
+                )
+
+            export_cache = root / "cache" / "7" / "asset-export"
+            self.assertIsNone(result)
+            self.assertFalse((export_cache / "meta.json").exists())
+            self.assertEqual([], list((export_cache / "runs").glob("*")))
 
 
 if __name__ == "__main__":

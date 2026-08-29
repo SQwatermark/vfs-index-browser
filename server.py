@@ -21,7 +21,6 @@ import tarfile
 import threading
 import time
 import uuid
-from collections import Counter
 from contextlib import closing
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -298,7 +297,6 @@ CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
 )
 VFS_PROTO_VERSION = 3
-ASSETBUNDLE_META_VERSION = CACHE_VERSIONS.version("assetbundle-preview")
 MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("model-snapshot")
 AVATAR_MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("avatar-model-snapshot")
 ANIMATION_CLIP_EXPORT_VERSION = CACHE_VERSIONS.version("animation-clip-export")
@@ -349,13 +347,6 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
-ASSETBUNDLE_WORKER_MEDIA_TYPES = (
-    "Texture2D",
-    "Sprite",
-    "TextAsset",
-    "VideoClip",
-    "AnimationClip",
-)
 MODEL_SNAPSHOT_TYPES = (
     "GameObject",
     "Transform",
@@ -3470,10 +3461,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         os.replace(temporary_run_path, run_path)
         return document, run_meta, model_path
 
-    def assetbundle_export_run_paths(self, record: dict) -> tuple[Path, Path]:
-        root = INTERNAL_CACHE_DIR / str(record["id"]) / "asset-export"
-        return root / "runs", root / "meta.json"
-
     def manifest_worker_service(self) -> ManifestWorkerService:
         return ManifestWorkerService(
             INTERNAL_CACHE_DIR,
@@ -3605,155 +3592,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=emit_errors)
         if map_meta is None:
             return None
-        asset_entries = list(map_meta["assetEntries"])
-        present_types = {
-            str(entry.get("Type") or "")
-            for entry in asset_entries
-            if isinstance(entry, dict)
-        }
-        worker_types = tuple(
-            asset_type
-            for asset_type in ASSETBUNDLE_WORKER_MEDIA_TYPES
-            if asset_type in present_types
-        )
-        unsupported_preview_types = sorted(
-            present_types.difference(ASSETBUNDLE_WORKER_MEDIA_TYPES)
-        )
-        if worker_types:
-            runs_root, run_meta_path = self.assetbundle_export_run_paths(record)
-            source_identity = {
-                "recordId": int(record["id"]),
-                "length": int(record["length"]),
-                "offset": int(record["offset"]),
-                "chunkPath": str(record["chunk_path"]),
-                "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-                "workerTypes": list(worker_types),
-                "unsupportedPreviewTypes": unsupported_preview_types,
-                "mapRun": map_meta.get("selectedRun"),
-                "toolArtifacts": UNITY_WORKER.artifact_identity(),
-            }
-
-            def run_worker_media(
-                run_root: Path,
-                media_root: Path,
-                request_id: str,
-                cancel: object | None,
-            ) -> dict:
-                run_source = run_root / "source.ab"
-                self.write_file_slice(record, chunk_path, run_source)
-                return UNITY_WORKER.export_bundle_preview_media(
-                    input_path=run_source,
-                    output_directory=media_root,
-                    included_types=worker_types,
-                    request_id=request_id,
-                    cancel_event=cancel,
-                )
-
-            expected_worker_assets = Counter(
-                (
-                    str(entry.get("Type") or ""),
-                    int(entry.get("PathID")),
-                    str(entry.get("Name") or ""),
-                    str(entry.get("Container") or "").replace("\\", "/"),
-                )
-                for entry in asset_entries
-                if str(entry.get("Type") or "") in worker_types
-            )
-
-            def validate_worker_media(
-                _media_root: Path,
-                _artifact_paths: list[Path],
-                result: dict,
-            ) -> None:
-                described = list(result.get("artifacts") or []) + list(result.get("skipped") or [])
-                actual = Counter(
-                    (
-                        str(item.get("type") or ""),
-                        int(item.get("pathId")),
-                        str(item.get("name") or ""),
-                        str(item.get("container") or "").replace("\\", "/"),
-                    )
-                    for item in described
-                    if isinstance(item, dict)
-                )
-                if actual != expected_worker_assets:
-                    raise RuntimeError("worker preview media identities do not match AssetMap")
-                if set(result.get("includedTypes") or []) != set(worker_types):
-                    raise RuntimeError("worker preview media types do not match the request")
-
-            try:
-                export_root, _artifact_paths, run_meta = WORKER_RUNS.ensure(
-                    runs_root=runs_root,
-                    meta_path=run_meta_path,
-                    request_prefix=f"asset-export-{int(record['id'])}",
-                    version=ASSETBUNDLE_META_VERSION,
-                    source_identity=source_identity,
-                    invoke=run_worker_media,
-                    validate=validate_worker_media,
-                    allow_empty=True,
-                )
-            except (UnityWorkerError, OSError, RuntimeError) as error:
-                if emit_errors:
-                    self.send_json(
-                        {
-                            "kind": "assetBundle",
-                            "status": "exportFailed",
-                            "message": str(error),
-                        },
-                        status=500,
-                    )
-                return None
-            return export_root, {
-                **run_meta,
-                "returncode": 0,
-                "mapReturncode": 0,
-                "mapRun": map_meta,
-                "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
-                "assetEntries": asset_entries,
-                "unsupportedPreviewTypes": unsupported_preview_types,
-            }
-
-        # AssetMap 可能只包含当前没有预览契约的类型（目前仅 AudioClip）。这种情况也发布
-        # 一个可验证的空 run，保留资源身份，但不再回退到任意类型的旧 Convert。
-        runs_root, run_meta_path = self.assetbundle_export_run_paths(record)
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "workerTypes": [],
-            "unsupportedPreviewTypes": unsupported_preview_types,
-            "mapRun": map_meta.get("selectedRun"),
-            "toolArtifacts": UNITY_WORKER.artifact_identity(),
-        }
-
-        def publish_empty_run(
-            _run_root: Path,
-            export_root: Path,
-            _request_id: str,
-            _cancel: object | None,
-        ) -> dict:
-            export_root.mkdir(parents=True, exist_ok=False)
-            return {
-                "artifactCount": 0,
-                "artifacts": [],
-                "skippedCount": 0,
-                "skipped": [],
-                "includedTypes": [],
-            }
-
         try:
-            export_root, _artifact_paths, run_meta = WORKER_RUNS.ensure(
-                runs_root=runs_root,
-                meta_path=run_meta_path,
-                request_prefix=f"asset-export-{int(record['id'])}",
-                version=ASSETBUNDLE_META_VERSION,
-                source_identity=source_identity,
-                invoke=publish_empty_run,
-                allow_empty=True,
+            return AssetBundleWorkerService(
+                INTERNAL_CACHE_DIR,
+                UNITY_WORKER,
+                self.write_file_slice,
+                WORKER_RUNS,
+            ).ensure_preview_export(
+                record,
+                chunk_path,
+                map_meta,
             )
-        except (OSError, RuntimeError) as error:
+        except (UnityWorkerError, OSError, RuntimeError) as error:
             if emit_errors:
                 self.send_json(
                     {
@@ -3763,16 +3613,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     },
                     status=500,
                 )
-            return None
-        return export_root, {
-            **run_meta,
-            "returncode": 0,
-            "mapReturncode": 0,
-            "mapRun": map_meta,
-            "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
-            "assetEntries": asset_entries,
-            "unsupportedPreviewTypes": unsupported_preview_types,
-        }
+        return None
 
     def ensure_audio_package_index(self, record: dict, chunk_path: Path) -> dict:
         return audio_package_index_service().ensure_index(
