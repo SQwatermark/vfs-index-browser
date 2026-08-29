@@ -67,15 +67,7 @@ from usm import UsmError
 from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
 from index_freshness import inspect_index_freshness
-from secondary_audio_freshness import inspect_secondary_audio_indexes
-from audio_dialog_rebuild import (
-    AudioDialogRebuildError,
-    rebuild_audio_dialog_index_atomically,
-)
-from secondary_audio_rebuild import (
-    SecondaryAudioRebuildError,
-    rebuild_wwise_index_atomically,
-)
+from secondary_audio_startup import ensure_secondary_audio_indexes
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -4483,84 +4475,21 @@ def main(argv: list[str] | None = None) -> int:
                 "message": str(error),
             }
             LOGGER.error("index_rebuild_failed", extra={"error": str(error)})
-    SECONDARY_AUDIO_INDEX_REPORT = inspect_secondary_audio_indexes(
+    secondary_audio = ensure_secondary_audio_indexes(
         args.db,
         AUDIO_DIALOG_DB,
         WWISE_DB,
+        PROJECT_ROOT,
+        audio_package_index_service(),
+        decrypt_vfs_file,
+        auto_rebuild=not args.no_auto_rebuild,
+        emit=lambda level, event, payload: getattr(LOGGER, level)(
+            event,
+            extra=payload,
+        ),
     )
-    SECONDARY_AUDIO_REBUILD_REPORT = {"status": "notNeeded"}
-    rebuild_results = {}
-    rebuild_failures = {}
-    if (
-        not args.no_auto_rebuild
-        and SECONDARY_AUDIO_INDEX_REPORT["audioDialog"]["status"]
-        in {"stale", "unavailable"}
-    ):
-        LOGGER.warning(
-            "audio_dialog_index_rebuild_started",
-            extra={"report": SECONDARY_AUDIO_INDEX_REPORT["audioDialog"]},
-        )
-        try:
-            rebuild_results["audioDialog"] = rebuild_audio_dialog_index_atomically(
-                args.db,
-                AUDIO_DIALOG_DB,
-                WWISE_DB,
-                audio_package_index_service(),
-                decrypt_vfs_file,
-            )
-            SECONDARY_AUDIO_INDEX_REPORT = inspect_secondary_audio_indexes(
-                args.db,
-                AUDIO_DIALOG_DB,
-                WWISE_DB,
-            )
-        except AudioDialogRebuildError as error:
-            rebuild_failures["audioDialog"] = {
-                "status": "failed",
-                "message": str(error),
-            }
-            LOGGER.error(
-                "audio_dialog_index_rebuild_failed",
-                extra={"error": str(error)},
-            )
-    if (
-        not args.no_auto_rebuild
-        and SECONDARY_AUDIO_INDEX_REPORT["wwise"]["status"]
-        in {"stale", "unavailable"}
-    ):
-        LOGGER.warning(
-            "wwise_index_rebuild_started",
-            extra={"report": SECONDARY_AUDIO_INDEX_REPORT["wwise"]},
-        )
-        try:
-            result = rebuild_wwise_index_atomically(
-                args.db,
-                AUDIO_DIALOG_DB,
-                WWISE_DB,
-                PROJECT_ROOT,
-            )
-            rebuild_results["wwise"] = result
-            SECONDARY_AUDIO_INDEX_REPORT = inspect_secondary_audio_indexes(
-                args.db,
-                AUDIO_DIALOG_DB,
-                WWISE_DB,
-            )
-        except SecondaryAudioRebuildError as error:
-            rebuild_failures["wwise"] = {
-                "status": "failed",
-                "message": str(error),
-            }
-            LOGGER.error("wwise_index_rebuild_failed", extra={"error": str(error)})
-    if rebuild_failures:
-        SECONDARY_AUDIO_REBUILD_REPORT = {
-            "status": "failed",
-            **rebuild_results,
-            **rebuild_failures,
-        }
-    elif rebuild_results:
-        SECONDARY_AUDIO_REBUILD_REPORT = {
-            "status": "rebuilt",
-            **rebuild_results,
-        }
+    SECONDARY_AUDIO_INDEX_REPORT = secondary_audio.index_report
+    SECONDARY_AUDIO_REBUILD_REPORT = secondary_audio.rebuild_report
     if SECONDARY_AUDIO_INDEX_REPORT["status"] != "current":
         LOGGER.warning(
             "secondary_audio_index_audit_failed",

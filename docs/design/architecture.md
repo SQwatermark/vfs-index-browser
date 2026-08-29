@@ -93,6 +93,9 @@ AudioDialog 的自动重建由 `audio_dialog_rebuild.py` 执行：发现器定�
 PCK，只有 banks 与 stream 均可读的语言才进入候选；PCK 目录元数据由正式缓存服务生成，不依赖
 仓库中偶然存在的 JSON。候选额外保存并复核 TableCfg 的稳定逻辑路径、长度与内容 MD5，因此
 逻辑表更新但 PCK 未变化时仍会准确触发重建。
+`secondary_audio_startup.py` 统一协调两类索引的启动审计、逐项重建和发布后重审计。一个索引构建
+失败不会阻止另一个索引尝试修复；最终 rebuilt/failed/notNeeded 报告由协调器合成，`server.py`
+只注入数据库、PCK 服务、解密函数和结构化日志出口。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

@@ -880,3 +880,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   重建，不进行缺少内容证据的原地伪迁移。
   Wwise 媒体读取门禁也消费该 MD5，覆盖服务启动后的同尺寸来源变化；合成回归确认在派生缓存
   构建前即拒绝陈旧内容身份。
+- 二级音频启动编排已从 `server.main()` 抽到 `secondary_audio_startup.py`。协调器拥有初始审计、
+  AudioDialog/Wwise 独立修复、每次成功发布后的重审计及 rebuilt/failed/notNeeded 合成；其中一个
+  索引失败不会阻断另一个。Handler/启动入口只注入正式服务与日志出口，合成测试覆盖无需重建、
+  双重建、单项失败继续推进和 `--no-auto-rebuild` 四条路径，继续缩小 P4 单体边界。

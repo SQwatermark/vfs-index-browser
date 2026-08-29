@@ -145,6 +145,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `secondary_audio_freshness.py` | AudioDialog/Wwise 稳定 PCK 路径与长度启动审计 |
 | `secondary_audio_rebuild.py` | Wwise 候选库构建、完整性/freshness 门禁与原子发布 |
 | `audio_dialog_rebuild.py` | AudioDialog 输入发现、已安装语言构建、TableCfg 门禁与原子发布 |
+| `secondary_audio_startup.py` | 二级音频审计、逐项重建、重审计与启动结果协调 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |
