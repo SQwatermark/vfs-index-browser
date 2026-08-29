@@ -669,4 +669,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `usm_video_service.py`。缓存身份不再只比较容易碰撞的文件长度，而是包含 VFS record、
   offset、内容 MD5 以及 usm-convert/ffmpeg 的路径、大小和修改时间；失败转换会清理独占临时
   文件。对应 `usm-video` 缓存版本升至 2，合成测试覆盖目录契约、URL 解码、缓存复用、同长度
-  来源变化失效及失败不发布。这是 P4 单体 Handler 拆分的下一块已完成边界。
+  来源变化失效及失败不发布。真实 effective USM `5154` 可列出
+  `mp4/sketch_guide_video_battle_enemy_break_poise_1_ct.mp4`；首次转码生成 347,495 字节 MP4
+  约 284 ms，第二次约 15 ms 命中缓存。真实验证还发现 ffmpeg 依赖输出文件保留 `.mp4`
+  扩展名，该约束已进入合成回归。这是 P4 单体 Handler 拆分的下一块已完成边界。
