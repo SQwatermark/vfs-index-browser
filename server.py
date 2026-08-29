@@ -77,20 +77,17 @@ from vfs_directory_service import (
 )
 from file_preview_service import (
     AUDIO_EXTENSIONS,
-    CONTAINER_EXTENSIONS,
     IMAGE_EXTENSIONS,
-    PREVIEW_BINARY_LIMIT,
-    PREVIEW_TEXT_LIMIT,
     TEXT_EXTENSIONS,
     VIDEO_EXTENSIONS,
     FilePreviewService,
     decode_text,
     file_suffix,
     guess_content_type,
-    hex_preview,
     looks_like_text,
     truncate_text,
 )
+from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_file
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -906,55 +903,9 @@ def model_animation_query_hint(path: str, document: dict) -> str:
     return fallback
 
 
-def tablecfg_name_for_file(file_name: str) -> str | None:
-    normalized = file_name.replace("\\", "/").strip("/")
-    prefix = "Data/TableCfg/"
-    suffix = ".bytes"
-    if not normalized.startswith(prefix) or not normalized.endswith(suffix):
-        return None
-    name = normalized[len(prefix) : -len(suffix)]
-    if "/" in name or not name:
-        return None
-    return name
-
-
 def looks_like_text_bytes(data: bytes) -> bool:
     text, _ = decode_text(data)
     return text is not None and looks_like_text(text)
-
-
-def length_prefixed_utf8_strings(data: bytes, max_offset: int = 8192, max_count: int = 40) -> list[dict]:
-    strings = []
-    scan_end = min(max(len(data) - 4, 0), max_offset)
-    for offset in range(scan_end):
-        length = int.from_bytes(data[offset : offset + 4], "little")
-        if length < 4 or length > 160 or offset + 4 + length > len(data):
-            continue
-        raw = data[offset + 4 : offset + 4 + length]
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            continue
-        if not text or any(ord(char) < 32 and char not in "\t\r\n" for char in text):
-            continue
-        strings.append({"offset": offset, "length": length, "text": text})
-        if len(strings) >= max_count:
-            break
-    return strings
-
-
-def binary_json_probe(data: bytes, full_length: int) -> dict:
-    first_byte = data[0] if data else None
-    return {
-        "formatHint": "schema-based binary JSON",
-        "confidence": "medium",
-        "firstByte": first_byte,
-        "possibleMemberCount": first_byte,
-        "fullLength": full_length,
-        "sampleLength": len(data),
-        "lengthPrefixedStrings": length_prefixed_utf8_strings(data),
-        "note": "VFS 解密已完成；该 .json 内容疑似按类型 schema 顺序写入的二进制配置，需要字段 schema 才能完整还原。",
-    }
 
 
 def load_memorypack_union_map(path: Path) -> dict[str, dict[int, str]]:
@@ -3208,142 +3159,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             original, record, chunk_path = resolved
 
-        suffix = file_suffix(record["file_name"])
-        raw_url = f"/api/raw?id={file_id}"
-        download_url = f"/api/raw?id={file_id}&download=1"
-        base = {
-            "file": original,
-            "resolvedFile": record,
-            "usedFallback": original["id"] != record["id"],
-            "rawUrl": raw_url,
-            "downloadUrl": download_url,
-        }
-
-        if suffix in CONTAINER_EXTENSIONS:
-            kind = "container"
-            if suffix == ".ab":
-                message = "这是 Unity/AssetBundle 容器。可以下载原始 .ab，也可以点击“查看内部结构”按需导出并预览 Texture2D、Sprite、TextAsset 等资源。"
-            elif suffix == ".pck":
-                message = "这是音频 PCK 容器。VFS 层可以下载原始 PCK；单条语音需要继续解析 PCK/AKPK/WEM。"
-            elif suffix == ".usm":
-                message = "这是 CRI/USM 视频容器。可以下载原始 .usm，也可以点击“查看内部结构”按需转换为 MP4 预览。"
-            else:
-                message = "这是二级容器文件，可以下载；内部解析尚未接入。"
-            self.send_json({**base, "kind": kind, "message": message})
-            return
-
-        if suffix in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS:
-            self.send_json(FilePreviewService.build(
-                base,
-                record["file_name"],
-                int(record["length"]),
-                lambda limit: self.read_file_slice(record, chunk_path, limit=limit),
-            ))
-            return
-
-        tablecfg_name = tablecfg_name_for_file(record["file_name"])
-        if tablecfg_name:
-            try:
-                parsed, json_data = self.parse_tablecfg_file(record, chunk_path)
-            except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
-                data = self.read_file_slice(record, chunk_path, limit=PREVIEW_BINARY_LIMIT)
-                self.send_json(
-                    {
-                        **base,
-                        "kind": "hex",
-                        "hex": hex_preview(data),
-                        "truncated": int(record["length"]) > len(data),
-                        "message": f"`{tablecfg_name}` 已完成 VFS 解密，但 SparkBuffer 解析失败：{error}",
-                    }
-                )
-                return
-
-            text, truncated = truncate_text(json_data.decode("utf-8"))
-            json_url = f"/api/tablecfg/json?id={file_id}"
-            self.send_json(
-                {
-                    **base,
-                    "kind": "text",
-                    "encoding": "sparkbuffer-json",
-                    "text": text,
-                    "truncated": truncated,
-                    "convertedRawUrl": json_url,
-                    "convertedDownloadUrl": f"{json_url}&download=1",
-                    "message": f"`{tablecfg_name}` 已从本地 VFS 解密 bytes 解析为 SparkBuffer JSON。",
-                    "tableCfg": {
-                        "fileName": tablecfg_name,
-                        "rootName": parsed.get("name"),
-                    },
-                }
-            )
-            return
-
-        limit = PREVIEW_TEXT_LIMIT if suffix in TEXT_EXTENSIONS else PREVIEW_BINARY_LIMIT
-        data = self.read_file_slice(record, chunk_path, limit=limit)
-        text, encoding = decode_text(data)
-        truncated = int(record["length"]) > len(data)
-        if suffix == ".json":
-            if text is not None and text.lstrip().startswith(("{", "[")):
-                try:
-                    text = json.dumps(json.loads(text), ensure_ascii=False, indent=2)
-                except json.JSONDecodeError:
-                    pass
-                self.send_json(
-                    {
-                        **base,
-                        "kind": "text",
-                        "encoding": encoding,
-                        "text": text,
-                        "truncated": truncated,
-                    }
-                )
-                return
-
-            memorypack_error = None
-            try:
-                decoded_preview = self.decode_memorypack_json_preview(record, chunk_path)
-            except RuntimeError as error:
-                decoded_preview = None
-                memorypack_error = str(error)
-            if decoded_preview is not None:
-                decoded_text, decoded_truncated, decoded_meta = decoded_preview
-                self.send_json(
-                    {
-                        **base,
-                        "kind": "text",
-                        "encoding": "memorypack-json",
-                        "text": decoded_text,
-                        "truncated": decoded_truncated,
-                        "message": (
-                            "该 .json 文件已从本地 VFS 解密内容解析为 schema-based MemoryPack JSON。"
-                            f" 已消费 {decoded_meta['consumed']} / {decoded_meta['bytes']} bytes。"
-                        ),
-                        "memoryPack": decoded_meta,
-                    }
-                )
-                return
-
-            probe = binary_json_probe(data, int(record["length"]))
-            self.send_json(
-                {
-                    **base,
-                    "kind": "binaryJson",
-                    "encoding": encoding,
-                    "probe": probe,
-                    "hex": hex_preview(data),
-                    "truncated": truncated,
-                    "message": f"{probe['note']}\nMemoryPack 解码未完成：{memorypack_error}" if memorypack_error else probe["note"],
-                }
-            )
-            return
-        document = FilePreviewService.build(
-            base,
-            record["file_name"],
-            int(record["length"]),
-            lambda requested_limit: data[:requested_limit],
-        )
-        if document["kind"] == "hex":
-            document["message"] = "该文件不是可直接显示的文本，当前展示解密后的前段十六进制内容。"
+        document = VfsFilePreviewService(
+            self.read_file_slice,
+            self.parse_tablecfg_file,
+            self.decode_memorypack_json_preview,
+        ).build(file_id, original, record, chunk_path)
         self.send_json(document)
 
     def handle_tablecfg_json(self, query: dict[str, list[str]]) -> None:

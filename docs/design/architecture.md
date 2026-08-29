@@ -102,6 +102,9 @@ PCK，只有 banks 与 stream 均可读的语言才进入候选；PCK 目录元�
 文件后缀分类、媒体 Content-Type、有限编码探测、文本判定、截断和十六进制格式统一位于
 `file_preview_service.py`。普通 VFS 文件、Manifest 导出文件和 AB/PCK/USM 内部产物共享该规则；
 TableCfg 与 MemoryPack 等领域解码仍在通用分类前执行，不会被宽松文本探测吞掉。
+普通 `/api/preview` 的容器说明、TableCfg 成功/失败文档、文本 JSON 美化、MemoryPack 结果和
+binary JSON 诊断由 `vfs_file_preview_service.py` 组装。它通过回调消费物理切片、SparkBuffer 和
+MemoryPack 能力，既不查询 SQLite 也不发送 HTTP；Handler 只解析 ID、定位 fallback 来源并发送结果。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

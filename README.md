@@ -148,6 +148,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `secondary_audio_startup.py` | 二级音频审计、逐项重建、重审计与启动结果协调 |
 | `vfs_directory_service.py` | VFS 目录分页、批量文件回填与 manifest 虚拟目录组装 |
 | `file_preview_service.py` | 普通、Manifest 与容器内部文件共享的媒体/文本/十六进制预览 |
+| `vfs_file_preview_service.py` | VFS 容器、TableCfg、JSON/MemoryPack 与通用预览应用层 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |

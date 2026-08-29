@@ -893,3 +893,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   TableCfg/MemoryPack 领域分支保持在其前。路径预览改为只读取上限，不再用 `read_bytes()` 先载入
   整个文件。32 项相关回归通过，真实 Lua 与二进制 `.bytes` 的 kind、编码、截断、正文/hex 长度
   和提示在重启前后完全一致。
+- 普通 VFS 预览高层已进一步抽到 `vfs_file_preview_service.py`：容器提示、TableCfg 解析与 hex
+  降级、文本 JSON、MemoryPack 成功文档及 binary JSON 证据统一由应用服务组装，物理读取和领域
+  解码通过回调注入。`handle_preview` 从 148 行缩到文件 ID/来源定位与一次发送；真实 Lua、普通
+  `.bytes` 和 4.7 MiB AudioDialog TableCfg 的 kind、编码、截断、正文/hex 长度、根名及转换 URL
+  在重启前后完全一致。
