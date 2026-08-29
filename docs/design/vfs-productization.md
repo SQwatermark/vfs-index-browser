@@ -902,3 +902,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   导出/索引服务、内部类型分类和可选工具诊断均通过依赖传入，不在新服务中解析二进制或寻找工具。
   合成回归覆盖三类容器、AssetBundle 已报告失败和普通文件边界；真实中文 stream PCK 重启前后
   保持 30,058 条、`wem,wav` 根目录与 WAV 可用状态一致。
+- BundleManifest 虚拟目录响应已抽到 `manifest_virtual_directory_service.py`：服务消费已解析的
+  ManifestIndex，统一目录统计、文件分页以及 preview/model/avatar-plan 链接；Handler 只定位
+  `manifest.hgmmap`、解析物理来源并映射 HTTP 错误。合成回归锁定根目录中文名、深层目录路径、
+  prefab 模型入口和 AvatarMesh 的 plan/lod=0 特例；真实重启后根目录 242,222 个 bundle / 331,714
+  个 asset，以及 projectile 深层目录 407 个资源和稳定预览 URL 均保持一致。

@@ -70,11 +70,10 @@ from index_freshness import inspect_index_freshness
 from secondary_audio_startup import ensure_secondary_audio_indexes
 from vfs_directory_service import (
     MANIFEST_VIRTUAL_DIR,
-    MANIFEST_VIRTUAL_NAME,
     VfsDirectoryService,
-    join_manifest_virtual_path,
     split_manifest_virtual_path,
 )
+from manifest_virtual_directory_service import ManifestVirtualDirectoryService
 from file_preview_service import (
     AUDIO_EXTENSIONS,
     IMAGE_EXTENSIONS,
@@ -1742,77 +1741,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
             original, record, chunk_path = resolved
 
         try:
-            listing = self.manifest_index(record, chunk_path).list(inner_path, page, page_size)
+            document = ManifestVirtualDirectoryService().list_directory(
+                self.manifest_index(record, chunk_path),
+                scope=scope,
+                base_path=base_path,
+                inner_path=inner_path,
+                manifest_id=int(original["id"]),
+                page=page,
+                page_size=page_size,
+            )
         except (ValueError, OSError, sqlite3.Error, FileNotFoundError) as error:
             self.send_error_json(400, str(error))
             return
-
-        virtual_path = join_manifest_virtual_path(base_path, inner_path)
-        dirs = [
-            {
-                "path": join_manifest_virtual_path(base_path, item["path"]),
-                "name": item["name"],
-                "file_count": item["fileCount"],
-                "total_bytes": item["totalBytes"],
-                "encrypted_count": 0,
-                "missing_chunk_count": 0,
-                "virtualKind": "bundleManifest",
-            }
-            for item in listing["dirs"]
-        ]
-        files = []
-        for asset in listing["files"]:
-            params = f"manifestId={original['id']}&assetIndex={asset['assetIndex']}"
-            files.append(
-                {
-                    "name": asset["name"],
-                    "path": asset["path"],
-                    "file_name": asset["path"],
-                    "length": asset["size"],
-                    "source": "BundleManifest",
-                    "block_name": asset["bundleName"],
-                    "chunk_file": "按需解析 AssetBundle",
-                    "chunk_exists": True,
-                    "offset": 0,
-                    "encrypted": False,
-                    "virtualKind": "manifestAsset",
-                    "previewUrl": f"/api/manifest-asset/preview?{params}",
-                }
-            )
-            if file_suffix(asset["path"]) == ".prefab":
-                files[-1]["modelUrl"] = f"/api/manifest-asset/model?{params}"
-            if is_avatar_mesh_asset_path(asset["path"]):
-                files[-1]["avatarPlanUrl"] = (
-                    f"/api/manifest-asset/avatar-plan?{params}"
-                )
-                files[-1]["modelUrl"] = (
-                    f"/api/manifest-asset/model?{params}&lod=0"
-                )
-        directory = listing["directory"]
-        self.send_json(
-            {
-                "scope": scope,
-                "path": virtual_path,
-                "directory": {
-                    "scope": scope,
-                    "path": virtual_path,
-                    "name": MANIFEST_VIRTUAL_NAME if not inner_path else directory["name"],
-                    "file_count": directory["file_count"],
-                    "total_bytes": directory["total_bytes"],
-                    "encrypted_count": 0,
-                    "missing_chunk_count": 0,
-                },
-                "dirs": dirs,
-                "files": files,
-                "filePage": listing["filePage"],
-                "virtual": {
-                    "kind": "bundleManifest",
-                    "manifestId": original["id"],
-                    "bundleCount": int(listing["meta"]["bundleCount"]),
-                    "assetCount": int(listing["meta"]["assetCount"]),
-                },
-            }
-        )
+        self.send_json(document)
 
     def handle_search(self, query: dict[str, list[str]]) -> None:
         scope = query.get("scope", ["effective"])[0]
