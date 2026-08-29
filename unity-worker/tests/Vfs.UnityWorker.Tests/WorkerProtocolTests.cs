@@ -203,7 +203,7 @@ public sealed class WorkerProtocolTests
                 BundlePreviewMediaExporter.Export(new BundlePreviewMediaExportRequest(
                     input,
                     output,
-                    ["Sprite"])));
+                    ["AudioClip"])));
 
             Assert.AreEqual("invalid_asset_type", exception.Code);
             Assert.IsFalse(Directory.Exists(output));

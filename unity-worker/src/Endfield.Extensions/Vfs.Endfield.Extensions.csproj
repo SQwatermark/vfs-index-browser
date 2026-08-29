@@ -4,11 +4,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- 上游 SpriteHelper 用 null 表示无法恢复图像，但尚未带可空注解。 -->
+    <NoWarn>$(NoWarn);CS8603</NoWarn>
     <AssemblyName>Vfs.Endfield.Extensions</AssemblyName>
     <RootNamespace>Vfs.Endfield.Extensions</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AnimeStudio.Core\Vfs.AnimeStudio.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Sprite 预览只引入权威 Utility 中这一份有界图像裁剪实现。 -->
+    <Compile Include="..\..\vendor\animestudio\AnimeStudio.Utility\SpriteHelper.cs"
+             Link="Upstream\SpriteHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Vfs.UnityWorker.Tests" />

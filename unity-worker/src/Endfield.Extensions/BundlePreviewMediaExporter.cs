@@ -37,8 +37,7 @@ public sealed record BundlePreviewMediaExportResult(
 
 /// <summary>
 /// 导出浏览器直接预览的、无需附加原生运行时的 Bundle 媒体。这里的类型集合是协议白名单，
-/// 不是 AnimeStudio Convert 的任意类型转发；Sprite、AudioClip 和 AnimationClip 各自保留
-/// 独立协议边界。
+/// 不是 AnimeStudio Convert 的任意类型转发；AudioClip 和 AnimationClip 各自保留独立协议边界。
 /// </summary>
 public static class BundlePreviewMediaExporter
 {
@@ -46,6 +45,7 @@ public static class BundlePreviewMediaExporter
         new Dictionary<string, ClassIDType>(StringComparer.Ordinal)
         {
             [nameof(ClassIDType.Texture2D)] = ClassIDType.Texture2D,
+            [nameof(ClassIDType.Sprite)] = ClassIDType.Sprite,
             [nameof(ClassIDType.TextAsset)] = ClassIDType.TextAsset,
             [nameof(ClassIDType.VideoClip)] = ClassIDType.VideoClip,
         };
@@ -130,6 +130,7 @@ public static class BundlePreviewMediaExporter
         var extension = asset switch
         {
             Texture2D => ".png",
+            Sprite => ".png",
             TextAsset => TextAssetExtension(container),
             VideoClip video => VideoExtension(video.m_OriginalPath),
             _ => throw new InvalidOperationException($"未实现的预览媒体类型：{asset.type}"),
@@ -143,6 +144,21 @@ public static class BundlePreviewMediaExporter
         {
             case Texture2D texture:
                 using (var image = texture.ConvertToImage(true))
+                {
+                    if (image is null)
+                    {
+                        return null;
+                    }
+                    using var stream = new FileStream(
+                        outputPath,
+                        FileMode.CreateNew,
+                        FileAccess.Write,
+                        FileShare.None);
+                    image.SaveAsPng(stream);
+                }
+                break;
+            case Sprite sprite:
+                using (var image = sprite.GetImage())
                 {
                     if (image is null)
                     {
@@ -173,6 +189,7 @@ public static class BundlePreviewMediaExporter
     private static string SkipReason(UnityObject asset) => asset switch
     {
         Texture2D => "texture_decode_failed",
+        Sprite => "sprite_decode_failed",
         VideoClip => "video_payload_empty",
         _ => "payload_unavailable",
     };
