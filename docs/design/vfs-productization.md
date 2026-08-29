@@ -743,3 +743,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Handler 仍负责 Avatar 资源计划与 Bundle 闭包，但不再解释 Worker 对象或拼装最终文档。合成
   回归覆盖资源传递、大小写稳定的纹理身份、最终 builder 参数和重复名称拒绝。普通与 Avatar
   两条模型领域组装边界至此均已拆出，P4 总门禁仍因 Handler 中的高层协调逻辑保持未完成。
+- 普通与 Avatar 模型的 source identity 已移入 `model_source_identity.py`，集中覆盖入口 record、
+  chunk mtime、asset、依赖闭包、缺失依赖、Avatar 计划/LOD、builder 和 Worker 工具身份。庄方宜
+  真实普通模型 `132923/263486` 的 70 项依赖由新函数重建后与既有 `run.json` source 逐字段完全
+  相等，证明模块迁移不会造成无意义缓存失效。下一阶段继续抽取 run/进度高层协调。

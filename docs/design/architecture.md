@@ -95,6 +95,9 @@ worker 调用和领域校验。
 自身完成标记的直属不可变 run；缓存命中同时要求版本、完整 source identity、ModelDocument
 语义、geometry 和声明过的 texture 目录一致。普通模型仅在文档声明 buffer 时要求 geometry，
 Avatar 模型则始终要求 geometry。HTTP 按显式 run 读取旧资源也复用同一安全解析函数。
+两类模型的 source identity 由 `model_source_identity.py` 构造，统一记录入口 VFS record、chunk
+修改身份、asset、依赖闭包、缺失依赖、领域计划、builder 和 Worker 工具身份。identity 保持
+有序依赖列表和既有 JSON 结构，纯模块迁移不会误使真实缓存失效。
 模型发布写侧也由该 store 统一：先写 ModelDocument、可选或必需 geometry 和 run 自身完成
 标记，最后才通过同目录临时文件原子切换活动指针；指针替换失败会清理临时文件并保留旧指针。
 普通模型和 Avatar 模型调用 Unity worker 的共享过程位于 `model_worker_service.py`。服务为每个

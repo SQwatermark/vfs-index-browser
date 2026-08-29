@@ -103,6 +103,7 @@ from npc_avatar_config import (
 from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
 from model_worker_service import ModelBundleInput, ModelWorkerService
+from model_source_identity import avatar_model_source_identity, ordinary_model_source_identity
 from ordinary_model_document_service import OrdinaryModelDocumentService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
@@ -2823,31 +2824,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             record, int(asset["asset_index"])
         )
         document_service = self.ordinary_model_document_service()
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "assetIndex": int(asset["asset_index"]),
-            "assetPath": str(asset["path"]),
-            "bundleName": str(asset["bundle_name"]),
-            # 解析逻辑变化后自动废弃旧 ModelDocument；跨文件协议变化仍由
-            # MODEL_SNAPSHOT_VERSION 显式控制。
-            "modelBuilderMtimeNs": document_service.builder_mtime_ns,
-            "dependencies": [
-                {
-                    "recordId": int(dependency["id"]),
-                    "length": int(dependency["length"]),
-                    "offset": int(dependency["offset"]),
-                    "chunkPath": str(dependency["chunk_path"]),
-                    "chunkMtimeNs": dependency_chunk.stat().st_mtime_ns,
-                }
-                for dependency, dependency_chunk in dependency_sources
-            ],
-            "missingDependencyBundles": missing_dependency_bundles,
-            "toolArtifacts": UNITY_WORKER.artifact_identity(),
-        }
+        source_identity = ordinary_model_source_identity(
+            record,
+            chunk_path,
+            asset,
+            dependency_sources,
+            missing_dependency_bundles,
+            builder_mtime_ns=document_service.builder_mtime_ns,
+            tool_artifacts=UNITY_WORKER.artifact_identity(),
+        )
         cached = self.model_run_store().load_cached(
             cache_root,
             run_path,
@@ -3073,34 +3058,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
             Path(selected_container_paths.__code__.co_filename),
             Path(__file__).with_name("animestudio_model.py"),
         ]
-        source_identity = {
-            "entry": {
-                "recordId": int(bundle_record["id"]),
-                "length": int(bundle_record["length"]),
-                "offset": int(bundle_record["offset"]),
-                "chunkPath": str(bundle_record["chunk_path"]),
-                "chunkMtimeNs": bundle_chunk.stat().st_mtime_ns,
-                "assetIndex": int(asset["asset_index"]),
-                "assetPath": str(asset["path"]),
-            },
-            "lod": lod,
-            "avatarMesh": avatar_mesh,
-            "resourcePlan": plan,
-            "bundles": [
-                {
-                    "recordId": int(record["id"]),
-                    "length": int(record["length"]),
-                    "offset": int(record["offset"]),
-                    "chunkPath": str(record["chunk_path"]),
-                    "chunkMtimeNs": chunk.stat().st_mtime_ns,
-                }
-                for record, chunk in bundle_sources
-            ],
-            "builders": {
-                path.name: path.stat().st_mtime_ns for path in builder_paths
-            },
-            "toolArtifacts": UNITY_WORKER.artifact_identity(),
-        }
+        source_identity = avatar_model_source_identity(
+            bundle_record,
+            bundle_chunk,
+            asset,
+            lod=lod,
+            avatar_mesh=avatar_mesh,
+            resource_plan=plan,
+            bundle_sources=bundle_sources,
+            builder_paths=builder_paths,
+            tool_artifacts=UNITY_WORKER.artifact_identity(),
+        )
         cached = self.model_run_store().load_cached(
             cache_root,
             run_path,
