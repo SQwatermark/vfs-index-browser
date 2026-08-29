@@ -89,6 +89,10 @@ Wwise 索引的 Events/Banks/Media 虚拟目录、分页、行到虚拟文件的
 `--no-auto-rebuild` 时，`secondary_audio_rebuild.py` 在独立子进程中从当前 VFS 构建临时候选库；
 候选必须依次通过 SQLite `integrity_check`、稳定路径/长度 freshness 和非空包集合门禁，才会以
 `os.replace` 发布并保留上一版数据库。构建或验证失败不会覆盖活动库，服务继续 degraded 启动。
+AudioDialog 的自动重建由 `audio_dialog_rebuild.py` 执行：发现器定位 effective TableCfg 和四语
+PCK，只有 banks 与 stream 均可读的语言才进入候选；PCK 目录元数据由正式缓存服务生成，不依赖
+仓库中偶然存在的 JSON。候选额外保存并复核 TableCfg 的稳定逻辑路径、长度与内容 MD5，因此
+逻辑表更新但 PCK 未变化时仍会准确触发重建。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

@@ -865,3 +865,12 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `--no-auto-rebuild` 同时禁用主索引与二级索引修复。合成测试覆盖成功发布、构建失败和 freshness
   失败三条路径。AudioDialog 因还需要准备 TableCfg 与 PCK metadata 输入，下一阶段复用此发布门禁，
   不通过依赖偶然存在的本地中间文件实现假自动化。
+- AudioDialog 启动自动重建现已完整接入。schema 3 在稳定 PCK 身份之外保存 effective
+  `AudioDialog.bytes` 的逻辑路径、长度与内容 MD5，解决“PCK 未变但逻辑表已更新”仍误报 current
+  的缺口。构建器直接消费 VFS 发现结果、SparkBuffer 解码和 `AudioPackageIndexService`，不依赖
+  手工导出的 JSON；每种语言必须同时存在可读 banks 与 stream，孤立 hotfix 不会被猜成完整安装。
+  真实启动把 schema 2 的 28,433 条中文旧库自动升级为 schema 3，发布中文、日文各 29,072 条，
+  分别匹配 26,792/26,769 条，旧库保留为 `audio-dialog-index.previous.sqlite`。最终健康状态 ready，
+  AudioDialog TableCfg 内容身份、7/7 构建输入 PCK 与 2/2 实际承载命中媒体的 PCK 均为 current；
+  51 项音频与服务回归
+  通过。英文、韩文因主体包未安装而严格跳过。

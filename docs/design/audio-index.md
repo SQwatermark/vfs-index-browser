@@ -34,10 +34,13 @@
 `dialogKey` 消歧、预览 URL，以及唯一 matched 条目到 VFS PCK 和 WEM/WAV 缓存产物的解析。
 HTTP Handler 不直接查询 AudioDialog 表，也不自行选择多候选媒体。
 
-AudioDialog schema 2 在 `pck_file_id` 之外保存 `pck_logical_path` 和建索引时的
+AudioDialog schema 3 在 `pck_file_id` 之外保存 `pck_logical_path` 和建索引时的
 `pck_file_size`。主 VFS 索引重建会重新分配数字 ID，运行时因此优先按稳定逻辑路径重新定位，再
-复核 `.pck` 身份、文件长度和媒体范围。schema 1 会原地迁移，但旧行的稳定字段保持空值并继续
-安全失败，不能凭旧数字 ID 猜回来源。后续还需保存主索引内容摘要并接入启动时审计/原子重建。
+复核 `.pck` 身份、文件长度和媒体范围。索引元数据还保存 effective `AudioDialog.bytes` 的逻辑
+路径、长度与内容 MD5，因此逻辑表单独变化也会触发启动重建。旧 schema 会原地迁移，但缺失身份
+继续安全失败，不能凭旧数字 ID 或旧逻辑记录猜回来源。
+元数据同时记录所有实际参与构建的 banks、stream 与 hotfix PCK 内容身份，而不只记录最终命中
+媒体所在的包；任一输入变化都会触发重建，以便发现新增或移除的对话 Media。
 
 现有 PCK 解析器生成的 `audio_meta.json` 不需要重复解析：
 `media_entries_from_audio_package_meta()` 会校验元数据版本、条目数和必需字段，再转换为

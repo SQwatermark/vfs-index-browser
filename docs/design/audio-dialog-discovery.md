@@ -9,9 +9,9 @@
 - 中文、英文、日文、韩文语音的默认 banks、stream 和语言 hotfix PCK 候选。
 
 发现阶段只查询 SQLite 元数据，不读取 chunk，不解析 AKPK，也不扫描或解包 PCK
-内容。它不会直接构建 `audio-dialog-index.sqlite`；后续编排层应先按发现结果提取
-TableCfg，并仅为候选 PCK 生成 `audio_meta.json`，再调用现有
-`tools/build_audio_dialog_index.py`。
+内容。`audio_dialog_rebuild.py` 消费发现结果，直接读取 effective TableCfg，并通过正式
+`AudioPackageIndexService` 为候选 PCK 生成或复用身份校验后的 metadata，再构建临时 SQLite；
+显式输入的 `tools/build_audio_dialog_index.py` 仍用于离线分析和复现。
 
 ## VFS SQLite 契约
 
@@ -46,17 +46,16 @@ Data/Audio/PCK/Windows/Hotfix/hotfix_<language>.pck
 `Audit`、`hotfix_main.pck` 以及看似相近但不符合规则的文件会进入
 `unclassifiedAudioPcks`，不会被猜测为某种语言。
 
-2026-07-27 的本地索引快照得到：
+2026-08-29 的当前本地索引与实际 chunk 状态得到：
 
 | 语言 | banks | stream | hotfix |
 | --- | ---: | ---: | ---: |
-| 中文 | 1 | 1 | 1 |
-| 英文 | 1 | 1 | 1 |
-| 日文 | 1 | 2 | 1 |
-| 韩文 | 1 | 2 | 1 |
+| 中文 | 1 可读 | 1 可读 | 1 可读 |
+| 英文 | 1 缺失 | 1 缺失 | 1 可读 |
+| 日文 | 1 可读 | 2 可读 | 1 可读 |
+| 韩文 | 1 缺失 | 2 缺失 | 1 可读 |
 
-该快照记录中文默认包和四语 hotfix chunk 在建库时存在，而英、日、韩默认包记录
-存在但 chunk 缺失。这说明“已发现”“建库时存在”和“本机当前可读取”必须分开
+这说明“已发现”“建库时存在”和“本机当前可读取”必须分开
 表达，不能因为 `chunk_exists = 0` 就丢弃候选，也不能仅凭
 `chunk_exists = 1` 断言旧路径此刻仍然存在。
 
@@ -101,6 +100,13 @@ PCK 按 `banks`、`stream`、`hotfix` 标注角色，但发现器不宣称某个
 `entries(scope, path)` 点查询确定 effective 文件。它不会加载全部 44 万条
 effective 记录；当前索引上的完整发现查询约为 0.2 秒。
 
+## 自动重建门禁与真实验证
+
+自动构建以语言为隔离单元，必须同时发现 effective 且当前可读的 banks 与至少一个 stream；
+hotfix 只作为补充输入，不能单独证明语言已安装。2026-08-29 真实启动自动重建得到中文、日文
+各 29,072 条逻辑记录，分别匹配 26,792 与 26,769 条，候选通过 SQLite 完整性、PCK freshness
+和 TableCfg 内容身份门禁后原子发布。英文、韩文因主体包缺失被明确跳过。
+
 ## 尚需真实游戏验证
 
 1. 在完整安装四语资源的当前游戏版本上确认所有默认包的 `chunk_exists = 1`，并
@@ -111,5 +117,4 @@ effective 记录；当前索引上的完整发现查询约为 0.2 秒。
    最新 schema 仍包含严格解析器要求的 `path` 字段。
 4. 比较 Persistent 与 StreamingAssets 的同逻辑 TableCfg 内容指纹，确认 effective
    选择与游戏当前覆盖规则一致。
-5. 自动编排接入前，应把“发现”“TableCfg 提取”“单个候选 PCK 元数据解析”和
-   “逻辑索引构建”保持为独立失败阶段，避免某种语言未安装时破坏其他语言索引。
+5. 在完整四语安装上验证一次构建可同时发布四种语言，并确认新增分片仍符合严格命名规则。

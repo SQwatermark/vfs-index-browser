@@ -24,12 +24,17 @@ class SecondaryAudioFreshnessTests(unittest.TestCase):
                     source TEXT NOT NULL,
                     logical_id TEXT NOT NULL,
                     length INTEGER NOT NULL,
-                    chunk_path TEXT NOT NULL
+                    chunk_path TEXT NOT NULL,
+                    file_data_md5 TEXT
                 )
                 """
             )
             conn.execute(
-                "INSERT INTO files VALUES (99, 'Persistent', 'Audio/a.pck', 1000, ?)",
+                "INSERT INTO files VALUES (99, 'Persistent', 'Audio/a.pck', 1000, ?, 'PCKMD5')",
+                (str(self.chunk),),
+            )
+            conn.execute(
+                "INSERT INTO files VALUES (100, 'Persistent', 'Table/AudioDialog.bytes', 50, ?, 'TABLEMD5')",
                 (str(self.chunk),),
             )
             conn.commit()
@@ -42,7 +47,16 @@ class SecondaryAudioFreshnessTests(unittest.TestCase):
     def _write_audio(self, path, size):
         with closing(sqlite3.connect(self.audio)) as conn:
             conn.execute("CREATE TABLE audio_index_meta (key TEXT, value TEXT)")
-            conn.execute("INSERT INTO audio_index_meta VALUES ('schema_version', '2')")
+            conn.executemany(
+                "INSERT INTO audio_index_meta VALUES (?, ?)",
+                [
+                    ("schema_version", "3"),
+                    ("tablecfg_logical_path", "Table/AudioDialog.bytes"),
+                    ("tablecfg_file_size", "50"),
+                    ("tablecfg_file_data_md5", "tablemd5"),
+                    ("input_packages_json", '[{"logicalPath":"Audio/a.pck","fileSize":1000,"fileDataMd5":"pckmd5"}]'),
+                ],
+            )
             conn.execute(
                 """
                 CREATE TABLE audio_media (
@@ -101,6 +115,18 @@ class SecondaryAudioFreshnessTests(unittest.TestCase):
 
         self.assertEqual("unavailable", result["status"])
         self.assertEqual("unavailable", result["audioDialog"]["status"])
+
+    def test_reports_changed_audio_dialog_tablecfg(self):
+        with closing(sqlite3.connect(self.vfs)) as conn:
+            conn.execute(
+                "UPDATE files SET file_data_md5 = 'NEWMD5' WHERE logical_id = 'Table/AudioDialog.bytes'"
+            )
+            conn.commit()
+
+        result = inspect_secondary_audio_indexes(self.vfs, self.audio, self.wwise)
+
+        self.assertEqual("stale", result["audioDialog"]["status"])
+        self.assertIn("TableCfg content changed", result["audioDialog"]["issues"][0])
 
 
 if __name__ == "__main__":

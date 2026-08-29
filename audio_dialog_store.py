@@ -11,14 +11,14 @@ from collections.abc import Iterable
 from audio_dialog_index import AudioDialogMatch, AudioMediaEntry, normalize_audio_language
 
 
-AUDIO_DIALOG_SCHEMA_VERSION = 2
+AUDIO_DIALOG_SCHEMA_VERSION = 3
 
 
 def create_audio_dialog_schema(conn: sqlite3.Connection) -> None:
     existing_version = _existing_schema_version(conn)
     if (
         existing_version is not None
-        and existing_version not in {1, AUDIO_DIALOG_SCHEMA_VERSION}
+        and existing_version not in {1, 2, AUDIO_DIALOG_SCHEMA_VERSION}
     ):
         raise RuntimeError(
             "unsupported AudioDialog index schema "
@@ -28,6 +28,7 @@ def create_audio_dialog_schema(conn: sqlite3.Connection) -> None:
     if existing_version == 1:
         conn.execute("ALTER TABLE audio_media ADD COLUMN pck_logical_path TEXT")
         conn.execute("ALTER TABLE audio_media ADD COLUMN pck_file_size INTEGER")
+    if existing_version in {1, 2}:
         conn.execute(
             "UPDATE audio_index_meta SET value = ? WHERE key = 'schema_version'",
             (str(AUDIO_DIALOG_SCHEMA_VERSION),),

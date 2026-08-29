@@ -121,7 +121,6 @@ Event 3537164
 ## 尚未完成
 
 - 为 PCK 稳定路径/长度之外补充可复验的主索引内容摘要；
-- 为需要额外 TableCfg 与 PCK metadata 输入的 AudioDialog 接入同等原子自动重建流程；
 - Switch、Blend、Music Segment/Track/Playlist 的完整分支和时间结构；
 - TableCfg/Lua/关卡配置到 Event 的语义引用索引；
 - `Music` 与 `SoundEffects` 分类目录；

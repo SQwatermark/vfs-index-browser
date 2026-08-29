@@ -47,7 +47,9 @@ python server.py
 启动会校验历史 chunk 与已记录的 `.blc` 内容身份。索引陈旧时，服务先在同目录临时 run 中
 重新生成 JSONL 和候选 SQLite，完成完整性及来源身份验证后原子切换；失败则保留旧库并以
 `degraded` 启动。Wwise 二级索引陈旧时也会从当前 VFS 的可读 PCK 构建候选库，通过 SQLite
-完整性和稳定 PCK 路径/长度 freshness 门禁后才原子切换，并保留上一版数据库。诊断时可用
+完整性和稳定 PCK 路径/长度 freshness 门禁后才原子切换，并保留上一版数据库。AudioDialog
+使用同一发布边界，并额外校验 effective TableCfg 的逻辑路径、长度和内容 MD5；重建只纳入
+同时具有可读 banks 与 stream 的已安装语言，不会把孤立 hotfix 猜成完整语音包。诊断时可用
 `--no-auto-rebuild` 只报告主索引和二级索引的陈旧状态。此时数据 API 返回 HTTP 503
 及 `code: index_stale`；健康检查、既有任务状态/取消/产物和静态页面仍可使用。
 
@@ -142,6 +144,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `secondary_audio_freshness.py` | AudioDialog/Wwise 稳定 PCK 路径与长度启动审计 |
 | `secondary_audio_rebuild.py` | Wwise 候选库构建、完整性/freshness 门禁与原子发布 |
+| `audio_dialog_rebuild.py` | AudioDialog 输入发现、已安装语言构建、TableCfg 门禁与原子发布 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |

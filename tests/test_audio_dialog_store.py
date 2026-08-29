@@ -115,7 +115,7 @@ class AudioDialogStoreTests(unittest.TestCase):
             """
         )
 
-        with self.assertRaisesRegex(RuntimeError, "rebuild with schema 2"):
+        with self.assertRaisesRegex(RuntimeError, "rebuild with schema 3"):
             create_audio_dialog_schema(self.conn)
 
     def test_migrates_schema_one_without_inventing_package_identity(self):
@@ -151,7 +151,7 @@ class AudioDialogStoreTests(unittest.TestCase):
         columns = {
             row[1] for row in self.conn.execute("PRAGMA table_info(audio_media)")
         }
-        self.assertEqual("2", version)
+        self.assertEqual("3", version)
         self.assertIn("pck_logical_path", columns)
         self.assertIn("pck_file_size", columns)
 
