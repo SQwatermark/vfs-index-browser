@@ -32,6 +32,7 @@ schema、测试或生产代码后，才算正式进入实现路线。
 | `task_registry.py` | 后台任务持久化、原子发布、取消与保留策略 |
 | `task_service.py` | 请求层使用的任务查询、取消和产物应用服务 |
 | `task_requests.py` | 后台任务创建输入的解析、类型化和边界校验 |
+| `task_operations.py` | 四类后台任务与独立领域构建实例的绑定 |
 | `manifest_index.py` | `manifest.hgmmap` 解析和逻辑目录索引 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `model_document.py` | 完整模型领域文档及语义校验 |

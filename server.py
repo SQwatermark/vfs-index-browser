@@ -110,6 +110,7 @@ from task_requests import (
     ModelTaskRequest,
     TaskInputError,
 )
+from task_operations import BackgroundTaskOperations
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -1621,6 +1622,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def handle_health(self) -> None:
         self.send_json(build_health_document(), cache_control="no-store")
 
+    def background_task_operations(self) -> BackgroundTaskOperations:
+        def create_service():
+            service = object.__new__(BrowserHandler)
+            service.db_path = self.db_path
+            return service
+
+        return BackgroundTaskOperations(TASK_API, create_service)
+
     def handle_start_projectile_task(self) -> None:
         try:
             body = self.read_json_body()
@@ -1629,16 +1638,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, str(error))
             return
 
-        # 后台任务不能捕获 HTTP handler；只复制应用服务所需的数据库配置。
-        worker = object.__new__(BrowserHandler)
-        worker.db_path = self.db_path
-        created = TASK_API.submit(
-            "projectile",
-            lambda cancel_event: worker.build_projectile_document(
-                projectile_id,
-                cancel_event=cancel_event,
-            ),
-        )
+        created = self.background_task_operations().start_projectile(projectile_id)
         self.send_json(created, status=202, cache_control="no-store")
 
     def handle_start_model_task(self) -> None:
@@ -1668,18 +1668,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if animation_resolved is None:
                 return
 
-        worker = object.__new__(BrowserHandler)
-        worker.db_path = self.db_path
-        created = TASK_API.submit_with_progress(
-            "model",
-            lambda cancel_event, report_progress: worker.build_model_task_result(
-                request.manifest_id,
-                resolved,
-                animation_resolved,
-                request.lod,
-                cancel_event=cancel_event,
-                progress=report_progress,
-            ),
+        created = self.background_task_operations().start_model(
+            request.manifest_id,
+            resolved,
+            animation_resolved,
+            request.lod,
         )
         self.send_json(created, status=202, cache_control="no-store")
 
@@ -1711,17 +1704,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if animation_sources is None:
             return
 
-        worker = object.__new__(BrowserHandler)
-        worker.db_path = self.db_path
-        created = TASK_API.submit_with_progress(
-            "modelBlend",
-            lambda cancel_event, report_progress: worker.build_model_blend_task_result(
-                resolved,
-                animation_sources,
-                request.lod,
-                cancel_event=cancel_event,
-                progress=report_progress,
-            ),
+        created = self.background_task_operations().start_model_blend(
+            resolved,
+            animation_sources,
+            request.lod,
         )
         self.send_json(created, status=202, cache_control="no-store")
 
@@ -1750,17 +1736,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if animation_resolved is None:
             return
 
-        worker = object.__new__(BrowserHandler)
-        worker.db_path = self.db_path
-        created = TASK_API.submit_with_progress(
-            "modelAnimation",
-            lambda cancel_event, report_progress: worker.build_model_animation_result(
-                model_resolved,
-                animation_resolved,
-                request.lod,
-                cancel_event=cancel_event,
-                progress=report_progress,
-            ),
+        created = self.background_task_operations().start_model_animation(
+            model_resolved,
+            animation_resolved,
+            request.lod,
         )
         self.send_json(created, status=202, cache_control="no-store")
 

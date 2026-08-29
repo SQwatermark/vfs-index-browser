@@ -603,5 +603,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   不再由 `BrowserHandler` 直接读取注册表异常与私有元数据。真实 HTTP 回归保持成功查询 200、
   终态取消 200、未知任务 404、产物下载 200；四类任务提交也已统一经过该服务，不再从
   Handler 直接调用注册表。模型、单动画和 Blender 请求已由 `task_requests.py` 统一解析成
-  不可变 DTO，保留原有错误文本和批量上限。下一步将资源身份解析与领域构建 operation 的
-  组装移出 Handler。
+  不可变 DTO，保留原有错误文本和批量上限。`task_operations.py` 已集中四类任务的种类、
+  独立构建实例、取消事件和进度回调绑定，后台闭包不再由 Handler 组装。下一步将 manifest
+  资源身份解析移出 Handler。
