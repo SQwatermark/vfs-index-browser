@@ -30,6 +30,12 @@ from typing import Callable, Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
+from assetbundle_browser import (
+    find_exported_file,
+    list_export_directory,
+    metadata_by_export_name,
+    metadata_for_file,
+)
 from audio_package_service import (
     AudioEntry,
     AudioPackageIndexService,
@@ -1192,20 +1198,6 @@ def validate_derived_artifacts(export_root: Path, described: object) -> dict[str
             raise RuntimeError("cached derived artifact identity is inconsistent")
         paths[str(name)] = path
     return paths
-
-
-def posix_relative(path: Path, root: Path) -> str:
-    return path.relative_to(root).as_posix()
-
-
-def folder_stats(path: Path) -> tuple[int, int]:
-    file_count = 0
-    total_bytes = 0
-    for child in path.rglob("*"):
-        if child.is_file():
-            file_count += 1
-            total_bytes += child.stat().st_size
-    return file_count, total_bytes
 
 
 def split_manifest_virtual_path(path: str) -> tuple[str, str] | None:
@@ -4180,106 +4172,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "unsupportedPreviewTypes": unsupported_preview_types,
         }
 
-    def asset_metadata_by_export_name(self, meta: dict) -> dict[tuple[str, str], list[dict]]:
-        out: dict[tuple[str, str], list[dict]] = {}
-        for entry in meta.get("assetEntries") or []:
-            name = str(entry.get("Name") or "").lower()
-            asset_type = str(entry.get("Type") or "").lower()
-            if name and asset_type:
-                out.setdefault((asset_type, name), []).append(entry)
-        return out
-
-    def metadata_for_internal_file(
-        self,
-        child: Path,
-        export_root: Path,
-        metadata_by_name: dict[tuple[str, str], list[dict]],
-    ) -> dict | None:
-        try:
-            asset_type = child.relative_to(export_root).parts[0].lower()
-        except (ValueError, IndexError):
-            return None
-        name = child.stem
-        path_id = None
-        suffixed = re.fullmatch(r"(.+)_p([0-9a-fA-F]{16})", name)
-        if suffixed:
-            name = suffixed.group(1)
-            unsigned_path_id = int(suffixed.group(2), 16)
-            path_id = (
-                unsigned_path_id - (1 << 64)
-                if unsigned_path_id >= (1 << 63)
-                else unsigned_path_id
-            )
-        candidates = metadata_by_name.get((asset_type, name.lower()), [])
-        if path_id is not None:
-            candidates = [
-                entry
-                for entry in candidates
-                if str(entry.get("PathID") or "") == str(path_id)
-            ]
-        return candidates[0] if len(candidates) == 1 else None
-
-    def asset_metadata_matches(self, entry: dict | None, asset_type: str, asset_name: str, path_id: str) -> bool:
-        if not entry:
-            return False
-        if str(entry.get("Type") or "").lower() != asset_type.lower():
-            return False
-        if str(entry.get("Name") or "").lower() != asset_name.lower():
-            return False
-        if path_id and str(entry.get("PathID") or "") != path_id:
-            return False
-        return True
-
-    def find_exported_asset_file(
-        self,
-        export_root: Path,
-        meta: dict,
-        asset_type: str,
-        asset_name: str,
-        path_id: str = "",
-    ) -> tuple[Path, dict] | None:
-        metadata_by_name = self.asset_metadata_by_export_name(meta)
-        for child in sorted(export_root.rglob("*"), key=lambda item: item.as_posix().lower()):
-            if not child.is_file():
-                continue
-            asset_meta = self.metadata_for_internal_file(child, export_root, metadata_by_name)
-            if self.asset_metadata_matches(asset_meta, asset_type, asset_name, path_id):
-                return child, asset_meta
-        return None
-
-    def list_internal_export(self, export_root: Path, raw_path: str, meta: dict) -> dict:
-        current = safe_relative_path(export_root, raw_path)
-        if current is None or not current.exists() or not current.is_dir():
-            raise FileNotFoundError("internal directory not found")
-
-        dirs = []
-        files = []
-        metadata_by_name = self.asset_metadata_by_export_name(meta)
-        for child in sorted(current.iterdir(), key=lambda item: (not item.is_dir(), item.name.lower())):
-            rel_path = posix_relative(child, export_root)
-            if child.is_dir():
-                file_count, total_bytes = folder_stats(child)
-                dirs.append(
-                    {
-                        "name": child.name,
-                        "path": rel_path,
-                        "fileCount": file_count,
-                        "totalBytes": total_bytes,
-                    }
-                )
-            elif child.is_file():
-                asset_meta = self.metadata_for_internal_file(child, export_root, metadata_by_name)
-                files.append(
-                    {
-                        "name": child.name,
-                        "path": rel_path,
-                        "size": child.stat().st_size,
-                        "kind": internal_preview_kind(child),
-                        "asset": asset_meta,
-                    }
-                )
-        return {"path": posix_relative(current, export_root) if current != export_root else "", "dirs": dirs, "files": files}
-
     def ensure_audio_package_index(self, record: dict, chunk_path: Path) -> dict:
         return audio_package_index_service().ensure_index(
             record,
@@ -4593,7 +4485,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
             return None
         for entry in matches:
-            found = self.find_exported_asset_file(
+            found = find_exported_file(
                 export_root,
                 meta,
                 str(entry.get("Type") or ""),
@@ -4653,7 +4545,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if target is None or not target.is_file():
                 self.send_error_json(404, "internal file not found")
                 return None
-            asset_meta = self.metadata_for_internal_file(target, export_root, self.asset_metadata_by_export_name(meta))
+            asset_meta = metadata_for_file(
+                target,
+                export_root,
+                metadata_by_export_name(meta),
+            )
             return record, target, asset_meta
 
         asset_type = query.get("type", [""])[0]
@@ -4662,7 +4558,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not asset_type or not asset_name:
             self.send_error_json(400, "AssetBundle asset preview expected path or type/name")
             return None
-        found = self.find_exported_asset_file(export_root, meta, asset_type, asset_name, path_id)
+        found = find_exported_file(export_root, meta, asset_type, asset_name, path_id)
         if found is None:
             self.send_error_json(404, "exported asset not found")
             return None
@@ -6249,7 +6145,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             export_root, meta = ensured
             try:
-                listing = self.list_internal_export(export_root, path, meta)
+                listing = list_export_directory(
+                    export_root,
+                    path,
+                    meta,
+                    internal_preview_kind,
+                )
             except FileNotFoundError:
                 self.send_error_json(404, "internal directory not found")
                 return

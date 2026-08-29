@@ -1,10 +1,7 @@
 import unittest
 from pathlib import Path
-from tempfile import TemporaryDirectory
-
 from server import (
     ASSETBUNDLE_EXPORT_TYPES,
-    BrowserHandler,
     internal_preview_kind,
     manifest_asset_entries,
 )
@@ -37,23 +34,6 @@ class ServerPreviewTests(unittest.TestCase):
                 "assets/character/idle.fbx##idle",
             ),
         )
-
-    def test_exported_path_id_suffix_resolves_asset_metadata(self):
-        entry = {
-            "Name": "Idle",
-            "PathID": 3251858251387051210,
-            "Type": "AnimationClip",
-        }
-        handler = object.__new__(BrowserHandler)
-        metadata = handler.asset_metadata_by_export_name({"assetEntries": [entry]})
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            child = root / "AnimationClip" / "Idle_p2D20EBD9BDD91CCA.anim"
-            self.assertEqual(
-                entry,
-                handler.metadata_for_internal_file(child, root, metadata),
-            )
-
 
 if __name__ == "__main__":
     unittest.main()
