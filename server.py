@@ -4366,9 +4366,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     }
                     effective_assets = [by_index[value] for value in effective_indexes]
                     if effective_indexes:
-                        selection_key = hashlib.sha256(
-                            ",".join(map(str, effective_indexes)).encode("ascii")
-                        ).hexdigest()[:16]
+                        selection_key = self.model_glb_service().animation_selection_key(
+                            effective_indexes
+                        )
                         cached_glb = (
                             model_path.parent
                             / "animation-sets"
@@ -4523,56 +4523,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return result
 
         animation_indexes = [int(asset["asset_index"]) for asset in animation_assets]
-        selection_key = hashlib.sha256(
-            ",".join(map(str, animation_indexes)).encode("ascii")
-        ).hexdigest()[:16]
-        animation_root = model_path.parent / "animation-sets" / selection_key
-        animated_glb = animation_root / "model.glb"
-        animated_glb_meta = animated_glb.with_suffix(".glb.meta.json")
-        source_paths = [
+        animated_glb = self.model_glb_service().ensure_animated(
+            animated_document,
+            animated_geometry,
+            image_paths,
             model_path,
-            model_path.with_name("geometry.bin"),
-            *clip_paths,
-            Path(attach_animation_clip.__code__.co_filename),
-            Path(build_glb.__code__.co_filename),
-            *image_paths.values(),
-        ]
-        material_plans = {}
-        if SHADER_ARCHIVE_ROOT.is_dir():
-            material_plans = build_blender_material_plans(
-                animated_document,
-                SHADER_ARCHIVE_ROOT,
-            )
-            source_paths.append(SHADER_ARCHIVE_ROOT / CHARACTER_NPR_PATH)
-        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-        cache_identity = {
-            "version": MODEL_GLB_VERSION,
-            "materialPlan": material_plan_cache_identity(),
-            "animationAssetIndexes": animation_indexes,
-        }
-        if (
-            not animated_glb.is_file()
-            or animated_glb.stat().st_mtime_ns < newest_source_mtime
-            or load_cache_identity(animated_glb_meta) != cache_identity
-        ):
-            if cancel_event is not None and cancel_event.is_set():
-                raise RuntimeError("worker_cancelled")
-            payload = build_glb(
-                animated_document,
-                animated_geometry,
-                lambda image: image_paths[str(image["id"])].read_bytes(),
-                material_plans,
-            )
-            animation_root.mkdir(parents=True, exist_ok=True)
-            temporary = animated_glb.with_suffix(".glb.tmp")
-            temporary.write_bytes(payload)
-            os.replace(temporary, animated_glb)
-            animated_glb_meta.write_text(
-                json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        if cancel_event is not None and cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
+            clip_paths,
+            animation_indexes,
+            binding_path=Path(attach_animation_clip.__code__.co_filename),
+            cancel_event=cancel_event,
+        )
         result = AnimatedModelBundle(
             model_asset,
             animation_assets,

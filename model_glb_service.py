@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import uuid
 from pathlib import Path
 from typing import Callable
 from urllib.parse import parse_qs, unquote, urlparse
@@ -81,22 +83,86 @@ class ModelGlbService:
         document, geometry, image_paths = self.load_inputs(
             asset, bundle_record, model_path, lod=lod
         )
-        geometry_path = model_path.with_name("geometry.bin")
         glb_path = model_path.with_name("model.glb")
-        meta_path = glb_path.with_suffix(".glb.meta.json")
-        sources = [model_path, geometry_path, self._exporter_path, *image_paths.values()]
+        return self._ensure_glb(
+            glb_path,
+            document,
+            geometry,
+            image_paths,
+            source_paths=[
+                model_path,
+                model_path.with_name("geometry.bin"),
+                self._exporter_path,
+                *image_paths.values(),
+            ],
+            identity={
+                "version": self._version,
+                "materialPlan": self._material_identity(),
+            },
+            cancel_event=cancel_event,
+        )
+
+    def ensure_animated(
+        self,
+        document: dict,
+        geometry: bytes,
+        image_paths: dict[str, Path],
+        model_path: Path,
+        clip_paths: list[Path],
+        animation_asset_indexes: list[int],
+        *,
+        binding_path: Path,
+        cancel_event: object | None = None,
+    ) -> Path:
+        selection_key = self.animation_selection_key(animation_asset_indexes)
+        target = model_path.parent / "animation-sets" / selection_key / "model.glb"
+        return self._ensure_glb(
+            target,
+            document,
+            geometry,
+            image_paths,
+            source_paths=[
+                model_path,
+                model_path.with_name("geometry.bin"),
+                *clip_paths,
+                binding_path,
+                self._exporter_path,
+                *image_paths.values(),
+            ],
+            identity={
+                "version": self._version,
+                "materialPlan": self._material_identity(),
+                "animationAssetIndexes": animation_asset_indexes,
+            },
+            cancel_event=cancel_event,
+        )
+
+    @staticmethod
+    def animation_selection_key(animation_asset_indexes: list[int]) -> str:
+        return hashlib.sha256(
+            ",".join(map(str, animation_asset_indexes)).encode("ascii")
+        ).hexdigest()[:16]
+
+    def _ensure_glb(
+        self,
+        target: Path,
+        document: dict,
+        geometry: bytes,
+        image_paths: dict[str, Path],
+        *,
+        source_paths: list[Path],
+        identity: dict,
+        cancel_event: object | None,
+    ) -> Path:
         material_plans = {}
         if self._shader_root.is_dir():
             material_plans = self._build_material_plans(document, self._shader_root)
-            sources.append(self._shader_root / self._character_shader_path)
-        newest_source_mtime = max(path.stat().st_mtime_ns for path in sources)
-        identity = {
-            "version": self._version,
-            "materialPlan": self._material_identity(),
-        }
+            source_paths.append(self._shader_root / self._character_shader_path)
+        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
+        meta_path = target.with_suffix(".glb.meta.json")
         if (
-            not glb_path.is_file()
-            or glb_path.stat().st_mtime_ns < newest_source_mtime
+            not target.is_file()
+            or target.stat().st_mtime_ns < newest_source_mtime
             or self._load_identity(meta_path) != identity
         ):
             self._check_cancelled(cancel_event)
@@ -106,15 +172,23 @@ class ModelGlbService:
                 lambda image: image_paths[str(image["id"])].read_bytes(),
                 material_plans,
             )
-            temporary = glb_path.with_suffix(".glb.tmp")
-            temporary.write_bytes(payload)
-            os.replace(temporary, glb_path)
-            meta_path.write_text(
-                json.dumps(identity, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            token = uuid.uuid4().hex
+            temporary = target.with_name(f".{target.name}.{token}.tmp")
+            temporary_meta = meta_path.with_name(f".{meta_path.name}.{token}.tmp")
+            try:
+                temporary.write_bytes(payload)
+                os.replace(temporary, target)
+                temporary_meta.write_text(
+                    json.dumps(identity, ensure_ascii=False, indent=2) + "\n",
+                    encoding="utf-8",
+                )
+                os.replace(temporary_meta, meta_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+                temporary_meta.unlink(missing_ok=True)
         self._check_cancelled(cancel_event)
-        return glb_path
+        return target
 
     @staticmethod
     def _load_identity(path: Path) -> dict | None:

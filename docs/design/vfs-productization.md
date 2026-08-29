@@ -775,3 +775,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   共用相同服务；Handler 仅负责先取得对应不可变模型 run，并保留供动画和 Blender 调用的兼容
   方法。合成回归覆盖缓存复用、图片读取、record/LOD 不匹配、目录逃逸和构建前取消；重构后
   无调用者的 Avatar 缓存路径包装已删除。下一阶段收口动画 GLB 与基础 GLB 重复的派生发布逻辑。
+- 动画选择键、动画 Document/geometry 到 GLB 的来源列表、材质计划、缓存身份、取消和发布也已
+  并入 `model_glb_service.py`。基础与动画 GLB 不再使用会被并发请求共享的固定 `.tmp` 文件；GLB
+  和 metadata 分别通过 UUID 临时文件替换发布，失败现场不会遗留临时产物。Handler 的动画循环
+  只负责精确片段导出、逐项绑定和 skip-incompatible 决策。回归覆盖动画选择顺序、附加 geometry、
+  缓存复用、metadata 和临时文件清理；下一阶段抽取动画请求 identity、结果清单与绑定应用服务。

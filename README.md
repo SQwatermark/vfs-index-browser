@@ -130,7 +130,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `ordinary_model_build_service.py` | 普通模型缓存、Worker、文档和发布的应用层协调 |
 | `avatar_model_document_service.py` | Avatar 资源解释、纹理名称回绑与静态 ModelDocument 组装 |
 | `avatar_model_build_service.py` | Avatar 计划、依赖、缓存、Worker、文档和发布的应用层协调 |
-| `model_glb_service.py` | 已发布模型输入校验、材质计划与基础 GLB 缓存派生 |
+| `model_glb_service.py` | 已发布模型输入校验、材质计划与基础/动画 GLB 缓存派生 |
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |

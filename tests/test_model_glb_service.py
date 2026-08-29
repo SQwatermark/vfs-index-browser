@@ -126,6 +126,58 @@ class ModelGlbServiceTests(unittest.TestCase):
                     cancel_event=SimpleNamespace(is_set=lambda: True),
                 )
 
+    def test_publishes_and_reuses_animation_selection_glb(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            model = self.create_run(
+                root,
+                "/api/manifest-asset/model-texture?recordId=7&assetIndex=11"
+                "&lod=2&run=avatar-run&path=body.png",
+            )
+            clip = root / "clip.json"
+            clip.write_text("{}", encoding="utf-8")
+            builds = []
+            service = self.service(builds)
+            document, geometry, images = service.load_inputs(
+                {"path": self.avatar_path, "asset_index": 11},
+                {"id": 7},
+                model,
+                lod=2,
+            )
+
+            first = service.ensure_animated(
+                document,
+                geometry + b"animated",
+                images,
+                model,
+                [clip],
+                [22, 11],
+                binding_path=Path(__file__),
+            )
+            second = service.ensure_animated(
+                document,
+                geometry + b"animated",
+                images,
+                model,
+                [clip],
+                [22, 11],
+                binding_path=Path(__file__),
+            )
+
+            self.assertEqual(first, second)
+            self.assertEqual(
+                service.animation_selection_key([22, 11]), first.parent.name
+            )
+            self.assertEqual(1, len(builds))
+            self.assertEqual(b"geometryanimated", builds[0][1])
+            self.assertEqual(
+                [22, 11],
+                json.loads(
+                    first.with_suffix(".glb.meta.json").read_text(encoding="utf-8")
+                )["animationAssetIndexes"],
+            )
+            self.assertEqual([], list(first.parent.glob(".*.tmp")))
+
 
 if __name__ == "__main__":
     unittest.main()

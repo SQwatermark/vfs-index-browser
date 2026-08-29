@@ -123,8 +123,9 @@ build session、Worker、文档服务与 run store。Handler 只注入索引相�
 解析方法，并保留原有 HTTP/任务调用签名；缺失依赖会在创建 run 和调用 Worker 之前失败。
 已发布 ModelDocument 到基础 GLB 的输入复验与缓存派生由 `model_glb_service.py` 负责。服务只接受
 与当前 record、asset、LOD 和不可变 run 完全一致的纹理 URI，拒绝目录逃逸，再以 geometry、纹理、
-导出器和材质计划身份决定是否重建 GLB。动画与 Blender 上层仍通过 Handler 的兼容方法消费该
-稳定边界，不再自行解释基础模型纹理路径。
+动画片段、绑定器、导出器和材质计划身份决定是否重建基础或动画 GLB。两类 GLB 与 metadata
+均以唯一临时文件替换发布；动画与 Blender 上层仍通过 Handler 的兼容方法消费该稳定边界，
+不再自行解释基础模型纹理路径或复制 GLB 发布规则。
 
 ## 关键约束
 
