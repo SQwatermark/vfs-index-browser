@@ -240,6 +240,7 @@ def build_health_document() -> dict:
         "exportObjectSnapshots",
         "exportIdentifiedTextures",
         "exportCubemapFaces",
+        "exportBundlePreviewMedia",
     ])
     return {
         "apiVersion": 1,

@@ -332,6 +332,39 @@ class UnityWorkerClientTests(unittest.TestCase):
         self.assertEqual("assets/example/light.exr", observed["arguments"]["container"])
         self.assertTrue(Path(observed["arguments"]["inputPath"]).is_absolute())
 
+    def test_export_bundle_preview_media_uses_explicit_type_whitelist(self):
+        observed = {}
+
+        def run(command, **kwargs):
+            request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
+            observed.update(request)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "requestId": request["requestId"],
+                    "ok": True,
+                    "result": {"artifactCount": 0, "artifacts": []},
+                }),
+                "",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            UnityWorkerClient(["fake-worker"], runner=run).export_bundle_preview_media(
+                input_path=root / "source.ab",
+                output_directory=root / "media",
+                included_types=["Texture2D", "TextAsset", "VideoClip"],
+                request_id="bundle-media-1",
+            )
+
+        self.assertEqual("exportBundlePreviewMedia", observed["operation"])
+        self.assertEqual(
+            ["Texture2D", "TextAsset", "VideoClip"],
+            observed["arguments"]["includedTypes"],
+        )
+        self.assertTrue(Path(observed["arguments"]["outputDirectory"]).is_absolute())
+
     def test_translates_structured_worker_error(self):
         def run(command, **kwargs):
             return subprocess.CompletedProcess(

@@ -278,7 +278,8 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap`、
-`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures` 和 `exportCubemapFaces`，worker 版本已升至 `0.8.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
+`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces` 和
+`exportBundlePreviewMedia`，worker 版本已升至 `0.9.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
 主特效结束条件；未知尾部完整保留为 Raw words，公开结果明确为 `partial`。下一项代码工作
 已用 Python 唯一 `UnityWorkerClient` 把 Projectile 和共用 MonoBehaviour Raw 调用切换到
 新 worker。Projectile、Raw 和 TypeTree Dump 复用同一个多产物原子导出框架：每次构建
@@ -302,7 +303,7 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | 组件原始数据 | MonoBehaviour + `Raw`/`Dump`/`JSON` | `server.py` | P3.1 |
 | 资源映射 | `AssetMap`、显式多输入 CABMap 已迁移；模型链不再使用旧 `UseCABMap` | worker、`server.py` | P3.2 |
 | 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 不输出伪快照 | worker + `server.py` | P3.2 |
-| 通用资源 | Texture2D、Sprite、TextAsset、AudioClip、VideoClip、AnimationClip + `Convert` | `server.py` | P3.2/P3.3 |
+| 通用资源 | Texture2D、TextAsset、VideoClip 的 worker 协议已实现、生产尚未切换；Sprite、AudioClip、AnimationClip 仍用 `Convert` | worker、`server.py` | P3.2/P3.3 |
 | 纹理身份 | 精确 Texture2D `sourceFile + pathId` 已迁移 | worker、`server.py`、`avatar_mesh_snapshot.py` | P3.3 |
 | Cubemap | 精确 container + 六面 PNG 已迁移 | worker、`server.py` | P3.3 |
 | 动画 | AnimationClip + `AnimationJSON` | `server.py` | P3.4 |
@@ -342,13 +343,14 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 截至 2026-08-29，当前工作树的可交付边界为：
 
-- worker `0.8.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
-  聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理和 Cubemap 六面导出；
+- worker `0.9.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
+  聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理、Cubemap 六面和固定
+  白名单的 Bundle 预览媒体导出；
 - Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap`、`exportObjectSnapshots` 与
   `exportIdentifiedTextures`，模型和 AvatarMesh 生产路径均已接入；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
-  其他通用 `Convert` 与动画仍由旧 CLI 执行；
+  通用预览生产路径尚未接入新媒体协议，因此所有通用 `Convert` 与动画仍由旧 CLI 执行；
 - CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
   服务端模型路径均已直接消费该契约；这两条路径已删除旧 `BuildCABMap + UseCABMap`，并将
   输入、CABMap、对象、纹理、模型文档和几何收口到独占 run，由根 `run.json` 原子发布；
@@ -362,7 +364,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. 盘点并迁移 Cubemap 之外的通用 Texture2D/Sprite 等 Convert 消费者；
+1. 将 Texture2D/TextAsset/VideoClip 预览媒体接入独占 run，再分别迁移 Sprite、AudioClip 和
+   AnimationClip，禁止退回任意类型 `Convert`；
 2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
@@ -521,3 +524,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   沿用 Unity 面序且不做 Texture2D 垂直翻转。角色环境 BC6H 样本的六张 PNG 与旧 CLI
   逐字节一致。Cubemap 同时接入共用独占 run；领域六面集合会在根 `meta.json` 原子发布前及
   缓存命中时复验，不完整结果不再短暂成为可见缓存。
+- worker `0.9.0` 新增 `exportBundlePreviewMedia`，协议仅允许 `Texture2D`、`TextAsset` 和
+  `VideoClip`，没有任意类型 fallback。产物以类型、名称和 PathID 稳定命名，返回 source file、
+  container、长度、SHA-256 和跳过原因。真实 Texture2D 与 TextAsset 样本分别输出 206 字节
+  PNG 和 2297 字节 JSON，SHA-256 均与旧 CLI 逐字节一致；本地缓存尚无 VideoClip 样本，且
+  生产通用导出尚未切换，因此下一步仍须完成 run 接入和该类型真实验证。

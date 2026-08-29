@@ -404,6 +404,26 @@ class UnityWorkerClient:
             cancel_event=cancel_event,
         )
 
+    def export_bundle_preview_media(
+        self,
+        *,
+        input_path: Path,
+        output_directory: Path,
+        included_types: Sequence[str],
+        request_id: str,
+        cancel_event: object | None = None,
+    ) -> dict:
+        return self.request(
+            "exportBundlePreviewMedia",
+            {
+                "inputPath": str(input_path.resolve()),
+                "outputDirectory": str(output_directory.resolve()),
+                "includedTypes": list(included_types),
+            },
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def _run(
         self,
         command: Sequence[str],

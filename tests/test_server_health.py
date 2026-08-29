@@ -33,6 +33,7 @@ class ServerHealthTests(unittest.TestCase):
                 "exportObjectSnapshots",
                 "exportIdentifiedTextures",
                 "exportCubemapFaces",
+                "exportBundlePreviewMedia",
             ],
             worker.required_capabilities,
         )

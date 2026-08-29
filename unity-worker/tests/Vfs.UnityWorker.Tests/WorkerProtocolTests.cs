@@ -19,7 +19,7 @@ public sealed class WorkerProtocolTests
         StringAssert.Contains(payload, WorkerProtocol.AnimeStudioUpstreamCommit);
         StringAssert.Contains(
             payload,
-            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\",\"exportIdentifiedTextures\",\"exportCubemapFaces\"]");
+            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\",\"exportIdentifiedTextures\",\"exportCubemapFaces\",\"exportBundlePreviewMedia\"]");
     }
 
     [TestMethod]
@@ -178,6 +178,35 @@ public sealed class WorkerProtocolTests
             Assert.AreEqual("invalid_asset_type", exception.Code);
             Assert.IsTrue(Directory.Exists(output));
             Assert.AreEqual(0, Directory.GetFileSystemEntries(output).Length);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+    }
+
+    [TestMethod]
+    public void BundlePreviewMediaRejectsUnsupportedTypeBeforeCreatingOutput()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"vfs-worker-test-{Guid.NewGuid():N}");
+        var input = Path.Combine(root, "input.ab");
+        var output = Path.Combine(root, "output");
+        try
+        {
+            Directory.CreateDirectory(root);
+            File.WriteAllBytes(input, [0x00]);
+
+            var exception = Assert.ThrowsException<MonoBehaviourExportException>(() =>
+                BundlePreviewMediaExporter.Export(new BundlePreviewMediaExportRequest(
+                    input,
+                    output,
+                    ["Sprite"])));
+
+            Assert.AreEqual("invalid_asset_type", exception.Code);
+            Assert.IsFalse(Directory.Exists(output));
         }
         finally
         {

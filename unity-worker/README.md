@@ -5,7 +5,8 @@ AnimeStudio CLI 的兼容层；Python 服务只能通过这里定义的版本化
 
 当前已实现 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap` 和
-`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces`。
+`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces` 和
+`exportBundlePreviewMedia`。
 能力列表只声明已经接入并通过契约测试及真实样本验证的操作，不得为了兼容旧调用而提前
 声明尚未实现的能力。
 
@@ -31,10 +32,10 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 - 协议所有权：VFS；
 - 进程边界：单次 worker 进程，后续按性能证据决定是否改为常驻；
 - 权威 AnimeStudio 来源提交：`8cdec963c4e187ea0a4a339b8969844a9574638b`；
-- worker 版本：`0.8.0`；
+- worker 版本：`0.9.0`；
 - 已实现能力：`handshake`、`exportMonoBehaviourRaw`、`exportMonoBehaviourTypeTreeDump`、
   `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`、
-  `exportIdentifiedTextures`、`exportCubemapFaces`；
+  `exportIdentifiedTextures`、`exportCubemapFaces`、`exportBundlePreviewMedia`；
 - Raw 导出要求本次请求独占的空输出目录，成功响应返回 PathID、container、字节长度和
   SHA-256，不会覆盖旧模拟/导出结果；
 - TypeTree Dump 只读取对象内嵌 TypeTree，并同时返回 `serializedByteCount`、
@@ -64,11 +65,15 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
   `_p<16 位 PathID>.png` 命名，并返回尺寸、字节数和 SHA-256；
 - `exportCubemapFaces` 只接受精确 container，验证像素流由六份连续完整 mip 链组成，并按
   Unity 的 `PositiveX` 至 `NegativeZ` 顺序无垂直翻转地输出六张 PNG；
+- `exportBundlePreviewMedia` 只接受固定白名单中的 `Texture2D`、`TextAsset` 和 `VideoClip`，
+  不转发任意 `Convert` 类型。每个文件使用 `_p<16 位 PathID>` 保持身份，并返回 source file、
+  container、长度、SHA-256 与结构化跳过原因；Sprite、AudioClip、AnimationClip 保留独立边界；
 - 旧 CLI 的通用 `JSON` 只序列化 MonoBehaviour 外壳，不是 managed-reference 领域解码。
   Projectile 的聚焦解码器主体存在于被忽略的旧研究副本提交 `03336c4`，其上另有 85 行
   未提交修正；当前已迁移可由三份真实样本验证的结构，并保留未理解尾部。对象快照 worker
-  已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；通用
-  通用 `Convert` 和动画等入口仍待迁移，不能据此宣称旧 CLI 已无调用者。
+  已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；Bundle
+  预览媒体协议已实现，但生产通用导出尚未切换，Sprite、AudioClip、AnimationClip 与动画
+  等入口仍待迁移，不能据此宣称旧 CLI 已无调用者。
 
 真实样本边界回归示例：
 
