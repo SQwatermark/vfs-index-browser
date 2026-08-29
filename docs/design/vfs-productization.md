@@ -929,3 +929,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   下载名、无 Content-Disposition、历史未编码 filename，以及 Cache-Control/动画跳过数等额外头；
   Handler 中不再存在重复的 `STREAM_CHUNK_SIZE` 文件循环。真实 Wwise ordinal 40 的 WEM/WAV
   重启后仍为 8,299/81,174 字节，且 `filename=4125696.wem/.wav` 历史响应头保持不变。
+- TableCfg JSON 与 Web 静态文件两个剩余响应旁路也已接入 `raw_file_service.py`。前者保留领域解析后
+  的内存字节但按统一块大小发送，后者改为路径流，不再 `read_bytes()` 整体载入。Handler 中直接
+  `wfile.write` 现在仅存在于 JSON API 序列化和统一 raw sender 两个传输出口。真实重启后
+  AudioDialog TableCfg 仍为 14,671,090 字节及原文件名，首页仍为 3,626 字节 `text/html`、
+  `no-cache` 且无 Content-Disposition。

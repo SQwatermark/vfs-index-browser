@@ -111,6 +111,33 @@ class RawFileService:
             _chunk_size=self._chunk_size,
         )
 
+    def prepare_bytes(
+        self,
+        data: bytes,
+        *,
+        content_type: str,
+        download: bool | None,
+        download_name: str | None = None,
+        encode_filename: bool = True,
+    ) -> RawFileResponse:
+        if download is not None and not download_name:
+            raise ValueError("download_name is required when disposition is enabled")
+        return RawFileResponse(
+            content_type,
+            len(data),
+            (
+                self._disposition(
+                    str(download_name),
+                    download,
+                    encode_filename=encode_filename,
+                )
+                if download is not None
+                else None
+            ),
+            _data=data,
+            _chunk_size=self._chunk_size,
+        )
+
     @staticmethod
     def _disposition(
         file_name: str,

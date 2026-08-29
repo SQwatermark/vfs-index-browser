@@ -3105,15 +3105,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
 
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        disposition = "attachment" if download else "inline"
         root_name = str(parsed.get("name") or table_name)
-        encoded_name = quote(f"{root_name}.json")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Content-Disposition", f"{disposition}; filename*=UTF-8''{encoded_name}")
-        self.end_headers()
-        self.wfile.write(data)
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_bytes(
+                data,
+                content_type="application/json; charset=utf-8",
+                download=download,
+                download_name=f"{root_name}.json",
+            )
+        )
 
     def handle_raw(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
@@ -3806,13 +3806,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-        data = file_path.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-cache")
-        self.end_headers()
-        self.wfile.write(data)
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                file_path,
+                download=None,
+                content_type=content_type,
+            ),
+            extra_headers={"Cache-Control": "no-cache"},
+        )
 
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:

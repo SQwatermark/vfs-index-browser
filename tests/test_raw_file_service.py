@@ -86,6 +86,27 @@ class RawFileServiceTests(unittest.TestCase):
         self.assertIsNone(no_disposition.content_disposition)
         self.assertEqual("inline; filename=123.wem", legacy_name.content_disposition)
 
+    def test_bytes_response_is_chunked_and_requires_a_download_name(self):
+        response = RawFileService(chunk_size=2).prepare_bytes(
+            b"abcde",
+            content_type="application/json; charset=utf-8",
+            download=False,
+            download_name="table.json",
+        )
+
+        self.assertEqual([b"ab", b"cd", b"e"], list(response.chunks()))
+        self.assertEqual(5, response.content_length)
+        self.assertEqual(
+            "inline; filename*=UTF-8''table.json",
+            response.content_disposition,
+        )
+        with self.assertRaisesRegex(ValueError, "download_name"):
+            RawFileService().prepare_bytes(
+                b"x",
+                content_type="application/octet-stream",
+                download=True,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
