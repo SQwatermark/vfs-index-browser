@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from audio_package_service import AudioPackageIndexService, parse_audio_internal_path
+from audio_package_service import (
+    AudioEntry,
+    AudioPackageIndexService,
+    parse_audio_internal_path,
+)
 from tests.test_audio_package import pck_fixture
 
 
@@ -74,6 +78,40 @@ class AudioPackageIndexServiceTests(unittest.TestCase):
     def test_parses_only_matching_wem_and_wav_paths(self):
         self.assertEqual(("wav", 123), parse_audio_internal_path("wav%2Fab%2F123.wav"))
         self.assertIsNone(parse_audio_internal_path("wav/ab/123.wem"))
+
+    def test_media_cache_separates_same_length_package_identities(self):
+        entry = AudioEntry(100, 0, 8, "sound")
+        first = self.service.ensure_indexed_media(
+            self.record,
+            entry,
+            "wem",
+            "dialog",
+            lambda _offset, _size: b"RIFFaaaa",
+        )
+        changed = {**self.record, "file_data_md5": "source-b"}
+        second = self.service.ensure_indexed_media(
+            changed,
+            entry,
+            "wem",
+            "dialog",
+            lambda _offset, _size: b"RIFFbbbb",
+        )
+
+        self.assertNotEqual(first, second)
+        self.assertEqual(b"RIFFaaaa", first.read_bytes())
+        self.assertEqual(b"RIFFbbbb", second.read_bytes())
+
+    def test_short_media_read_is_not_published(self):
+        entry = AudioEntry(100, 0, 8, "sound")
+        with self.assertRaisesRegex(ValueError, "expected 8 bytes"):
+            self.service.ensure_indexed_media(
+                self.record,
+                entry,
+                "wem",
+                "dialog",
+                lambda _offset, _size: b"short",
+            )
+        self.assertFalse(any(path.is_file() for path in (self.root / "cache").rglob("*.wem")))
 
 
 if __name__ == "__main__":

@@ -31,12 +31,10 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
 from audio_package_service import (
+    AudioEntry,
     AudioPackageIndexService,
-    audio_entry_prefix,
-    parse_audio_internal_path,
 )
 from cache_versions import CACHE_VERSIONS
-from audio_export import VgmstreamConversionService
 from blender_export import BlenderExportService
 from ability_entity_data import (
     AbilityEntityDecodeError,
@@ -228,9 +226,11 @@ def usm_video_service() -> UsmVideoService:
 
 
 def audio_package_index_service() -> AudioPackageIndexService:
+    vgmstream = optional_tool_registry().capability("vgmstream").resolved_path
     return AudioPackageIndexService(
         INTERNAL_CACHE_DIR,
         CACHE_VERSIONS.version("audio-package"),
+        vgmstream=vgmstream,
     )
 
 
@@ -301,7 +301,6 @@ ANIMATION_CLIP_EXPORT_VERSION = CACHE_VERSIONS.version("animation-clip-export")
 MODEL_GLB_VERSION = CACHE_VERSIONS.version("model-glb")
 MODEL_BLEND_VERSION = CACHE_VERSIONS.version("model-blend")
 MAX_BLEND_ANIMATION_COUNT = 100
-AUDIO_PACKAGE_META_VERSION = CACHE_VERSIONS.version("audio-package")
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 MANIFEST_LOGICAL_ID = "BundleManifest/Data/Bundles/Windows/manifest.hgmmap"
 PROJECTILE_API_VERSION = 1
@@ -394,49 +393,6 @@ class FileView:
     chunk_exists: bool
     length: int
     encrypted: bool
-
-
-@dataclass(frozen=True)
-class AudioEntry:
-    wem_id: int
-    offset: int
-    size: int
-    source: str
-    language: str | None = None
-    bank_id: int | None = None
-    bank_offset: int | None = None
-    bank_size: int | None = None
-    bank_wem_offset: int | None = None
-    bank_encrypted: bool = False
-
-    def to_json(self) -> dict:
-        return {
-            "id": self.wem_id,
-            "offset": self.offset,
-            "size": self.size,
-            "source": self.source,
-            "language": self.language,
-            "bankId": self.bank_id,
-            "bankOffset": self.bank_offset,
-            "bankSize": self.bank_size,
-            "bankWemOffset": self.bank_wem_offset,
-            "bankEncrypted": self.bank_encrypted,
-        }
-
-    @staticmethod
-    def from_json(payload: dict) -> "AudioEntry":
-        return AudioEntry(
-            wem_id=int(payload["id"]),
-            offset=int(payload["offset"]),
-            size=int(payload["size"]),
-            source=str(payload.get("source") or "unknown"),
-            language=payload.get("language"),
-            bank_id=payload.get("bankId"),
-            bank_offset=payload.get("bankOffset"),
-            bank_size=payload.get("bankSize"),
-            bank_wem_offset=payload.get("bankWemOffset"),
-            bank_encrypted=bool(payload.get("bankEncrypted")),
-        )
 
 
 def open_index(path: Path) -> Iterator[str]:
@@ -534,52 +490,6 @@ def chacha20_apply(key: bytes, nonce12: bytes, counter: int, data: bytes) -> byt
 def decrypt_vfs_file(data: bytes, iv_seed: int) -> bytes:
     nonce = struct.pack("<iq", VFS_PROTO_VERSION, int(iv_seed))
     return chacha20_apply(CHACHA_KEY, nonce, 1, data)
-
-
-def derive_audio_key(seed: int) -> int:
-    key = ((seed & 0xFF) ^ 0x9C5A0B29) * 81861667
-    key &= 0xFFFFFFFF
-    for shift in (8, 16, 24):
-        key = (key ^ ((seed >> shift) & 0xFF)) * 81861667
-        key &= 0xFFFFFFFF
-    return key
-
-
-def decrypt_audio_vfs_bytes(data: bytearray, start: int, length: int, seed: int, data_offset: int = 0) -> None:
-    if start < 0 or length < 0 or start > len(data) or length > len(data) - start:
-        raise ValueError("invalid audio decrypt range")
-
-    key_index = (seed + (data_offset >> 2)) & 0xFFFFFFFF
-    pos = start
-    remaining = length
-    alignment = data_offset & 3
-    if alignment:
-        key = derive_audio_key(key_index)
-        to_align = min(4 - alignment, remaining)
-        for i in range(to_align):
-            data[pos] ^= (key >> ((alignment + i) * 8)) & 0xFF
-            pos += 1
-        remaining -= to_align
-        key_index = (key_index + 1) & 0xFFFFFFFF
-
-    for _ in range(remaining // 4):
-        key = derive_audio_key(key_index)
-        value = int.from_bytes(data[pos : pos + 4], "little") ^ key
-        data[pos : pos + 4] = value.to_bytes(4, "little")
-        pos += 4
-        key_index = (key_index + 1) & 0xFFFFFFFF
-
-    trailing = remaining & 3
-    if trailing:
-        key = derive_audio_key(key_index)
-        for i in range(trailing):
-            data[pos + i] ^= (key >> (i * 8)) & 0xFF
-
-
-def decrypt_wem_bytes(data: bytes, wem_id: int) -> bytes:
-    output = bytearray(data)
-    decrypt_audio_vfs_bytes(output, 0, len(output), wem_id)
-    return bytes(output)
 
 
 def iter_ancestor_dirs(file_path: str) -> Iterator[str]:
@@ -4370,13 +4280,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 )
         return {"path": posix_relative(current, export_root) if current != export_root else "", "dirs": dirs, "files": files}
 
-    def audio_cache_paths(self, record: dict) -> tuple[Path, Path, Path]:
-        cache_root = INTERNAL_CACHE_DIR / str(record["id"])
-        meta_path = cache_root / "audio_meta.json"
-        wem_root = cache_root / "audio" / "wem"
-        wav_root = cache_root / "audio" / "wav"
-        return meta_path, wem_root, wav_root
-
     def ensure_audio_package_index(self, record: dict, chunk_path: Path) -> dict:
         return audio_package_index_service().ensure_index(
             record,
@@ -4391,54 +4294,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def list_audio_package(self, meta: dict, raw_path: str) -> dict:
         return audio_package_index_service().list_directory(meta, raw_path)
 
-    def audio_entries_by_id(self, meta: dict) -> dict[int, AudioEntry]:
-        return {AudioEntry.from_json(item).wem_id: AudioEntry.from_json(item) for item in meta.get("entries") or []}
-
-    def extract_wem_entry(self, record: dict, chunk_path: Path, entry: AudioEntry) -> bytes:
-        if entry.bank_encrypted:
-            if entry.bank_id is None or entry.bank_offset is None or entry.bank_size is None or entry.bank_wem_offset is None:
-                raise ValueError("encrypted bank entry is missing bank metadata")
-            bank_payload = bytearray(
-                self.read_file_range(
-                    record,
-                    chunk_path,
-                    entry.bank_offset,
-                    entry.bank_size,
-                )
-            )
-            decrypt_audio_vfs_bytes(bank_payload, 0, len(bank_payload), entry.bank_id)
-            data = bytes(bank_payload[entry.bank_wem_offset : entry.bank_wem_offset + entry.size])
-        else:
-            data = self.read_file_range(
+    def ensure_audio_entry_file(self, record: dict, chunk_path: Path, internal_path: str) -> tuple[Path, AudioEntry]:
+        return audio_package_index_service().ensure_entry(
+            record,
+            internal_path,
+            lambda offset, size: self.read_file_range(
                 record,
                 chunk_path,
-                entry.offset,
-                entry.size,
-            )
-        if len(data) >= 4 and data[:4] not in {b"RIFF", b"RIFX"}:
-            data = decrypt_wem_bytes(data, entry.wem_id)
-        return data
-
-    def ensure_audio_entry_file(self, record: dict, chunk_path: Path, internal_path: str) -> tuple[Path, AudioEntry]:
-        parsed = parse_audio_internal_path(internal_path)
-        if parsed is None:
-            raise FileNotFoundError("audio entry not found")
-        mode, wem_id = parsed
-        meta = self.ensure_audio_package_index(record, chunk_path)
-        entry = self.audio_entries_by_id(meta).get(wem_id)
-        if entry is None:
-            raise FileNotFoundError("audio entry not found")
-
-        _, wem_root, wav_root = self.audio_cache_paths(record)
-        target = self.ensure_audio_entry_output(
-            record,
-            chunk_path,
-            entry,
-            mode,
-            wem_root,
-            wav_root,
+                offset,
+                size,
+            ),
         )
-        return target, entry
 
     def ensure_audio_dialog_media_file(
         self,
@@ -4463,62 +4329,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         mode: str,
         cache_namespace: str,
     ) -> Path:
-        package_identity = str(
-            record.get("file_data_md5")
-            or record.get("file_chunk_md5")
-            or record.get("length")
-            or "unknown"
-        ).casefold()
-        vgmstream = optional_tool_registry().capability("vgmstream")
-        converter_identity = "unavailable"
-        if vgmstream.resolved_path is not None:
-            stat = vgmstream.resolved_path.stat()
-            converter_identity = f"{stat.st_size:x}-{stat.st_mtime_ns:x}"
-        media_identity = (
-            f"v{AUDIO_PACKAGE_META_VERSION}-{package_identity}-"
-            f"{entry.offset:x}-{entry.size:x}-"
-            f"{entry.bank_id if entry.bank_id is not None else 0:x}-"
-            f"{entry.bank_wem_offset if entry.bank_wem_offset is not None else 0:x}"
-        )
-        cache_root = (
-            INTERNAL_CACHE_DIR
-            / str(record["id"])
-            / cache_namespace
-            / media_identity
-        )
-        return self.ensure_audio_entry_output(
+        return audio_package_index_service().ensure_indexed_media(
             record,
-            chunk_path,
             entry,
             mode,
-            cache_root / "wem",
-            cache_root / "wav" / converter_identity,
+            cache_namespace,
+            lambda offset, size: self.read_file_range(
+                record,
+                chunk_path,
+                offset,
+                size,
+            ),
         )
-
-    def ensure_audio_entry_output(
-        self,
-        record: dict,
-        chunk_path: Path,
-        entry: AudioEntry,
-        mode: str,
-        wem_root: Path,
-        wav_root: Path,
-    ) -> Path:
-        if mode not in {"wem", "wav"}:
-            raise ValueError("audio output mode must be wem or wav")
-        prefix = audio_entry_prefix(entry.wem_id)
-        wem_path = wem_root / prefix / f"{entry.wem_id}.wem"
-        if not wem_path.exists() or wem_path.stat().st_size != entry.size:
-            wem_path.parent.mkdir(parents=True, exist_ok=True)
-            wem_path.write_bytes(self.extract_wem_entry(record, chunk_path, entry))
-        if mode == "wem":
-            return wem_path
-
-        wav_path = wav_root / prefix / f"{entry.wem_id}.wav"
-        vgmstream = optional_tool_registry().capability("vgmstream")
-        if vgmstream.resolved_path is None:
-            raise FileNotFoundError(f"vgmstream executable not found: {VGMSTREAM_CLI}")
-        return VgmstreamConversionService(vgmstream.resolved_path).ensure_wav(wem_path, wav_path)
 
 
     def resolve_bundle_sources(

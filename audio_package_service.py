@@ -7,11 +7,13 @@ import os
 import re
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote
 
-from audio_package import AudioPackageMedia, parse_audio_package
+from audio_export import VgmstreamConversionService
+from audio_package import AudioPackageMedia, decrypt_audio_bytes, parse_audio_package
 
 
 ReadRange = Callable[[int, int], bytes]
@@ -19,6 +21,49 @@ AUDIO_ENTRY_RE = re.compile(
     r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$",
     re.IGNORECASE,
 )
+
+
+@dataclass(frozen=True)
+class AudioEntry:
+    wem_id: int
+    offset: int
+    size: int
+    source: str
+    language: str | None = None
+    bank_id: int | None = None
+    bank_offset: int | None = None
+    bank_size: int | None = None
+    bank_wem_offset: int | None = None
+    bank_encrypted: bool = False
+
+    def to_json(self) -> dict:
+        return {
+            "id": self.wem_id,
+            "offset": self.offset,
+            "size": self.size,
+            "source": self.source,
+            "language": self.language,
+            "bankId": self.bank_id,
+            "bankOffset": self.bank_offset,
+            "bankSize": self.bank_size,
+            "bankWemOffset": self.bank_wem_offset,
+            "bankEncrypted": self.bank_encrypted,
+        }
+
+    @staticmethod
+    def from_json(payload: dict) -> "AudioEntry":
+        return AudioEntry(
+            wem_id=int(payload["id"]),
+            offset=int(payload["offset"]),
+            size=int(payload["size"]),
+            source=str(payload.get("source") or "unknown"),
+            language=payload.get("language"),
+            bank_id=payload.get("bankId"),
+            bank_offset=payload.get("bankOffset"),
+            bank_size=payload.get("bankSize"),
+            bank_wem_offset=payload.get("bankWemOffset"),
+            bank_encrypted=bool(payload.get("bankEncrypted")),
+        )
 
 
 def audio_entry_prefix(media_id: int) -> str:
@@ -34,9 +79,16 @@ def parse_audio_internal_path(raw_path: str) -> tuple[str, int] | None:
 
 
 class AudioPackageIndexService:
-    def __init__(self, cache_root: Path, cache_version: int):
+    def __init__(
+        self,
+        cache_root: Path,
+        cache_version: int,
+        *,
+        vgmstream: Path | None = None,
+    ):
         self._cache_root = cache_root
         self._cache_version = cache_version
+        self._vgmstream = vgmstream
 
     def ensure_index(self, record: dict, read_range: ReadRange) -> dict:
         meta_path = self._meta_path(record)
@@ -132,6 +184,137 @@ class AudioPackageIndexService:
             return {"path": normalized, "dirs": [], "files": files}
 
         raise FileNotFoundError("audio package directory not found")
+
+    def ensure_entry(
+        self,
+        record: dict,
+        internal_path: str,
+        read_range: ReadRange,
+    ) -> tuple[Path, AudioEntry]:
+        parsed = parse_audio_internal_path(internal_path)
+        if parsed is None:
+            raise FileNotFoundError("audio entry not found")
+        mode, media_id = parsed
+        meta = self.ensure_index(record, read_range)
+        entry = self.entries_by_id(meta).get(media_id)
+        if entry is None:
+            raise FileNotFoundError("audio entry not found")
+        root = (
+            self._cache_root
+            / str(record["id"])
+            / "audio"
+            / self._package_cache_key(record)
+        )
+        return (
+            self._ensure_output(
+                entry,
+                mode,
+                root / "wem",
+                root / "wav" / self._converter_identity(),
+                read_range,
+            ),
+            entry,
+        )
+
+    def ensure_indexed_media(
+        self,
+        record: dict,
+        entry: AudioEntry,
+        mode: str,
+        namespace: str,
+        read_range: ReadRange,
+    ) -> Path:
+        package_identity = self._package_cache_key(record)
+        media_identity = (
+            f"{package_identity}-"
+            f"{entry.offset:x}-{entry.size:x}-"
+            f"{entry.bank_id if entry.bank_id is not None else 0:x}-"
+            f"{entry.bank_wem_offset if entry.bank_wem_offset is not None else 0:x}"
+        )
+        root = self._cache_root / str(record["id"]) / namespace / media_identity
+        return self._ensure_output(
+            entry,
+            mode,
+            root / "wem",
+            root / "wav" / self._converter_identity(),
+            read_range,
+        )
+
+    @staticmethod
+    def entries_by_id(meta: dict) -> dict[int, AudioEntry]:
+        entries = [AudioEntry.from_json(item) for item in meta.get("entries") or []]
+        return {entry.wem_id: entry for entry in entries}
+
+    def _ensure_output(
+        self,
+        entry: AudioEntry,
+        mode: str,
+        wem_root: Path,
+        wav_root: Path,
+        read_range: ReadRange,
+    ) -> Path:
+        if mode not in {"wem", "wav"}:
+            raise ValueError("audio output mode must be wem or wav")
+        prefix = audio_entry_prefix(entry.wem_id)
+        wem_path = wem_root / prefix / f"{entry.wem_id}.wem"
+        if not wem_path.is_file() or wem_path.stat().st_size != entry.size:
+            data = self._extract_wem(entry, read_range)
+            if len(data) != entry.size:
+                raise ValueError(
+                    f"audio entry {entry.wem_id} expected {entry.size} bytes, got {len(data)}"
+                )
+            self._publish_bytes(wem_path, data)
+        if mode == "wem":
+            return wem_path
+        if self._vgmstream is None:
+            raise FileNotFoundError("vgmstream executable not found")
+        wav_path = wav_root / prefix / f"{entry.wem_id}.wav"
+        return VgmstreamConversionService(self._vgmstream).ensure_wav(wem_path, wav_path)
+
+    @staticmethod
+    def _extract_wem(entry: AudioEntry, read_range: ReadRange) -> bytes:
+        if entry.bank_encrypted:
+            if (
+                entry.bank_id is None
+                or entry.bank_offset is None
+                or entry.bank_size is None
+                or entry.bank_wem_offset is None
+            ):
+                raise ValueError("encrypted bank entry is missing bank metadata")
+            bank = bytearray(read_range(entry.bank_offset, entry.bank_size))
+            decrypt_audio_bytes(bank, entry.bank_id)
+            data = bytes(bank[entry.bank_wem_offset : entry.bank_wem_offset + entry.size])
+        else:
+            data = read_range(entry.offset, entry.size)
+        if len(data) >= 4 and data[:4] not in {b"RIFF", b"RIFX"}:
+            decrypted = bytearray(data)
+            decrypt_audio_bytes(decrypted, entry.wem_id)
+            data = bytes(decrypted)
+        return data
+
+    def _converter_identity(self) -> str:
+        if self._vgmstream is None or not self._vgmstream.is_file():
+            return "unavailable"
+        stat = self._vgmstream.stat()
+        return f"{stat.st_size:x}-{stat.st_mtime_ns:x}"
+
+    def _package_cache_key(self, record: dict) -> str:
+        identity = str(
+            record.get("file_data_md5")
+            or record.get("file_chunk_md5")
+            or f"{int(record.get('offset') or 0):x}-{int(record['length']):x}"
+        ).casefold()
+        return f"v{self._cache_version}-{identity}"
+
+    @staticmethod
+    def _publish_bytes(path: Path, data: bytes) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_bytes(data)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _meta_path(self, record: dict) -> Path:
         return self._cache_root / str(record["id"]) / "audio_meta.json"

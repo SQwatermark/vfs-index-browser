@@ -677,4 +677,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `audio_package.py` 权威 AKPK/BNK 解析器；`server.py` 中一套会宽松跳过截断行的重复解析代码
   已删除。索引缓存身份由单纯文件长度升级为版本、record、offset 和内容 MD5，meta 通过独占
   临时文件原子发布，`audio-package` 缓存版本升至 2。合成回归覆盖索引复用、同长度来源变化
-  失效、WEM/WAV 分层目录和严格内部路径解析；WEM 提取及 WAV 派生仍留待下一步移出 Handler。
+  失效、WEM/WAV 分层目录和严格内部路径解析。
+- WEM 直读/Bank 解密、媒体级缓存身份、WEM 原子发布和 vgmstream WAV 派生也已进入
+  `audio_package_service.py`。普通浏览、AudioDialog 与 Wwise 聚合入口复用同一输出服务；包内容
+  身份成为缓存目录的一部分，同 record、同长度的热更不会复用旧 WEM。服务严格校验读取长度，
+  短读不会发布文件；合成测试覆盖同 media ID 不同 offset、同长度不同包身份及失败清理。
