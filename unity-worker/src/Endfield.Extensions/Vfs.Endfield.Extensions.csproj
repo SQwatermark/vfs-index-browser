@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AnimeStudio.Core\Vfs.AnimeStudio.Core.csproj" />
+    <ProjectReference Include="..\AnimeStudio.Animation\Vfs.AnimeStudio.Animation.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Sprite 预览只引入权威 Utility 中这一份有界图像裁剪实现。 -->

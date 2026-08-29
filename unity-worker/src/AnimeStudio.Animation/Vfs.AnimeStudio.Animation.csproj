@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CS1030</NoWarn>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>Vfs.AnimeStudio.Animation</AssemblyName>
+    <RootNamespace>AnimeStudio</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AnimeStudio.Core\Vfs.AnimeStudio.Core.csproj" />
+    <ProjectReference Include="..\..\vendor\animestudio\AnimeStudio.PInvoke\AnimeStudio.PInvoke.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\vendor\animestudio\AnimeStudio.Utility\ACL\*.cs"
+             Link="Upstream\ACL\%(Filename)%(Extension)" />
+    <Compile Include="..\..\vendor\animestudio\AnimeStudio.Utility\YAML\*.cs"
+             Link="Upstream\YAML\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

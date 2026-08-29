@@ -13,4 +13,10 @@
     <ProjectReference Include="..\AnimeStudio.Core\Vfs.AnimeStudio.Core.csproj" />
     <ProjectReference Include="..\Endfield.Extensions\Vfs.Endfield.Extensions.csproj" />
   </ItemGroup>
+  <ItemGroup Condition="Exists('..\..\artifacts\native\x64\acl_endfield.dll')">
+    <Content Include="..\..\artifacts\native\x64\acl_endfield.dll"
+             Link="x64\acl_endfield.dll"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

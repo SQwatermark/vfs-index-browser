@@ -214,9 +214,9 @@ python tools/select_shader_variants.py `
 - 当前预览已区分衣物 PBR 与面部/头发风格化渲染，并恢复衣物 Spec 通道、丝袜专用节点组和覆盖阴影的近似语义；Toon Ramp、眼睛高光/散射、头发高光、覆盖阴影逐通道乘算和丝袜定制 NDF 仍与游戏存在差异。游戏画面没有显眼描边，因此轮廓只保留为可选诊断效果，不作为默认还原目标。
 - Blender 后端已能按 `materialRole` 和 SDF 贴图身份选择面部、身体 Skin 与 Hair 路径，并读取真实 `_DiffRampMap`。主光与环境光已分离；默认主光 `(0, -1, 0)` 只是正面检查用的预览设置，不代表游戏运行时配置。
 - 当前 Cubemap 从 BC6H 解码为六面 LDR PNG，再投影为等距柱状 PNG；顺序和朝向已经真实样本验证，但 HDR 范围与 mip 采样尚未保留。Eye 和 OverlayShadow 仍无完整专用节点组；没有保存 `_SilkStockingsMask` 的旧材质只能使用丝袜节点组的默认通道值。
-- manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并按唯一子资源名和 PathID
-  解析 AnimeStudio 导出文件；ACL 2.1 压缩曲线可导出为紧凑 JSON，并已进入
-  独立模型动画文档和浏览器播放链路。
+- manifest 中的 AnimationClip 已能按逻辑路径定位到所属 Bundle，并由 VFS worker 按唯一
+  子资源名和 PathID 直接导出；ACL 2.1 压缩曲线可导出为紧凑 JSON，并已进入独立模型动画
+  文档和浏览器播放链路。服务不再扫描旧 CLI 的输出目录或按文件名猜选片段。
 - 当前浏览器可播放、暂停和拖动指定的单个动画。采样检查、Root Motion、浮点曲线、
   BlendShape、AnimatorController、运行时面部控制和物理骨骼尚未进入最终预览链路。
 - 当前只验证了一个角色展示 Prefab，仍需用更多角色、怪物和非角色 Prefab 验证协议边界。

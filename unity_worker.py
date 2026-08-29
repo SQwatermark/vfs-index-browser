@@ -424,6 +424,28 @@ class UnityWorkerClient:
             cancel_event=cancel_event,
         )
 
+    def export_animation_clip_json(
+        self,
+        *,
+        input_path: Path,
+        output_directory: Path,
+        path_id: int,
+        expected_name: str,
+        request_id: str,
+        cancel_event: object | None = None,
+    ) -> dict:
+        return self.request(
+            "exportAnimationClipJson",
+            {
+                "inputPath": str(input_path.resolve()),
+                "outputDirectory": str(output_directory.resolve()),
+                "pathId": path_id,
+                "expectedName": expected_name,
+            },
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def _run(
         self,
         command: Sequence[str],

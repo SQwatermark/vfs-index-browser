@@ -1,8 +1,8 @@
+import hashlib
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import server
@@ -12,10 +12,6 @@ class ManifestAnimationExportTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        self.cli = self.root / "AnimeStudio.CLI.exe"
-        self.cli.write_bytes(b"exe")
-        self.cli.with_suffix(".dll").write_bytes(b"cli")
-        (self.root / "AnimeStudio.dll").write_bytes(b"core")
         self.chunk = self.root / "source.chk"
         self.chunk.write_bytes(b"bundle")
         self.record = {
@@ -37,31 +33,64 @@ class ManifestAnimationExportTests(unittest.TestCase):
         self.handler.write_file_slice = write_file_slice
         self.calls = []
 
+        class FakeWorker:
+            def artifact_identity(inner_self):
+                return [{"path": "worker.exe", "size": 1, "mtimeNs": 2}]
+
+            def export_animation_clip_json(inner_self, **arguments):
+                self.calls.append(arguments)
+                relative_path = (
+                    "AnimationClip/CAB-test/"
+                    "Idle_Loop_p0000000000000011.animation.json"
+                )
+                payload = {
+                    "format": "AnimeStudioAnimationClip",
+                    "version": "1.1.0",
+                    "name": "Idle_Loop",
+                    "timelines": [],
+                    "curves": [],
+                }
+                content = json.dumps(payload).encode("utf-8")
+                target = arguments["output_directory"] / relative_path
+                target.parent.mkdir(parents=True)
+                target.write_bytes(content)
+                return {
+                    "artifactCount": 1,
+                    "artifacts": [{
+                        "relativePath": relative_path,
+                        "sourceFile": "CAB-test",
+                        "pathId": 17,
+                        "name": "Idle_Loop",
+                        "curveCount": 0,
+                        "timelineCount": 0,
+                        "duration": 0,
+                        "byteCount": len(content),
+                        "sha256": hashlib.sha256(content).hexdigest(),
+                    }],
+                }
+
+        self.worker = FakeWorker()
+        self.map_meta = {
+            "selectedRun": "asset-map-run",
+            "assetEntries": [{
+                "Name": "Idle_Loop",
+                "Container": "",
+                "Source": "record:42",
+                "PathID": 17,
+                "Type": "AnimationClip",
+            }],
+        }
+        self.handler.ensure_assetbundle_map = (
+            lambda _record, _chunk_path, emit_errors=False: self.map_meta
+        )
+
     def tearDown(self):
         self.temporary.cleanup()
-
-    def run_export(self, command, **_kwargs):
-        self.calls.append(command)
-        export_root = Path(command[2]) / "AnimationClip"
-        export_root.mkdir(parents=True)
-        payload = {
-            "format": "AnimeStudioAnimationClip",
-            "version": "1.0.0",
-            "name": "Idle_Loop",
-            "timelines": [],
-            "curves": [],
-        }
-        (export_root / "idle_loop.animation.json").write_text(
-            json.dumps(payload),
-            encoding="utf-8",
-        )
-        return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
     def test_exports_exact_clip_and_reuses_matching_cache(self):
         with (
             patch.object(server, "INTERNAL_CACHE_DIR", self.root / "cache"),
-            patch.object(server, "ANIMESTUDIO_CLI", self.cli),
-            patch.object(server.subprocess, "run", side_effect=self.run_export),
+            patch.object(server, "UNITY_WORKER", self.worker),
         ):
             first = self.handler.ensure_animation_clip_export(
                 self.record,
@@ -76,36 +105,30 @@ class ManifestAnimationExportTests(unittest.TestCase):
 
         self.assertEqual(first, second)
         self.assertEqual(1, len(self.calls))
-        self.assertNotIn("--names", self.calls[0])
-        self.assertIn("AnimationJSON", self.calls[0])
+        self.assertEqual(17, self.calls[0]["path_id"])
+        self.assertEqual("Idle_Loop", self.calls[0]["expected_name"])
         self.assertEqual("Idle_Loop", first[0]["name"])
-        self.assertEqual(
-            ["AnimeStudio.CLI.exe", "AnimeStudio.CLI.dll", "AnimeStudio.dll"],
-            [Path(item["path"]).name for item in first[2]["source"]["toolArtifacts"]],
-        )
+        self.assertEqual("asset-map-run", self.map_meta["selectedRun"])
+        self.assertIn("selectedRun", first[2])
+        self.assertEqual(17, first[2]["source"]["pathId"])
+        self.assertTrue(first[1].is_file())
 
-    def test_rejects_ambiguous_export(self):
-        def run_ambiguous(command, **_kwargs):
-            export_root = Path(command[2]) / "AnimationClip"
-            export_root.mkdir(parents=True)
-            for name in ("first", "second"):
-                (export_root / f"{name}.animation.json").write_text(
-                    json.dumps({"name": name}),
-                    encoding="utf-8",
-                )
-            return SimpleNamespace(returncode=0, stdout="ok", stderr="")
-
+    def test_rejects_missing_or_ambiguous_asset_map_identity(self):
+        self.map_meta["assetEntries"].append({
+            **self.map_meta["assetEntries"][0],
+            "PathID": 18,
+        })
         with (
             patch.object(server, "INTERNAL_CACHE_DIR", self.root / "cache"),
-            patch.object(server, "ANIMESTUDIO_CLI", self.cli),
-            patch.object(server.subprocess, "run", side_effect=run_ambiguous),
+            patch.object(server, "UNITY_WORKER", self.worker),
         ):
-            with self.assertRaisesRegex(RuntimeError, "0 match 'idle_loop'"):
+            with self.assertRaisesRegex(RuntimeError, "found 0 for 'idle_loop'"):
                 self.handler.ensure_animation_clip_export(
                     self.record,
                     self.chunk,
                     self.asset,
                 )
+        self.assertEqual([], self.calls)
 
 
 if __name__ == "__main__":

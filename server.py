@@ -82,7 +82,6 @@ from animestudio_animation import (
     MODEL_ANIMATION_CACHE_REVISION,
     attach_animation_clip,
     bind_animation_clip,
-    load_unique_animation_clip,
 )
 from skeletal_morph import (
     bake_morph_animation,
@@ -242,6 +241,7 @@ def build_health_document() -> dict:
         "exportIdentifiedTextures",
         "exportCubemapFaces",
         "exportBundlePreviewMedia",
+        "exportAnimationClipJson",
     ])
     return {
         "apiVersion": 1,
@@ -304,7 +304,7 @@ PROJECTILE_COMPONENT_EXPORT_VERSION = 1
 CUBEMAP_EXPORT_VERSION = 2
 MODEL_SNAPSHOT_VERSION = 32
 AVATAR_MODEL_SNAPSHOT_VERSION = 5
-ANIMATION_CLIP_EXPORT_VERSION = 4
+ANIMATION_CLIP_EXPORT_VERSION = 5
 # Increment when the GLB representation changes without changing ModelDocument.
 MODEL_GLB_VERSION = 4
 MODEL_BLEND_VERSION = 12
@@ -2989,111 +2989,88 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         return root, root / "runs", root / "run.json"
 
-    def animation_clip_export_paths(
-        self,
-        record: dict,
-        asset_index: int,
-    ) -> tuple[Path, Path, Path]:
-        root = (
-            INTERNAL_CACHE_DIR
-            / str(record["id"])
-            / "manifest-assets"
-            / str(asset_index)
-            / "animation"
-        )
-        return root / "source.ab", root / "exported", root / "meta.json"
-
     def ensure_animation_clip_export(
         self,
         record: dict,
         chunk_path: Path,
         asset: dict,
     ) -> tuple[dict, Path, dict]:
-        if not ANIMESTUDIO_CLI.exists():
-            raise FileNotFoundError(f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}")
-
-        source_path, export_root, meta_path = self.animation_clip_export_paths(
-            record,
-            int(asset["asset_index"]),
-        )
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "assetIndex": int(asset["asset_index"]),
-            "assetPath": str(asset["path"]),
-            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CLI),
-        }
-        if meta_path.is_file():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                target = export_root / str(meta.get("relativePath") or "")
-                if (
-                    meta.get("version") == ANIMATION_CLIP_EXPORT_VERSION
-                    and meta.get("source") == source_identity
-                    and target.is_file()
-                ):
-                    return json.loads(target.read_text(encoding="utf-8")), target, meta
-            except (OSError, ValueError):
-                pass
-
-        source_path.parent.mkdir(parents=True, exist_ok=True)
-        self.write_file_slice(record, chunk_path, source_path)
-        shutil.rmtree(export_root, ignore_errors=True)
-        export_root.mkdir(parents=True, exist_ok=True)
         animation_name = str(asset["path"]).rsplit("##", 1)[-1]
         # FBX 子资源直接使用 clip 名；独立 .anim 资源则需要从逻辑路径取文件名。
         animation_name = animation_name.replace("\\", "/").rsplit("/", 1)[-1]
         if animation_name.casefold().endswith(".anim"):
             animation_name = animation_name[:-5]
-        command = [
-            str(ANIMESTUDIO_CLI),
-            str(source_path),
-            str(export_root),
-            "--game",
-            "ArknightsEndfield",
-            "--types",
-            "AnimationClip",
-            "--export_type",
-            "AnimationJSON",
-            "--group_assets",
-            "ByType",
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
+
+        map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=False)
+        if map_meta is None:
+            raise RuntimeError("AnimationClip export requires a valid AssetMap")
+        matches = [
+            entry
+            for entry in manifest_asset_entries(map_meta, str(asset["path"]))
+            if str(entry.get("Type") or "") == "AnimationClip"
+            and str(entry.get("Name") or "").casefold() == animation_name.casefold()
         ]
-        completed = subprocess.run(
-            command,
-            cwd=str(ANIMESTUDIO_CLI.parent),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=300,
-            check=False,
-        )
-        if completed.returncode != 0:
+        if len(matches) != 1:
             raise RuntimeError(
-                f"AnimeStudio animation export failed: "
-                f"{completed.stderr.strip() or completed.stdout.strip()}"
+                "AnimationClip AssetMap identity must match exactly once, "
+                f"found {len(matches)} for {animation_name!r}"
             )
-        clip, target = load_unique_animation_clip(export_root, animation_name)
-        meta = {
-            "version": ANIMATION_CLIP_EXPORT_VERSION,
-            "source": source_identity,
-            "relativePath": target.relative_to(export_root).as_posix(),
-            "command": command,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "builtAtEpoch": int(time.time()),
-        }
-        meta_path.write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        entry = matches[0]
+        path_id = int(entry["PathID"])
+        expected_name = str(entry["Name"])
+
+        def validate_animation_export(
+            _export_root: Path,
+            artifact_paths: list[Path],
+            result: dict,
+        ) -> None:
+            if len(artifact_paths) != 1:
+                raise RuntimeError(
+                    f"expected one AnimationClip artifact, found {len(artifact_paths)}"
+                )
+            artifacts = result.get("artifacts") or []
+            if len(artifacts) != 1:
+                raise RuntimeError("AnimationClip worker result is missing its artifact")
+            artifact = artifacts[0]
+            try:
+                artifact_path_id = int(artifact.get("pathId"))
+            except (TypeError, ValueError) as error:
+                raise RuntimeError(
+                    "AnimationClip worker returned an invalid PathID"
+                ) from error
+            if artifact_path_id != path_id or str(artifact.get("name") or "") != expected_name:
+                raise RuntimeError("AnimationClip worker returned a different asset identity")
+            document = json.loads(artifact_paths[0].read_text(encoding="utf-8-sig"))
+            if (
+                document.get("format") != "AnimeStudioAnimationClip"
+                or document.get("version") != "1.1.0"
+                or document.get("name") != expected_name
+            ):
+                raise RuntimeError("AnimationClip worker returned an incompatible document")
+
+        export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
+            record,
+            chunk_path,
+            asset,
+            export_name="animation",
+            version=ANIMATION_CLIP_EXPORT_VERSION,
+            identity_extra={"pathId": path_id, "animationName": expected_name},
+            invoke=lambda source, output, _container, request_id, cancel: (
+                UNITY_WORKER.export_animation_clip_json(
+                    input_path=source,
+                    output_directory=output,
+                    path_id=path_id,
+                    expected_name=expected_name,
+                    request_id=request_id,
+                    cancel_event=cancel,
+                )
+            ),
+            validate=validate_animation_export,
+            allowed_suffixes=None,
         )
+        target = artifact_paths[0]
+        clip = json.loads(target.read_text(encoding="utf-8-sig"))
+        meta["relativePath"] = target.relative_to(export_root).as_posix()
         return clip, target, meta
 
     def ensure_model_hierarchy(
@@ -3634,11 +3611,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
         validate: Callable[[Path, list[Path], dict], None] | None = None,
         cancel_event: object | None = None,
-        allowed_suffixes: frozenset[str] = frozenset({".asset", ".prefab"}),
+        allowed_suffixes: frozenset[str] | None = frozenset({".asset", ".prefab"}),
     ) -> tuple[Path, list[Path], dict]:
         """执行 worker 操作，完整校验全部产物后原子发布缓存指针。"""
 
-        if file_suffix(str(asset["path"])) not in allowed_suffixes:
+        if (
+            allowed_suffixes is not None
+            and file_suffix(str(asset["path"])) not in allowed_suffixes
+        ):
             raise ValueError("Unity worker export does not support this asset suffix")
 
         runs_root, meta_path = self.manifest_unity_worker_export_paths(

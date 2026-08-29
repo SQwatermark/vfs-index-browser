@@ -365,6 +365,37 @@ class UnityWorkerClientTests(unittest.TestCase):
         )
         self.assertTrue(Path(observed["arguments"]["outputDirectory"]).is_absolute())
 
+    def test_export_animation_clip_json_uses_exact_identity(self):
+        observed = {}
+
+        def run(command, **kwargs):
+            request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
+            observed.update(request)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "requestId": request["requestId"],
+                    "ok": True,
+                    "result": {"artifactCount": 1, "artifacts": []},
+                }),
+                "",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            UnityWorkerClient(["fake-worker"], runner=run).export_animation_clip_json(
+                input_path=root / "source.ab",
+                output_directory=root / "animation",
+                path_id=-17,
+                expected_name="idle_loop",
+                request_id="animation-1",
+            )
+
+        self.assertEqual("exportAnimationClipJson", observed["operation"])
+        self.assertEqual(-17, observed["arguments"]["pathId"])
+        self.assertEqual("idle_loop", observed["arguments"]["expectedName"])
+
     def test_translates_structured_worker_error(self):
         def run(command, **kwargs):
             return subprocess.CompletedProcess(

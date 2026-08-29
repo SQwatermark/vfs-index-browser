@@ -5,8 +5,8 @@ AnimeStudio CLI 的兼容层；Python 服务只能通过这里定义的版本化
 
 当前已实现 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap` 和
-`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces` 和
-`exportBundlePreviewMedia`。
+`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures`、`exportCubemapFaces`、
+`exportBundlePreviewMedia` 和 `exportAnimationClipJson`。
 能力列表只声明已经接入并通过契约测试及真实样本验证的操作，不得为了兼容旧调用而提前
 声明尚未实现的能力。
 
@@ -14,6 +14,7 @@ AnimeStudio CLI 的兼容层；Python 服务只能通过这里定义的版本化
 
 ```powershell
 ./Initialize.ps1
+./tools/Build-EndfieldAcl.ps1
 dotnet build Vfs.UnityWorker.slnx -c Release
 dotnet test Vfs.UnityWorker.slnx -c Release --no-build
 dotnet run --project src/Vfs.UnityWorker -c Release --no-build -- handshake
@@ -24,18 +25,21 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 源码目录或 `data/research` 下的忽略文件。
 
 初始化会按 `dependencies.lock.json` 下载并校验明确开源的第三方源码，保存在被 Git 忽略的
-`.deps/`。服务运行时不会隐式联网。VFS 和定制 AnimeStudio 源码仍随仓库保存；发布过程
-负责把运行所需二进制及许可证装入发布包。
+`.deps/`。`Build-EndfieldAcl.ps1` 只从该锁定依赖目录构建 Endfield ACL 原生桥，输出到被
+Git 忽略的 `artifacts/native/x64/acl_endfield.dll`；worker 构建会将已有的 DLL 复制进发布
+输出。服务运行时不会隐式联网。VFS 和定制 AnimeStudio 源码仍随仓库保存；发布过程负责
+把运行所需二进制及许可证装入发布包。
 
 ## 当前边界
 
 - 协议所有权：VFS；
 - 进程边界：单次 worker 进程，后续按性能证据决定是否改为常驻；
 - 权威 AnimeStudio 来源提交：`8cdec963c4e187ea0a4a339b8969844a9574638b`；
-- worker 版本：`0.11.0`；
+- worker 版本：`0.12.0`；
 - 已实现能力：`handshake`、`exportMonoBehaviourRaw`、`exportMonoBehaviourTypeTreeDump`、
   `decodeProjectileComponent`、`buildAssetMap`、`buildCabMap`、`exportObjectSnapshots`、
-  `exportIdentifiedTextures`、`exportCubemapFaces`、`exportBundlePreviewMedia`；
+  `exportIdentifiedTextures`、`exportCubemapFaces`、`exportBundlePreviewMedia`、
+  `exportAnimationClipJson`；
 - Raw 导出要求本次请求独占的空输出目录，成功响应返回 PathID、container、字节长度和
   SHA-256，不会覆盖旧模拟/导出结果；
 - TypeTree Dump 只读取对象内嵌 TypeTree，并同时返回 `serializedByteCount`、
@@ -68,12 +72,22 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
 - `exportBundlePreviewMedia` 只接受固定白名单中的 `Texture2D`、`Sprite`、`TextAsset` 和 `VideoClip`，
   不转发任意 `Convert` 类型。每个文件使用 `类型/source file/名称_p<16 位 PathID>` 保持身份，并返回 source file、
   container、长度、SHA-256 与结构化跳过原因；AudioClip、AnimationClip 保留独立边界；
+- `exportAnimationClipJson` 只接受 AssetMap 已解析出的精确 `PathID + expectedName`，输出
+  `AnimeStudioAnimationClip/1.1.0` 和曲线、时间轴、Humanoid/Endfield ACL 元数据；不扫描
+  类型目录，也不按导出文件名猜资源。Euler 与 PPtr 曲线仍以明确错误拒绝；
 - 旧 CLI 的通用 `JSON` 只序列化 MonoBehaviour 外壳，不是 managed-reference 领域解码。
   Projectile 的聚焦解码器主体存在于被忽略的旧研究副本提交 `03336c4`，其上另有 85 行
   未提交修正；当前已迁移可由三份真实样本验证的结构，并保留未理解尾部。对象快照 worker
   已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；Bundle
-  预览的 Texture2D、Sprite、TextAsset、VideoClip 已接入独占 run。AudioClip、AnimationClip
-  与动画等入口仍待迁移，不能据此宣称旧 CLI 已无调用者。
+  预览的 Texture2D、Sprite、TextAsset、VideoClip 已接入独占 run；模型动画所需的
+  AnimationJSON 也已接入精确身份的独占 run。通用浏览的 AnimationClip Convert 与
+  AudioClip 仍保留旧边界，不能据此宣称旧 CLI 已无调用者。
+
+AnimationJSON 的真实等价证据包括：未压缩 `Recorded (16)` 输出 4,751 字节、SHA-256
+`ccaf4d97bb11a38083ad86e8662f898f373b05f81c025c05faf0382d8406f479`；Endfield ACL 压缩的
+`A_actor_pelica_idle_loop` 输出 696 条曲线、3,294,623 字节、SHA-256
+`5ae4a043bbceb33655c336605c602448d5ed1d457a5c8613cc857fffbf9d82db`。两份均与旧生产
+AnimationJSON 逐字节一致。
 
 真实样本边界回归示例：
 

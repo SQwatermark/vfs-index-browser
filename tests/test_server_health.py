@@ -34,6 +34,7 @@ class ServerHealthTests(unittest.TestCase):
                 "exportIdentifiedTextures",
                 "exportCubemapFaces",
                 "exportBundlePreviewMedia",
+                "exportAnimationClipJson",
             ],
             worker.required_capabilities,
         )

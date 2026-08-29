@@ -13,7 +13,7 @@ public static class WorkerProtocol
 {
     public const string ProtocolName = "vfs-unity-worker";
     public const string ProtocolVersion = "1.0.0";
-    public const string WorkerVersion = "0.11.0";
+    public const string WorkerVersion = "0.12.0";
     public const string AnimeStudioUpstreamCommit =
         "8cdec963c4e187ea0a4a339b8969844a9574638b";
 
@@ -46,6 +46,7 @@ public static class WorkerProtocol
                     "exportIdentifiedTextures",
                     "exportCubemapFaces",
                     "exportBundlePreviewMedia",
+                    "exportAnimationClipJson",
                 ]));
         }
 
@@ -89,6 +90,7 @@ public static class WorkerProtocol
                 "exportIdentifiedTextures" => HandleIdentifiedTextureExport(request),
                 "exportCubemapFaces" => HandleCubemapFaceExport(request),
                 "exportBundlePreviewMedia" => HandleBundlePreviewMediaExport(request),
+                "exportAnimationClipJson" => HandleAnimationClipJsonExport(request),
                 _ => WorkerResponse.Failure(new WorkerError(
                     "unknown_operation",
                     $"未知的 worker 操作：{request.Operation}",
@@ -195,6 +197,14 @@ public static class WorkerProtocol
         var arguments = request.Arguments.Deserialize<BundlePreviewMediaExportRequest>(JsonOptions)
             ?? throw new JsonException("exportBundlePreviewMedia 缺少 arguments。");
         var result = BundlePreviewMediaExporter.Export(arguments);
+        return WorkerResponse.Success(result, request.RequestId);
+    }
+
+    private static WorkerResponse HandleAnimationClipJsonExport(WorkerRequest request)
+    {
+        var arguments = request.Arguments.Deserialize<AnimationClipJsonExportRequest>(JsonOptions)
+            ?? throw new JsonException("exportAnimationClipJson 缺少 arguments。");
+        var result = AnimationClipJsonExporter.Export(arguments);
         return WorkerResponse.Success(result, request.RequestId);
     }
 }
