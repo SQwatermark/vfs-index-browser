@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from model_run_store import ModelRunStore, resolve_published_model_run
 
@@ -80,3 +81,57 @@ class ModelRunStoreTests(unittest.TestCase):
         incomplete.mkdir()
         self.assertIsNone(resolve_published_model_run(cache, "../outside"))
         self.assertIsNone(resolve_published_model_run(cache, "incomplete"))
+
+    def test_publish_writes_completion_before_atomic_pointer(self):
+        cache, runs, pointer = self.store.cache_paths(7, 11)
+        run = runs / "next"
+        meta = {"version": 3, "source": {"id": 7}, "selectedRun": "next"}
+        observed = []
+        model_path = self.store.publish(
+            cache,
+            pointer,
+            run,
+            document={"buffers": [], "images": []},
+            meta=meta,
+            geometry=b"",
+            geometry_required=False,
+            before_pointer=lambda: observed.append((run / "run.json").is_file()),
+        )
+        self.assertEqual([True], observed)
+        self.assertTrue(model_path.is_file())
+        self.assertFalse((run / "geometry.bin").exists())
+        self.assertEqual(run.resolve(), resolve_published_model_run(cache))
+
+    def test_failed_pointer_replace_preserves_old_pointer_and_cleans_temporary(self):
+        cache, _runs, pointer = self.store.cache_paths(7, 11)
+        cache.mkdir(parents=True)
+        pointer.write_bytes(b"old-pointer")
+        with (
+            patch("model_run_store.os.replace", side_effect=OSError("replace failed")),
+            self.assertRaisesRegex(OSError, "replace failed"),
+        ):
+            self.store.publish(
+                cache,
+                pointer,
+                cache / "runs" / "next",
+                document={},
+                meta={"selectedRun": "next"},
+                geometry=b"",
+                geometry_required=False,
+            )
+        self.assertEqual(b"old-pointer", pointer.read_bytes())
+        self.assertEqual([], list(cache.glob(".run.json.*.tmp")))
+
+    def test_publish_rejects_mismatched_run_identity(self):
+        cache, runs, pointer = self.store.cache_paths(7, 11)
+        with self.assertRaisesRegex(ValueError, "target is inconsistent"):
+            self.store.publish(
+                cache,
+                pointer,
+                runs / "actual",
+                document={},
+                meta={"selectedRun": "different"},
+                geometry=b"",
+                geometry_required=False,
+            )
+        self.assertFalse((runs / "actual").exists())

@@ -722,4 +722,5 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `model_run_store.py`。两条模型管线现在统一验证版本、完整 source identity、ModelDocument、
   geometry 和声明过的 texture 目录；Avatar 仍保持 geometry 必需，普通模型仅在声明 buffer
   时要求。合成回归覆盖路径逃逸、未完成 run、来源变化、缺失 geometry/texture 和无效文档。
-  Worker 构建、ModelDocument 组装与发布写入仍是下一阶段拆分边界，P4 总门禁保持未完成。
+  模型产物和完成标记写入、活动指针原子切换也已由 store 统一，替换失败会清理临时指针并
+  保留旧指针。Worker 构建与 ModelDocument 组装仍是下一阶段拆分边界，P4 总门禁保持未完成。

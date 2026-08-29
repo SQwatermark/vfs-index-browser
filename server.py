@@ -2869,8 +2869,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         input_root.mkdir(parents=True, exist_ok=True)
         source_path = input_root / "entry.ab"
         object_root = run_root / "objects"
-        model_path = run_root / "model.json"
-        geometry_path = run_root / "geometry.bin"
         texture_root = run_root / "textures"
         self.write_file_slice(record, chunk_path, source_path)
         for dependency, dependency_chunk in dependency_sources:
@@ -3029,24 +3027,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if validation_errors:
             run_meta["validationErrors"] = validation_errors
             raise RuntimeError("generated ModelDocument failed semantic validation")
-        model_path.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        if geometry:
-            geometry_path.write_bytes(geometry)
-        elif geometry_path.exists():
-            geometry_path.unlink()
-        (run_root / "run.json").write_text(
-            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        self.model_run_store().publish(
+            cache_root,
+            run_path,
+            run_root,
+            document=document,
+            meta=run_meta,
+            geometry=geometry,
+            geometry_required=False,
+            before_pointer=(
+                lambda: progress({"stage": "publish", "completed": 4, "total": 4})
+                if progress is not None
+                else None
+            ),
         )
-        cache_root.mkdir(parents=True, exist_ok=True)
-        temporary_run_path = run_path.with_name(f".{run_path.name}.{uuid.uuid4().hex}.tmp")
-        temporary_run_path.write_text(
-            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        if progress is not None:
-            progress({"stage": "publish", "completed": 4, "total": 4})
-        os.replace(temporary_run_path, run_path)
         return document, run_meta
 
     def load_avatar_mesh_plan(
@@ -3186,8 +3180,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         run_root = runs_root / request_id
         input_root = run_root / "inputs"
         object_root = run_root / "objects"
-        model_path = run_root / "model.json"
-        geometry_path = run_root / "geometry.bin"
         texture_root = run_root / "textures"
         input_root.mkdir(parents=True, exist_ok=True)
         object_root.mkdir(parents=True, exist_ok=True)
@@ -3307,25 +3299,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "steps": completed_steps,
             "builtAtEpoch": int(time.time()),
         }
-        model_path.parent.mkdir(parents=True, exist_ok=True)
-        model_path.write_text(
-            json.dumps(document, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        model_path = self.model_run_store().publish(
+            cache_root,
+            run_path,
+            run_root,
+            document=document,
+            meta=run_meta,
+            geometry=geometry,
+            geometry_required=True,
+            before_pointer=(
+                lambda: progress({"stage": "publish", "completed": 5, "total": 5})
+                if progress is not None
+                else None
+            ),
         )
-        geometry_path.write_bytes(geometry)
-        (run_root / "run.json").write_text(
-            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        cache_root.mkdir(parents=True, exist_ok=True)
-        temporary_run_path = run_path.with_name(f".{run_path.name}.{uuid.uuid4().hex}.tmp")
-        temporary_run_path.write_text(
-            json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        if progress is not None:
-            progress({"stage": "publish", "completed": 5, "total": 5})
-        os.replace(temporary_run_path, run_path)
         return document, run_meta, model_path
 
     def manifest_worker_service(self) -> ManifestWorkerService:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Callable
 from urllib.parse import unquote
@@ -103,3 +105,52 @@ class ModelRunStore:
             return document, meta, model_path
         except (OSError, json.JSONDecodeError, TypeError):
             return None
+
+    def publish(
+        self,
+        cache_root: Path,
+        pointer_path: Path,
+        run_root: Path,
+        *,
+        document: dict,
+        meta: dict,
+        geometry: bytes,
+        geometry_required: bool,
+        before_pointer: Callable[[], None] | None = None,
+    ) -> Path:
+        selected_run = str(meta.get("selectedRun") or "")
+        if (
+            pointer_path.resolve() != (cache_root / "run.json").resolve()
+            or run_root.parent.resolve() != (cache_root / "runs").resolve()
+            or not selected_run
+            or selected_run != run_root.name
+        ):
+            raise ValueError("model run publication target is inconsistent")
+        model_path = run_root / "model.json"
+        geometry_path = run_root / "geometry.bin"
+        model_path.parent.mkdir(parents=True, exist_ok=True)
+        model_path.write_text(
+            json.dumps(document, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        if geometry or geometry_required:
+            geometry_path.write_bytes(geometry)
+        else:
+            geometry_path.unlink(missing_ok=True)
+        (run_root / "run.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        cache_root.mkdir(parents=True, exist_ok=True)
+        temporary = pointer_path.with_name(f".{pointer_path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            if before_pointer is not None:
+                before_pointer()
+            os.replace(temporary, pointer_path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return model_path
