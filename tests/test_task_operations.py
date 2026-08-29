@@ -65,6 +65,13 @@ class BackgroundTaskOperationsTests(unittest.TestCase):
             ["projectile", "model", "modelBlend", "modelAnimation"],
             [value[0] for value in tasks.observed],
         )
+        self.assertEqual(
+            [
+                {"stage": "decode", "completed": 0, "total": 1},
+                {"stage": "ready", "completed": 1, "total": 1},
+            ],
+            tasks.observed[0][2],
+        )
         self.assertEqual({"stage": "model"}, tasks.observed[1][2][0])
         self.assertEqual({"stage": "blend"}, tasks.observed[2][2][0])
         self.assertEqual({"stage": "animation"}, tasks.observed[3][2][0])

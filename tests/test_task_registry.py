@@ -92,6 +92,29 @@ class BackgroundTaskRegistryTests(unittest.TestCase):
             self.assertEqual("cancelled", completed["state"])
             self.assertFalse((root / created["taskId"] / "result.json").exists())
 
+    def test_failure_preserves_domain_code_without_publishing_a_result(self):
+        class DomainError(RuntimeError):
+            code = "fixture_decode_failed"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = BackgroundTaskRegistry(lambda: root)
+
+            def fail(_cancel):
+                raise DomainError("fixture is invalid")
+
+            created = registry.submit("sample", fail)
+            completed = self.wait_terminal(registry, created["taskId"])
+
+            self.assertEqual("failed", completed["state"])
+            self.assertEqual(
+                {"code": "fixture_decode_failed", "message": "fixture is invalid"},
+                completed["error"],
+            )
+            task_root = root / created["taskId"]
+            self.assertFalse((task_root / "result.json").exists())
+            self.assertFalse((task_root / ".result.json.tmp").exists())
+
     def test_non_terminal_task_from_previous_process_becomes_interrupted(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

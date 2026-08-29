@@ -56,7 +56,7 @@ class ServerTaskTests(unittest.TestCase):
         service_instances = []
 
         class FakeTasks:
-            def submit(self, kind, operation):
+            def submit_with_progress(self, kind, operation):
                 operations.append((kind, operation))
                 return {"taskId": "a" * 32, "kind": kind, "state": "pending"}
 
@@ -76,7 +76,8 @@ class ServerTaskTests(unittest.TestCase):
             patch.object(server.BrowserHandler, "build_projectile_document", build),
         ):
             handler.handle_start_projectile_task()
-            result = operations[0][1](threading.Event())
+            progress = []
+            result = operations[0][1](threading.Event(), progress.append)
 
         self.assertEqual("projectile", operations[0][0])
         self.assertIsNot(handler, service_instances[0])
@@ -84,6 +85,13 @@ class ServerTaskTests(unittest.TestCase):
         self.assertEqual(
             {"projectileId": "projectile_sample", "cancelEvent": True},
             result,
+        )
+        self.assertEqual(
+            [
+                {"stage": "decode", "completed": 0, "total": 1},
+                {"stage": "ready", "completed": 1, "total": 1},
+            ],
+            progress,
         )
         self.assertEqual(202, responses[0][1]["status"])
         self.assertEqual("no-store", responses[0][1]["cache_control"])

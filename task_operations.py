@@ -55,12 +55,18 @@ class BackgroundTaskOperations:
 
     def start_projectile(self, projectile_id: str) -> dict:
         service = self._service_factory()
-        return self._tasks.submit(
-            "projectile",
-            lambda cancel_event: service.build_projectile_document(
+        def build(cancel_event, report_progress):
+            report_progress({"stage": "decode", "completed": 0, "total": 1})
+            result = service.build_projectile_document(
                 projectile_id,
                 cancel_event=cancel_event,
-            ),
+            )
+            report_progress({"stage": "ready", "completed": 1, "total": 1})
+            return result
+
+        return self._tasks.submit_with_progress(
+            "projectile",
+            build,
         )
 
     def start_model(
