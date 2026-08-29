@@ -934,3 +934,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `wfile.write` 现在仅存在于 JSON API 序列化和统一 raw sender 两个传输出口。真实重启后
   AudioDialog TableCfg 仍为 14,671,090 字节及原文件名，首页仍为 3,626 字节 `text/html`、
   `no-cache` 且无 Content-Disposition。
+- AvatarMesh resource-plan 的最终文档已抽到 `avatar_resource_plan_service.py`：服务统一配置摘要、
+  完整资源闭包以及 dump/StringPathHash 的最小公开 run 身份，不触发 Worker 或解析 Bundle。
+  Handler 仅保留 AvatarMesh 类型门禁、LOD、计划加载和 HTTP 错误映射。真实 Adaxier LOD0 重启后
+  仍为 1 个 slot、各 LOD `9/9/7/7` 个 mesh、32 个引用、0 个未解析引用，plan/run 字段完全一致。

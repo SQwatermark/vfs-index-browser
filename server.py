@@ -90,6 +90,7 @@ from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_fi
 from internal_directory_service import InternalDirectoryService
 from internal_file_preview_service import InternalFilePreviewService
 from raw_file_service import RawFileResponse, RawFileService
+from avatar_resource_plan_service import AvatarResourcePlanService
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -119,7 +120,6 @@ from npc_avatar_config import (
     attach_resolved_paths,
     is_avatar_mesh_asset_path,
     parse_avatar_mesh,
-    summarize_avatar_mesh,
 )
 from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
@@ -3309,22 +3309,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
         self.send_json(
-            {
-                "kind": "avatarMeshResourcePlan",
-                "asset": asset,
-                "summary": summarize_avatar_mesh(avatar_mesh),
-                "avatarMesh": avatar_mesh,
-                "plan": plan,
-                "run": {
-                    "dump": {
-                        "builtAtEpoch": plan_meta["dump"].get("builtAtEpoch"),
-                        "toolArtifacts": plan_meta["dump"].get("source", {}).get(
-                            "toolArtifacts", []
-                        ),
-                    },
-                    "stringPathHash": plan_meta["stringPathHash"],
-                },
-            },
+            AvatarResourcePlanService().build(
+                asset,
+                avatar_mesh,
+                plan,
+                plan_meta,
+            ),
             compress=True,
         )
 

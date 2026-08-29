@@ -134,6 +134,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `ordinary_model_build_service.py` | 普通模型缓存、Worker、文档和发布的应用层协调 |
 | `avatar_model_document_service.py` | Avatar 资源解释、纹理名称回绑与静态 ModelDocument 组装 |
 | `avatar_model_build_service.py` | Avatar 计划、依赖、缓存、Worker、文档和发布的应用层协调 |
+| `avatar_resource_plan_service.py` | AvatarMesh 资源计划、摘要与公开 run 身份文档组装 |
 | `model_glb_service.py` | 已发布模型输入校验、材质计划与基础/动画 GLB 缓存派生 |
 | `model_animation_service.py` | 动画请求身份、逐片导出/绑定、诊断清单与动画 GLB 协调 |
 | `model_blend_service.py` | 基础/动画 GLB 选择、Blender 准备进度与 artifact 结果协调 |
