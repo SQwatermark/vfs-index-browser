@@ -12,7 +12,6 @@ import json
 import mimetypes
 import os
 import re
-import shutil
 import sqlite3
 import struct
 import subprocess
@@ -112,6 +111,7 @@ from animestudio_model import (
 )
 from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
+from model_worker_service import ModelBundleInput, ModelWorkerService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -150,7 +150,7 @@ from task_operations import BackgroundTaskOperations
 from runtime_config import RuntimeConfig, parse_port
 from service_logging import LOGGER, configure_service_logging
 from tool_registry import ToolRegistry
-from worker_run_service import WorkerRunService, validate_worker_artifacts
+from worker_run_service import WorkerRunService
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -2775,6 +2775,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def model_run_store(self) -> ModelRunStore:
         return ModelRunStore(INTERNAL_CACHE_DIR, validate_model_document)
 
+    def model_worker_service(self) -> ModelWorkerService:
+        return ModelWorkerService(UNITY_WORKER, self.write_file_slice)
+
     def avatar_model_snapshot_cache_paths(
         self,
         record: dict,
@@ -2865,56 +2868,49 @@ class BrowserHandler(BaseHTTPRequestHandler):
             f"{time.time_ns()}-{uuid.uuid4().hex}"
         )
         run_root = runs_root / request_id
-        input_root = run_root / "inputs"
-        input_root.mkdir(parents=True, exist_ok=True)
-        source_path = input_root / "entry.ab"
         object_root = run_root / "objects"
         texture_root = run_root / "textures"
-        self.write_file_slice(record, chunk_path, source_path)
-        for dependency, dependency_chunk in dependency_sources:
-            dependency_path = input_root / f"dependency-{int(dependency['id'])}.ab"
-            self.write_file_slice(dependency, dependency_chunk, dependency_path)
-        object_root.mkdir(parents=True, exist_ok=True)
-        staged_inputs = [
-            {"inputId": "manifest:primary", "inputPath": str(source_path)},
+        worker_service = self.model_worker_service()
+        staged_inputs = worker_service.stage_inputs(run_root, [
+            ModelBundleInput("manifest:primary", record, chunk_path, "entry.ab"),
             *[
-                {
-                    "inputId": f"record:{int(dependency['id'])}",
-                    "inputPath": str(input_root / f"dependency-{int(dependency['id'])}.ab"),
-                }
-                for dependency, _dependency_chunk in dependency_sources
+                ModelBundleInput(
+                    f"record:{int(dependency['id'])}",
+                    dependency,
+                    dependency_chunk,
+                    f"dependency-{int(dependency['id'])}.ab",
+                )
+                for dependency, dependency_chunk in dependency_sources
             ],
-        ]
+        ])
         cab_root = run_root / "cab-map"
         if progress is not None:
             progress({"stage": "cabMap", "completed": 1, "total": 4})
-        cab_result = UNITY_WORKER.build_cab_map(
-            inputs=staged_inputs,
-            output_directory=cab_root,
-            request_id=(
+        cab_result = worker_service.build_cab_map(
+            staged_inputs,
+            cab_root,
+            (
                 f"model-cab-{int(record['id'])}-{int(asset['asset_index'])}-"
                 f"{time.time_ns()}"
             ),
             cancel_event=cancel_event,
         )
-        validate_worker_artifacts(cab_root, cab_result)
         if progress is not None:
             progress({"stage": "objects", "completed": 2, "total": 4})
-        object_result = UNITY_WORKER.export_object_snapshots(
-            inputs=staged_inputs,
-            cab_map_path=cab_root / "cab-map.json",
+        object_result = worker_service.export_objects(
+            staged_inputs,
+            cab_root / "cab-map.json",
+            object_root,
+            (
+                f"model-objects-{int(record['id'])}-{int(asset['asset_index'])}-"
+                f"{time.time_ns()}"
+            ),
             primary_input_id="manifest:primary",
             selection_input_ids=[value["inputId"] for value in staged_inputs],
             included_types=MODEL_SNAPSHOT_TYPES,
             containers=[],
-            output_directory=object_root,
-            request_id=(
-                f"model-objects-{int(record['id'])}-{int(asset['asset_index'])}-"
-                f"{time.time_ns()}"
-            ),
             cancel_event=cancel_event,
         )
-        validate_worker_artifacts(object_root, object_result)
         completed_steps = [
             {"name": "buildCABMap", "workerResult": cab_result},
             {"name": "exportObjectSnapshots", "workerResult": object_result},
@@ -2963,23 +2959,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if progress is not None:
             progress({"stage": "textures", "completed": 3, "total": 4})
         if textures:
-            shutil.rmtree(texture_root, ignore_errors=True)
-            texture_result = UNITY_WORKER.export_identified_textures(
-                inputs=staged_inputs,
-                cab_map_path=cab_root / "cab-map.json",
+            texture_result = worker_service.export_textures(
+                staged_inputs,
+                cab_root / "cab-map.json",
+                texture_root,
+                (
+                    f"model-textures-{int(record['id'])}-{int(asset['asset_index'])}-"
+                    f"{time.time_ns()}"
+                ),
                 primary_input_id="manifest:primary",
                 selections=[
                     {"sourceFile": identity.source_file, "pathId": identity.path_id}
                     for identity in textures
                 ],
-                output_directory=texture_root,
-                request_id=(
-                    f"model-textures-{int(record['id'])}-{int(asset['asset_index'])}-"
-                    f"{time.time_ns()}"
-                ),
                 cancel_event=cancel_event,
             )
-            validate_worker_artifacts(texture_root, texture_result)
             completed_steps.append(
                 {
                     "name": "exportIdentifiedTextures",
@@ -3178,58 +3172,49 @@ class BrowserHandler(BaseHTTPRequestHandler):
             f"{time.time_ns()}-{uuid.uuid4().hex}"
         )
         run_root = runs_root / request_id
-        input_root = run_root / "inputs"
         object_root = run_root / "objects"
         texture_root = run_root / "textures"
-        input_root.mkdir(parents=True, exist_ok=True)
-        object_root.mkdir(parents=True, exist_ok=True)
-        for record, chunk in bundle_sources:
-            self.write_file_slice(
+        if not bundle_sources:
+            raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
+        worker_service = self.model_worker_service()
+        staged_inputs = worker_service.stage_inputs(run_root, [
+            ModelBundleInput(
+                f"record:{int(record['id'])}",
                 record,
                 chunk,
-                input_root / f"bundle-{int(record['id'])}.ab",
+                f"bundle-{int(record['id'])}.ab",
             )
-
-        staged_inputs = [
-            {
-                "inputId": f"record:{int(record['id'])}",
-                "inputPath": str(input_root / f"bundle-{int(record['id'])}.ab"),
-            }
-            for record, _chunk in bundle_sources
-        ]
-        if not staged_inputs:
-            raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
+            for record, chunk in bundle_sources
+        ])
         primary_input_id = staged_inputs[0]["inputId"]
         cab_root = run_root / "cab-map"
         if progress is not None:
             progress({"stage": "cabMap", "completed": 2, "total": 5})
-        cab_result = UNITY_WORKER.build_cab_map(
-            inputs=staged_inputs,
-            output_directory=cab_root,
-            request_id=(
+        cab_result = worker_service.build_cab_map(
+            staged_inputs,
+            cab_root,
+            (
                 f"avatar-cab-{int(bundle_record['id'])}-"
                 f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
             ),
             cancel_event=cancel_event,
         )
-        validate_worker_artifacts(cab_root, cab_result)
         if progress is not None:
             progress({"stage": "objects", "completed": 3, "total": 5})
-        object_result = UNITY_WORKER.export_object_snapshots(
-            inputs=staged_inputs,
-            cab_map_path=cab_root / "cab-map.json",
+        object_result = worker_service.export_objects(
+            staged_inputs,
+            cab_root / "cab-map.json",
+            object_root,
+            (
+                f"avatar-objects-{int(bundle_record['id'])}-"
+                f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
+            ),
             primary_input_id=primary_input_id,
             selection_input_ids=[value["inputId"] for value in staged_inputs],
             included_types=["Mesh", "Material", "Avatar"],
             containers=selected_container_paths(plan),
-            output_directory=object_root,
-            request_id=(
-                f"avatar-objects-{int(bundle_record['id'])}-"
-                f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
-            ),
             cancel_event=cancel_event,
         )
-        validate_worker_artifacts(object_root, object_result)
         completed_steps = [
             {"name": "buildCABMap", "workerResult": cab_result},
             {"name": "exportObjectSnapshots", "workerResult": object_result},
@@ -3241,19 +3226,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if progress is not None:
             progress({"stage": "textures", "completed": 4, "total": 5})
         if texture_selections:
-            texture_result = UNITY_WORKER.export_identified_textures(
-                inputs=staged_inputs,
-                cab_map_path=cab_root / "cab-map.json",
-                primary_input_id=primary_input_id,
-                selections=texture_selections,
-                output_directory=texture_root,
-                request_id=(
+            texture_result = worker_service.export_textures(
+                staged_inputs,
+                cab_root / "cab-map.json",
+                texture_root,
+                (
                     f"avatar-textures-{int(bundle_record['id'])}-"
                     f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
                 ),
+                primary_input_id=primary_input_id,
+                selections=texture_selections,
                 cancel_event=cancel_event,
             )
-            validate_worker_artifacts(texture_root, texture_result)
             completed_steps.append({
                 "name": "exportIdentifiedTextures",
                 "workerResult": texture_result,

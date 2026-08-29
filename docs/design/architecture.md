@@ -97,6 +97,10 @@ worker 调用和领域校验。
 Avatar 模型则始终要求 geometry。HTTP 按显式 run 读取旧资源也复用同一安全解析函数。
 模型发布写侧也由该 store 统一：先写 ModelDocument、可选或必需 geometry 和 run 自身完成
 标记，最后才通过同目录临时文件原子切换活动指针；指针替换失败会清理临时文件并保留旧指针。
+普通模型和 Avatar 模型调用 Unity worker 的共享过程位于 `model_worker_service.py`。服务为每个
+稳定 input ID 暂存独占 Bundle 文件，统一执行并校验 CABMap、对象快照和精确 Texture2D 产物；
+具体模型管线只决定输入闭包、对象类型、container 与纹理 selection，并负责把结构化产物组装
+为各自 ModelDocument。
 
 ## 关键约束
 

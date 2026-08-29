@@ -725,5 +725,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   模型产物和完成标记写入、活动指针原子切换也已由 store 统一，替换失败会清理临时指针并
   保留旧指针。真实普通模型缓存 `132923/263486` 无需重建即可由新 store 命中，恢复 565 节点、
   44 网格和 9,971,028 字节 geometry。现存 Avatar 缓存仍是没有 `selectedRun` 的旧格式，按既有
-  完成标记规则不视为可复用 run。Worker 构建与 ModelDocument 组装仍是下一阶段拆分边界，P4
-  总门禁保持未完成。
+  完成标记规则不视为可复用 run。共享 Worker 编排和各自 ModelDocument 组装是后续拆分边界，
+  P4 总门禁保持未完成。
+- 普通模型与 Avatar 模型重复的 Bundle 暂存、稳定 input ID、CABMap、对象快照和精确纹理
+  Worker 调用已移入 `model_worker_service.py`，三类 Worker 结果均复用统一路径、大小和 SHA-256
+  校验。两条管线只保留各自输入闭包、类型/container/selection 决策和 ModelDocument 组装。
+  合成回归覆盖多 Bundle 顺序与身份、三类参数传递、重复/逃逸输入拒绝和错误产物摘要拒绝。
+  下一阶段继续拆普通与 Avatar 各自的领域文档组装，P4 总门禁保持未完成。

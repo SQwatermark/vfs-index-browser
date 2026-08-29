@@ -123,6 +123,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `manifest_asset_service.py` | manifest/asset 身份到本地可读 AssetBundle 的解析 |
 | `manifest_worker_service.py` | manifest 资源的 Worker 输入暂存、领域导出与缓存编排 |
 | `model_run_store.py` | 普通/Avatar 模型不可变 run 定位、缓存完整性与文档复验 |
+| `model_worker_service.py` | 模型 Bundle 暂存、CABMap、对象快照与精确纹理 Worker 编排 |
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
