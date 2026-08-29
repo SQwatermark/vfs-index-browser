@@ -105,6 +105,9 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `public/` | 无构建步骤的浏览器前端 |
 | `tools/` | 格式探测、索引提取和离线解码工具 |
 | `schemas/` | MemoryPack 已知类型与 union 映射 |
+
+仓库内的 `tools/index_endfield_vfs.py` 是当前 VFS 主索引生成器；它只解析 `.blc/.chk` 文件边界，
+不会把 Unity、TableCfg、音频等二级格式混入索引阶段。
 | `docs/design/` | 当前设计和演进方向 |
 | `docs/research/` | 已验证的格式研究记录 |
 

@@ -627,3 +627,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   和 chunk 文件名，不泄露本机绝对路径。本机审计 1,032 个历史可用 chunk，发现 49 个已消失，
   耗时约 1.08 秒。未发现缺失时只报告 `unverified`，因为旧索引尚未保存 `.blc` 内容摘要；自动
   重建与原子切换仍未实现，P4 对应门禁保持未完成。
+- 台式机权威 `D:\Temp\endfield-re\index_endfield_vfs.py` 已按规范化文本原样纳入
+  `tools/index_endfield_vfs.py`，不再把固定盘符脚本作为隐式生产依赖。合成 fixture 覆盖 BLC
+  ChaCha20 解密、CRC、code version 4、chunk/file 元数据及 JSONL 逻辑身份；下一步在其上增加
+  `.blc` 内容身份并接入新 run 构建、验证和原子 SQLite 切换。
