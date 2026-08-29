@@ -117,6 +117,7 @@ Projectile 与模型预览提供可取消的长任务入口：
 POST   /api/tasks/projectile
 POST   /api/tasks/model
 POST   /api/tasks/model-blend
+POST   /api/tasks/model-animation
 GET    /api/task?taskId=<id>
 DELETE /api/task?taskId=<id>
 GET    /api/task-artifact?taskId=<id>
@@ -133,6 +134,10 @@ Blender 任务请求使用相同的模型身份及 `animationAssetIndexes` 数�
 批量动画三个网页入口都使用后台任务；动画导出、绑定和 Blender 阶段会持续更新任务状态，
 离开模型预览会取消当前导出。成功任务通过 `task-artifact` 下载，状态 JSON 不暴露本机缓存
 路径。
+
+动画预览任务使用 `manifestId`、模型 `assetIndex`、`animationAssetIndex` 和 `lod`。切换动画
+会取消旧任务，基础骨架、AnimationJSON 导出和轨道绑定分别报告进度；原同步动画 GET 继续
+作为兼容入口，并复用同一构建函数。
 
 ```text
 GET /api/manifest

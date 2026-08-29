@@ -1597,6 +1597,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/tasks/model-blend":
             self.handle_start_model_blend_task()
             return
+        if parsed.path == "/api/tasks/model-animation":
+            self.handle_start_model_animation_task()
+            return
         self.send_error_json(404, "API route not found")
 
     def do_DELETE(self) -> None:
@@ -1726,6 +1729,56 @@ class BrowserHandler(BaseHTTPRequestHandler):
             lambda cancel_event, report_progress: worker.build_model_blend_task_result(
                 resolved,
                 animation_sources,
+                lod,
+                cancel_event=cancel_event,
+                progress=report_progress,
+            ),
+        )
+        self.send_json(created, status=202, cache_control="no-store")
+
+    def handle_start_model_animation_task(self) -> None:
+        try:
+            body = self.read_json_body()
+            manifest_id = int(body.get("manifestId"))
+            asset_index = int(body.get("assetIndex"))
+            animation_asset_index = int(body.get("animationAssetIndex"))
+            lod = int(body.get("lod", 0))
+            if (
+                manifest_id < 0
+                or asset_index < 0
+                or animation_asset_index < 0
+                or lod not in range(4)
+            ):
+                raise ValueError
+        except (TypeError, ValueError):
+            self.send_error_json(400, "model animation task input is invalid")
+            return
+
+        model_query = {
+            "manifestId": [str(manifest_id)],
+            "assetIndex": [str(asset_index)],
+        }
+        animation_query = {
+            "manifestId": [str(manifest_id)],
+            "assetIndex": [str(animation_asset_index)],
+        }
+        model_resolved = self.resolve_manifest_asset_source(model_query)
+        if model_resolved is None:
+            return
+        if not is_model_entry_path(str(model_resolved[1]["path"])):
+            self.send_error_json(400, "resource is not a supported model entry")
+            return
+        animation_resolved = self.resolve_manifest_asset_source(animation_query)
+        if animation_resolved is None:
+            return
+
+        worker = object.__new__(BrowserHandler)
+        worker.db_path = self.db_path
+        created = TASKS.submit_with_progress(
+            "modelAnimation",
+            lambda cancel_event, report_progress: worker.build_model_animation_result(
+                model_resolved,
+                animation_resolved,
                 lod,
                 cancel_event=cancel_event,
                 progress=report_progress,
@@ -5660,6 +5713,86 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "_artifactContentType": "application/x-blender",
         }
 
+    def build_model_animation_result(
+        self,
+        model_resolved: tuple[ManifestIndex, dict, dict, Path],
+        animation_resolved: tuple[ManifestIndex, dict, dict, Path],
+        lod: int,
+        *,
+        cancel_event: threading.Event | None = None,
+        progress: Callable[[dict], None] | None = None,
+    ) -> dict:
+        index, model_asset, model_record, model_chunk = model_resolved
+        _, animation_asset, animation_record, animation_chunk = animation_resolved
+        if not is_model_entry_path(str(model_asset["path"])):
+            raise ValueError("resource is not a supported model entry")
+        if lod not in range(4):
+            raise ValueError("lod is invalid")
+        cancel_options = (
+            {"cancel_event": cancel_event} if cancel_event is not None else {}
+        )
+        if progress is not None:
+            progress({"stage": "model", "completed": 0, "total": 3})
+        if is_avatar_mesh_asset_path(str(model_asset["path"])):
+            document, _, _ = self.ensure_avatar_mesh_model(
+                index,
+                model_asset,
+                model_record,
+                model_chunk,
+                lod,
+                **cancel_options,
+            )
+        else:
+            dependencies = index.bundle_dependencies(int(model_asset["bundle_index"]))
+            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+            document, _ = self.ensure_model_hierarchy(
+                model_record,
+                model_chunk,
+                model_asset,
+                dependencies,
+                dependency_sources,
+                missing_dependencies,
+                **cancel_options,
+            )
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
+        if progress is not None:
+            progress({"stage": "animation", "completed": 1, "total": 3})
+        animation_asset_index = int(animation_asset["asset_index"])
+        if is_dialog_morph_animation_path(str(animation_asset["path"])):
+            animation = self.build_skeletal_morph_animation(
+                index,
+                model_asset,
+                animation_asset,
+                document,
+            )
+        else:
+            clip, _, _ = self.ensure_animation_clip_export(
+                animation_record,
+                animation_chunk,
+                animation_asset,
+                **cancel_options,
+            )
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("worker_cancelled")
+            if progress is not None:
+                progress({"stage": "binding", "completed": 2, "total": 3})
+            animation = bind_animation_clip(
+                document,
+                clip,
+                animation_id=f"animation:{animation_asset_index}",
+                source={
+                    "logicalPath": str(animation_asset["path"]),
+                    "bundle": str(animation_asset["bundle_name"]),
+                },
+                bake_humanoid=True,
+            )
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
+        if progress is not None:
+            progress({"stage": "ready", "completed": 3, "total": 3})
+        return animation
+
     def build_model_preview_result(
         self,
         manifest_id: int,
@@ -6532,57 +6665,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if animation_resolved is None:
             return
 
-        index, model_asset, model_record, model_chunk = model_resolved
-        _, animation_asset, animation_record, animation_chunk = animation_resolved
+        model_asset = model_resolved[1]
         if not is_model_entry_path(str(model_asset["path"])):
             self.send_error_json(400, "resource is not a supported model entry")
             return
 
         try:
             lod = int(query.get("lod", ["0"])[0])
-            if is_avatar_mesh_asset_path(str(model_asset["path"])):
-                document, _, _ = self.ensure_avatar_mesh_model(
-                    index,
-                    model_asset,
-                    model_record,
-                    model_chunk,
-                    lod,
-                )
-            else:
-                dependencies = index.bundle_dependencies(int(model_asset["bundle_index"]))
-                dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-                document, _ = self.ensure_model_hierarchy(
-                    model_record,
-                    model_chunk,
-                    model_asset,
-                    dependencies,
-                    dependency_sources,
-                    missing_dependencies,
-                )
-            animation_asset_index = int(animation_asset["asset_index"])
-            if is_dialog_morph_animation_path(str(animation_asset["path"])):
-                animation = self.build_skeletal_morph_animation(
-                    index,
-                    model_asset,
-                    animation_asset,
-                    document,
-                )
-            else:
-                clip, _, _ = self.ensure_animation_clip_export(
-                    animation_record,
-                    animation_chunk,
-                    animation_asset,
-                )
-                animation = bind_animation_clip(
-                    document,
-                    clip,
-                    animation_id=f"animation:{animation_asset_index}",
-                    source={
-                        "logicalPath": str(animation_asset["path"]),
-                        "bundle": str(animation_asset["bundle_name"]),
-                    },
-                    bake_humanoid=True,
-                )
+            animation = self.build_model_animation_result(
+                model_resolved,
+                animation_resolved,
+                lod,
+            )
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "AnimeStudio timed out while exporting the animation")
             return

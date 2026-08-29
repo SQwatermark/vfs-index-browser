@@ -719,6 +719,7 @@ function renderModelPreview(data) {
   let modelReady = false
   let animationCandidates = []
   let animationRequestId = 0
+  let animationTaskId = null
   let animationCandidateRequestId = 0
   let animationCandidateQuery = null
   let animationCandidatePage = 1
@@ -745,6 +746,10 @@ function renderModelPreview(data) {
   }
   const stopAnimation = () => {
     animationRequestId += 1
+    if (animationTaskId) {
+      fetch(`/api/task?taskId=${encodeURIComponent(animationTaskId)}`, { method: 'DELETE' }).catch(() => {})
+      animationTaskId = null
+    }
     for (const mixer of mixers) mixer.stopAllAction()
     mixers = []
     animationDuration = 0
@@ -768,8 +773,36 @@ function renderModelPreview(data) {
     if (status) status.textContent = '正在解析动画...'
     stopAnimation()
     const requestId = animationRequestId
-    const animation = await getJson(previewUrl)
-    if (!active || requestId !== animationRequestId) return
+    const animationUrl = new URL(previewUrl, window.location.origin)
+    const task = await postJson('/api/tasks/model-animation', {
+      manifestId: animationUrl.searchParams.get('manifestId'),
+      assetIndex: animationUrl.searchParams.get('assetIndex'),
+      animationAssetIndex: animationUrl.searchParams.get('animationAssetIndex'),
+      lod: animationUrl.searchParams.get('lod') || 0,
+    })
+    if (!active || requestId !== animationRequestId) {
+      fetch(`/api/task?taskId=${encodeURIComponent(task.taskId)}`, { method: 'DELETE' }).catch(() => {})
+      return
+    }
+    animationTaskId = task.taskId
+    let animation
+    try {
+      animation = await waitForTask(task.taskId, (progress) => {
+        if (!active || requestId !== animationRequestId || animationTaskId !== task.taskId) return
+        const labels = {
+          model: '正在准备模型骨架...',
+          animation: '正在导出动画...',
+          binding: '正在绑定动画轨道...',
+          ready: '动画已就绪',
+        }
+        if (status) status.textContent = labels[progress.stage] || '正在解析动画...'
+      })
+    } catch (error) {
+      if (animationTaskId === task.taskId) animationTaskId = null
+      throw error
+    }
+    if (!active || requestId !== animationRequestId || animationTaskId !== task.taskId) return
+    animationTaskId = null
     const clips = animationRoots.map((root) => createModelAnimationClip(animation, root))
     mixers = animationRoots.map((root, index) => {
       const mixer = new THREE.AnimationMixer(root)
@@ -1200,6 +1233,11 @@ function renderModelPreview(data) {
   })
   state.disposeModelViewer = () => {
     active = false
+    animationRequestId += 1
+    if (animationTaskId) {
+      fetch(`/api/task?taskId=${encodeURIComponent(animationTaskId)}`, { method: 'DELETE' }).catch(() => {})
+      animationTaskId = null
+    }
     if (blendTaskId) {
       fetch(`/api/task?taskId=${encodeURIComponent(blendTaskId)}`, { method: 'DELETE' }).catch(() => {})
       blendTaskId = null

@@ -310,6 +310,139 @@ class ServerTaskTests(unittest.TestCase):
         self.assertEqual([{"stage": "test", "completed": 1, "total": 1}], reports)
         self.assertEqual(202, responses[0][1]["status"])
 
+    def test_start_model_animation_task_uses_detached_service(self):
+        operations = []
+        resolved = {
+            11: (
+                object(),
+                {"path": "assets/model.prefab", "asset_index": 11},
+                {"id": 7},
+                Path("model.ab"),
+            ),
+            21: (
+                object(),
+                {"path": "assets/idle.anim", "asset_index": 21},
+                {"id": 8},
+                Path("idle.ab"),
+            ),
+        }
+
+        class FakeTasks:
+            def submit_with_progress(self, kind, operation):
+                operations.append((kind, operation))
+                return {"taskId": "e" * 32, "kind": kind, "state": "pending"}
+
+        handler = object.__new__(server.BrowserHandler)
+        handler.db_path = Path("index.sqlite")
+        handler.read_json_body = lambda: {
+            "manifestId": 3,
+            "assetIndex": 11,
+            "animationAssetIndex": 21,
+            "lod": 0,
+        }
+        handler.resolve_manifest_asset_source = lambda query: resolved[
+            int(query["assetIndex"][0])
+        ]
+        responses = []
+        handler.send_json = lambda payload, **options: responses.append((payload, options))
+        handler.send_error_json = lambda status, message: self.fail(f"{status}: {message}")
+        services = []
+
+        def build(
+            service,
+            model,
+            animation,
+            lod,
+            *,
+            cancel_event=None,
+            progress=None,
+        ):
+            services.append(service)
+            self.assertEqual(resolved[11], model)
+            self.assertEqual(resolved[21], animation)
+            self.assertEqual(0, lod)
+            progress({"stage": "ready", "completed": 3, "total": 3})
+            return {"tracks": []}
+
+        reports = []
+        with (
+            patch.object(server, "TASKS", FakeTasks()),
+            patch.object(server.BrowserHandler, "build_model_animation_result", build),
+        ):
+            handler.handle_start_model_animation_task()
+            result = operations[0][1](threading.Event(), reports.append)
+
+        self.assertEqual("modelAnimation", operations[0][0])
+        self.assertIsNot(handler, services[0])
+        self.assertEqual(handler.db_path, services[0].db_path)
+        self.assertEqual({"tracks": []}, result)
+        self.assertEqual([{"stage": "ready", "completed": 3, "total": 3}], reports)
+        self.assertEqual(202, responses[0][1]["status"])
+
+    def test_model_animation_result_propagates_cancel_to_worker_export(self):
+        cancel_event = threading.Event()
+
+        class FakeIndex:
+            def bundle_dependencies(self, _bundle_index):
+                return []
+
+        model = (
+            FakeIndex(),
+            {
+                "path": "assets/model.prefab",
+                "asset_index": 11,
+                "bundle_index": 1,
+            },
+            {"id": 7},
+            Path("model.ab"),
+        )
+        animation = (
+            object(),
+            {
+                "path": "assets/idle.anim",
+                "asset_index": 21,
+                "bundle_name": "idle.ab",
+            },
+            {"id": 8},
+            Path("idle.ab"),
+        )
+        handler = object.__new__(server.BrowserHandler)
+        handler.resolve_bundle_sources = lambda _dependencies: ([], [])
+        observed = []
+
+        def ensure_model(*_args, cancel_event=None):
+            observed.append(("model", cancel_event))
+            return {"nodes": []}, {}
+
+        def ensure_clip(*_args, cancel_event=None):
+            observed.append(("animation", cancel_event))
+            return {"name": "idle"}, Path("idle.json"), {}
+
+        handler.ensure_model_hierarchy = ensure_model
+        handler.ensure_animation_clip_export = ensure_clip
+        reports = []
+        with patch.object(
+            server,
+            "bind_animation_clip",
+            return_value={"name": "idle", "tracks": []},
+        ):
+            result = handler.build_model_animation_result(
+                model,
+                animation,
+                0,
+                cancel_event=cancel_event,
+                progress=reports.append,
+            )
+
+        self.assertEqual(
+            [("model", cancel_event), ("animation", cancel_event)],
+            observed,
+        )
+        self.assertEqual({"name": "idle", "tracks": []}, result)
+        self.assertEqual(["model", "animation", "binding", "ready"], [
+            report["stage"] for report in reports
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
