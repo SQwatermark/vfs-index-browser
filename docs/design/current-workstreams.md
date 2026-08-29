@@ -66,8 +66,8 @@
 - 对必须烘焙的 Humanoid 曲线实现有误差上限的约简，并保留未经约简的验证路径；
 - 继续验证 Root Motion、IK、附件骨骼、面部 BlendShape 和多 Avatar 样本；
 - 设计基础模型与外部 Action 库，避免超大 `.blend` 强制实例化全部 FCurve；
-- 模型文档和基础 GLB 预览已具备后台任务、分阶段进度和切换取消；批量动画预检查与下载已
-  共享同一绑定结果，下一步把批量准备和 Blender 派生纳入可取消任务；
+- 模型文档、基础 GLB 和三类 Blender 导出均已具备后台任务、分阶段进度和切换取消；批量
+  动画预检查与下载共享同一绑定结果。下一步处理动画预览的单片 AnimationJSON 同步导出；
 - 继续统一 Prefab、PostModel、AvatarMesh、NPC 与怪物的装配输入；
 - 补全材质、Shader、特效和运行时角色光照，而不是把快速 PBR 预览当作最终还原。
 

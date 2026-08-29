@@ -237,6 +237,79 @@ class ServerTaskTests(unittest.TestCase):
             reports,
         )
 
+    def test_start_model_blend_task_resolves_selected_animations(self):
+        operations = []
+        model = (
+            object(),
+            {"path": "assets/model.prefab", "asset_index": 11},
+            {"id": 7},
+            Path("model.ab"),
+        )
+        animations = {
+            index: (
+                object(),
+                {"path": f"assets/{index}.anim", "asset_index": index},
+                {"id": index},
+                Path(f"{index}.ab"),
+            )
+            for index in (21, 22)
+        }
+
+        class FakeTasks:
+            def submit_with_progress(self, kind, operation):
+                operations.append((kind, operation))
+                return {"taskId": "d" * 32, "kind": kind, "state": "pending"}
+
+        handler = object.__new__(server.BrowserHandler)
+        handler.db_path = Path("index.sqlite")
+        handler.read_json_body = lambda: {
+            "manifestId": 3,
+            "assetIndex": 11,
+            "lod": 1,
+            "animationAssetIndexes": [22, 21],
+        }
+        handler.resolve_manifest_asset_source = lambda query: (
+            animations[int(query["assetIndex"][0])]
+            if int(query["assetIndex"][0]) in animations
+            else model
+        )
+        responses = []
+        handler.send_json = lambda payload, **options: responses.append((payload, options))
+        handler.send_error_json = lambda status, message: self.fail(f"{status}: {message}")
+
+        observed = []
+
+        def build(
+            service,
+            resolved,
+            selected,
+            lod,
+            *,
+            cancel_event=None,
+            progress=None,
+        ):
+            observed.append((service, resolved, selected, lod, cancel_event))
+            progress({"stage": "test", "completed": 1, "total": 1})
+            return {"artifactAvailable": True}
+
+        reports = []
+        cancel_event = threading.Event()
+        with (
+            patch.object(server, "TASKS", FakeTasks()),
+            patch.object(server, "BLENDER_EXE", Path(server.__file__)),
+            patch.object(server.BrowserHandler, "build_model_blend_task_result", build),
+        ):
+            handler.handle_start_model_blend_task()
+            result = operations[0][1](cancel_event, reports.append)
+
+        self.assertEqual("modelBlend", operations[0][0])
+        self.assertEqual([21, 22], [item[1]["asset_index"] for item in observed[0][2]])
+        self.assertEqual(1, observed[0][3])
+        self.assertIs(cancel_event, observed[0][4])
+        self.assertEqual({"artifactAvailable": True}, result)
+        self.assertEqual([{"stage": "test", "completed": 1, "total": 1}], reports)
+        self.assertEqual(202, responses[0][1]["status"])
+
 
 if __name__ == "__main__":
     unittest.main()

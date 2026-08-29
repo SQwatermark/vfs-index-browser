@@ -646,7 +646,7 @@ function renderModelPreview(data) {
     </div>
     ${data.baseBlendUrl || data.blendUrl ? `
       <div class="preview-actions model-export-actions">
-        <a class="link-button" href="${escapeHtml(data.baseBlendUrl || data.blendUrl)}" title="首次导出需要等待 Blender 后台生成">导出基础模型</a>
+        <a id="modelBaseBlendLink" class="link-button" href="${escapeHtml(data.baseBlendUrl || data.blendUrl)}" title="首次导出需要等待 Blender 后台生成">导出基础模型</a>
         <a id="modelAnimationBlendLink" class="link-button" href="${escapeHtml(data.animationAsset ? data.blendUrl : '')}" ${data.animationAsset ? '' : 'hidden'} title="将当前动画保存为 Blender Action">导出当前动画</a>
       </div>
     ` : ''}
@@ -725,6 +725,8 @@ function renderModelPreview(data) {
   let animationCandidatePages = 1
   let animationCandidateTotal = 0
   let animationSelectionRequestId = 0
+  let blendTaskId = null
+  let blendExportPending = false
   const selectedAnimationCandidates = new Map()
   const clock = new THREE.Clock()
   const renderAnimationTime = (time) => {
@@ -831,6 +833,8 @@ function renderModelPreview(data) {
   const animationSelectionStatus = $('modelAnimationSelectionStatus')
   const animationSelectSearchResults = $('modelAnimationSelectSearchResults')
   const animationClearSelection = $('modelAnimationClearSelection')
+  const baseBlendLink = $('modelBaseBlendLink')
+  const currentAnimationBlendLink = $('modelAnimationBlendLink')
   const animationBundleLink = $('modelAnimationBundleLink')
   const animationExportIssues = $('modelAnimationExportIssues')
   const animationExportIssuesSummary = $('modelAnimationExportIssuesSummary')
@@ -925,33 +929,70 @@ function renderModelPreview(data) {
     })
   }
   syncAnimationBundleLink()
-  animationBundleLink?.addEventListener('click', async (event) => {
+  const startBlendExport = async (event) => {
     event.preventDefault()
-    const href = animationBundleLink.getAttribute('href')
+    const link = event.currentTarget
+    if (blendExportPending || blendTaskId || link.getAttribute('aria-disabled') === 'true') return
+    const href = link.getAttribute('href')
     if (!href) return
-    animationBundleLink.setAttribute('aria-disabled', 'true')
-    animationSelectionStatus.textContent = '正在检查所选动画...'
+    link.setAttribute('aria-disabled', 'true')
+    blendExportPending = true
+    animationSelectionStatus.textContent = '正在准备 Blender 导出...'
     try {
       const prepareUrl = new URL(href, window.location.origin)
-      prepareUrl.searchParams.set('prepare', '1')
-      const result = await getJson(prepareUrl.toString())
+      const task = await postJson('/api/tasks/model-blend', {
+        manifestId: prepareUrl.searchParams.get('manifestId'),
+        assetIndex: prepareUrl.searchParams.get('assetIndex'),
+        lod: prepareUrl.searchParams.get('lod') || 0,
+        animationAssetIndexes: prepareUrl.searchParams.getAll('animationAssetIndex'),
+      })
+      if (!active) {
+        blendExportPending = false
+        fetch(`/api/task?taskId=${encodeURIComponent(task.taskId)}`, { method: 'DELETE' }).catch(() => {})
+        return
+      }
+      blendExportPending = false
+      blendTaskId = task.taskId
+      const result = await waitForTask(task.taskId, (progress) => {
+        if (!active || blendTaskId !== task.taskId) return
+        if (progress.stage === 'blender') {
+          animationSelectionStatus.textContent = '正在生成 Blender 文件...'
+        } else if (progress.stage === 'animationCache') {
+          animationSelectionStatus.textContent = '已复用动画绑定结果，正在准备导出...'
+        } else {
+          const completed = Number(progress.completed) || 0
+          const total = Number(progress.total) || 0
+          animationSelectionStatus.textContent = total
+            ? `正在处理动画 ${completed}/${total}...`
+            : '正在处理所选动画...'
+        }
+      })
+      if (!active || blendTaskId !== task.taskId) return
+      blendTaskId = null
       renderAnimationExportIssues(result.issues || [])
-      if (!result.downloadUrl) {
+      if (!result.artifactAvailable) {
         animationSelectionStatus.textContent = '所选动画均无法导出'
         return
       }
       animationSelectionStatus.textContent = result.issues?.length
-        ? `可导出 ${result.exportedCount} 个，跳过 ${result.issues.length} 个；正在生成 Blender 文件`
-        : `正在生成包含 ${result.exportedCount} 个动画的 Blender 文件`
+        ? `已导出 ${result.exportedCount} 个，跳过 ${result.issues.length} 个`
+        : result.exportedCount
+          ? `已生成包含 ${result.exportedCount} 个动画的 Blender 文件`
+          : '已生成基础模型 Blender 文件'
       const download = document.createElement('a')
-      download.href = result.downloadUrl
+      download.href = `/api/task-artifact?taskId=${encodeURIComponent(task.taskId)}`
       download.click()
     } catch (error) {
-      animationSelectionStatus.textContent = `批量导出准备失败：${error.message || error}`
+      blendExportPending = false
+      blendTaskId = null
+      animationSelectionStatus.textContent = `Blender 导出失败：${error.message || error}`
     } finally {
-      animationBundleLink.removeAttribute('aria-disabled')
+      if (active) link.removeAttribute('aria-disabled')
     }
-  })
+  }
+  baseBlendLink?.addEventListener('click', startBlendExport)
+  currentAnimationBlendLink?.addEventListener('click', startBlendExport)
+  animationBundleLink?.addEventListener('click', startBlendExport)
   const syncAnimationPager = (loading = false) => {
     animationPreviousPage.disabled = loading || animationCandidatePage <= 1
     animationNextPage.disabled = loading || animationCandidatePage >= animationCandidatePages
@@ -1159,6 +1200,11 @@ function renderModelPreview(data) {
   })
   state.disposeModelViewer = () => {
     active = false
+    if (blendTaskId) {
+      fetch(`/api/task?taskId=${encodeURIComponent(blendTaskId)}`, { method: 'DELETE' }).catch(() => {})
+      blendTaskId = null
+    }
+    blendExportPending = false
     observer.disconnect()
     renderer.setAnimationLoop(null)
     for (const mixer of mixers) mixer.stopAllAction()

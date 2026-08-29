@@ -48,6 +48,29 @@ class BackgroundTaskRegistryTests(unittest.TestCase):
                 completed["progress"],
             )
 
+    def test_private_artifact_metadata_is_hidden_but_resolvable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            artifact = root / "sample.blend"
+            artifact.write_bytes(b"blend")
+            registry = BackgroundTaskRegistry(lambda: root / "tasks")
+            created = registry.submit(
+                "sample",
+                lambda _cancel: {
+                    "kind": "artifact",
+                    "_artifactPath": str(artifact),
+                    "_artifactName": "model.blend",
+                    "_artifactContentType": "application/x-blender",
+                },
+            )
+            completed = self.wait_terminal(registry, created["taskId"])
+
+            self.assertEqual({"kind": "artifact"}, completed["result"])
+            self.assertEqual(
+                (artifact, "model.blend", "application/x-blender"),
+                registry.artifact(created["taskId"]),
+            )
+
     def test_cancelled_task_discards_result_and_reaches_cancelled(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

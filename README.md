@@ -116,8 +116,10 @@ Projectile 与模型预览提供可取消的长任务入口：
 ```text
 POST   /api/tasks/projectile
 POST   /api/tasks/model
+POST   /api/tasks/model-blend
 GET    /api/task?taskId=<id>
 DELETE /api/task?taskId=<id>
+GET    /api/task-artifact?taskId=<id>
 ```
 
 Projectile 创建请求体为 `{"projectileId":"projectile_..."}`；模型请求体包含
@@ -126,6 +128,11 @@ Projectile 创建请求体为 `{"projectileId":"projectile_..."}`；模型请求
 发布和 GLB 派生阶段，前端收到成功结果时基础 GLB 已就绪。浏览器切换模型时会取消旧任务，
 `DELETE` 会实际终止对应的独占 worker 进程，而不只是改变前端状态。原同步模型查询仍保留给
 已有调用者兼容。
+
+Blender 任务请求使用相同的模型身份及 `animationAssetIndexes` 数组。基础模型、当前动画和
+批量动画三个网页入口都使用后台任务；动画导出、绑定和 Blender 阶段会持续更新任务状态，
+离开模型预览会取消当前导出。成功任务通过 `task-artifact` 下载，状态 JSON 不暴露本机缓存
+路径。
 
 ```text
 GET /api/manifest

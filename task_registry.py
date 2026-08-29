@@ -87,11 +87,40 @@ class BackgroundTaskRegistry:
                 self._write_status(task_id, record)
         if include_result and record["state"] == "succeeded":
             result_path = self._task_root(task_id) / str(record["resultFile"])
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            public_result = (
+                {
+                    key: value
+                    for key, value in result.items()
+                    if not str(key).startswith("_")
+                }
+                if isinstance(result, dict)
+                else result
+            )
             record = {
                 **record,
-                "result": json.loads(result_path.read_text(encoding="utf-8")),
+                "result": public_result,
             }
         return record
+
+    def artifact(self, task_id: str) -> tuple[Path, str, str]:
+        task_id = self._normalize_task_id(task_id)
+        with self._lock:
+            record = self._read_status(task_id)
+            if record["state"] != "succeeded":
+                raise TaskNotFoundError(task_id)
+            result_path = self._task_root(task_id) / str(record["resultFile"])
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+        if not isinstance(result, dict):
+            raise TaskNotFoundError(task_id)
+        artifact_path = Path(str(result.get("_artifactPath") or ""))
+        if not artifact_path.is_file():
+            raise TaskNotFoundError(task_id)
+        name = str(result.get("_artifactName") or artifact_path.name)
+        content_type = str(
+            result.get("_artifactContentType") or "application/octet-stream"
+        )
+        return artifact_path, name, content_type
 
     def cancel(self, task_id: str) -> dict:
         task_id = self._normalize_task_id(task_id)

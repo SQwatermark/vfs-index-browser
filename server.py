@@ -1494,6 +1494,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/task":
             self.handle_task_status(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/task-artifact":
+            self.handle_task_artifact(parse_qs(parsed.query))
+            return
         if parsed.path.startswith("/api/akedb-compatible/"):
             self.handle_akedb_compatible(parsed.path)
             return
@@ -1591,6 +1594,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/tasks/model":
             self.handle_start_model_task()
             return
+        if parsed.path == "/api/tasks/model-blend":
+            self.handle_start_model_blend_task()
+            return
         self.send_error_json(404, "API route not found")
 
     def do_DELETE(self) -> None:
@@ -1674,6 +1680,59 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         self.send_json(created, status=202, cache_control="no-store")
 
+    def handle_start_model_blend_task(self) -> None:
+        if not BLENDER_EXE.is_file():
+            self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
+            return
+        try:
+            body = self.read_json_body()
+            manifest_id = int(body.get("manifestId"))
+            asset_index = int(body.get("assetIndex"))
+            lod = int(body.get("lod", 0))
+            raw_animation_indexes = body.get("animationAssetIndexes", [])
+            if not isinstance(raw_animation_indexes, list):
+                raise ValueError
+            animation_indexes = [int(value) for value in raw_animation_indexes]
+            if (
+                manifest_id < 0
+                or asset_index < 0
+                or lod not in range(4)
+                or len(animation_indexes) > MAX_BLEND_ANIMATION_COUNT
+            ):
+                raise ValueError
+        except (TypeError, ValueError):
+            self.send_error_json(400, "model blend task input is invalid")
+            return
+
+        query = {
+            "manifestId": [str(manifest_id)],
+            "assetIndex": [str(asset_index)],
+            "animationAssetIndex": [str(value) for value in animation_indexes],
+        }
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        if not is_model_entry_path(str(resolved[1]["path"])):
+            self.send_error_json(400, "resource is not a supported model entry")
+            return
+        animation_sources = self.resolve_animation_sources(query)
+        if animation_sources is None:
+            return
+
+        worker = object.__new__(BrowserHandler)
+        worker.db_path = self.db_path
+        created = TASKS.submit_with_progress(
+            "modelBlend",
+            lambda cancel_event, report_progress: worker.build_model_blend_task_result(
+                resolved,
+                animation_sources,
+                lod,
+                cancel_event=cancel_event,
+                progress=report_progress,
+            ),
+        )
+        self.send_json(created, status=202, cache_control="no-store")
+
     def handle_task_status(self, query: dict[str, list[str]]) -> None:
         task_id = query.get("taskId", [""])[0]
         try:
@@ -1692,6 +1751,26 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         status = 202 if snapshot["state"] == "cancelling" else 200
         self.send_json(snapshot, status=status, cache_control="no-store")
+
+    def handle_task_artifact(self, query: dict[str, list[str]]) -> None:
+        task_id = query.get("taskId", [""])[0]
+        try:
+            artifact_path, name, content_type = TASKS.artifact(task_id)
+        except (TaskNotFoundError, OSError, json.JSONDecodeError):
+            self.send_error_json(404, "task artifact not found")
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(artifact_path.stat().st_size))
+        self.send_header(
+            "Content-Disposition",
+            f"attachment; filename*=UTF-8''{quote(name)}",
+        )
+        self.send_header("Cache-Control", "private, max-age=3600")
+        self.end_headers()
+        with artifact_path.open("rb") as source:
+            while data := source.read(STREAM_CHUNK_SIZE):
+                self.wfile.write(data)
 
     def handle_akedb_compatible(self, request_path: str) -> None:
         """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""
@@ -2988,6 +3067,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         record: dict,
         chunk_path: Path,
         asset: dict,
+        *,
+        cancel_event: object | None = None,
     ) -> tuple[dict, Path, dict]:
         animation_name = str(asset["path"]).rsplit("##", 1)[-1]
         # FBX 子资源直接使用 clip 名；独立 .anim 资源则需要从逻辑路径取文件名。
@@ -3060,6 +3141,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 )
             ),
             validate=validate_animation_export,
+            cancel_event=cancel_event,
             allowed_suffixes=None,
         )
         target = artifact_paths[0]
@@ -5518,6 +5600,66 @@ class BrowserHandler(BaseHTTPRequestHandler):
         progress({"stage": "ready", "completed": total, "total": total})
         return result
 
+    def build_model_blend_task_result(
+        self,
+        resolved: tuple[ManifestIndex, dict, dict, Path],
+        animation_sources: list[tuple[ManifestIndex, dict, dict, Path]],
+        lod: int,
+        *,
+        cancel_event: threading.Event,
+        progress: Callable[[dict], None],
+    ) -> dict:
+        if animation_sources:
+            bundle = self.ensure_animated_model_glb(
+                resolved,
+                animation_sources,
+                lod=lod,
+                skip_incompatible=len(animation_sources) > 1,
+                cancel_event=cancel_event,
+                progress=progress,
+            )
+            asset = bundle.asset
+            animation_assets = bundle.animations
+            glb_path = bundle.glb_path
+            issues = bundle.issues
+        else:
+            progress({"stage": "modelGlb", "completed": 0, "total": 1})
+            asset, _, glb_path = self.ensure_manifest_asset_model_glb(
+                resolved,
+                lod=lod,
+                cancel_event=cancel_event,
+            )
+            animation_assets = []
+            issues = []
+        if animation_sources and not animation_assets:
+            return {
+                "kind": "modelBlendPreparation",
+                "requestedCount": len(animation_sources),
+                "exportedCount": 0,
+                "issues": [issue.as_json() for issue in issues],
+                "artifactAvailable": False,
+            }
+        if cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
+        progress({"stage": "blender", "completed": 0, "total": 1})
+        blend_path = self.ensure_model_blend_file(
+            glb_path,
+            cancel_event=cancel_event,
+        )
+        progress({"stage": "blender", "completed": 1, "total": 1})
+        suffix = f"-animations-{len(animation_assets)}" if animation_assets else ""
+        name = f"{Path(str(asset['path'])).stem}{suffix}.blend"
+        return {
+            "kind": "modelBlendPreparation",
+            "requestedCount": len(animation_sources),
+            "exportedCount": len(animation_assets),
+            "issues": [issue.as_json() for issue in issues],
+            "artifactAvailable": True,
+            "_artifactPath": str(blend_path.resolve()),
+            "_artifactName": name,
+            "_artifactContentType": "application/x-blender",
+        }
+
     def build_model_preview_result(
         self,
         manifest_id: int,
@@ -5850,6 +5992,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         lod: int,
         skip_incompatible: bool = False,
+        cancel_event: threading.Event | None = None,
+        progress: Callable[[dict], None] | None = None,
     ) -> AnimatedModelBundle:
         if not animation_sources:
             raise ValueError("at least one animation is required")
@@ -5857,9 +6001,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             animation_sources,
             key=lambda item: int(item[1]["asset_index"]),
         )
+        cancel_options = (
+            {"cancel_event": cancel_event} if cancel_event is not None else {}
+        )
         model_asset, model_path, model_glb = self.ensure_manifest_asset_model_glb(
             model_resolved,
             lod=lod,
+            **cancel_options,
         )
         requested_indexes = [
             int(item[1]["asset_index"])
@@ -5921,6 +6069,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     else:
                         cached_glb = model_glb
                     if cached_glb.is_file():
+                        if progress is not None:
+                            progress({
+                                "stage": "animationCache",
+                                "completed": len(animation_sources),
+                                "total": len(animation_sources),
+                            })
                         return AnimatedModelBundle(
                             model_asset,
                             effective_assets,
@@ -5950,7 +6104,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
         animation_assets = []
         issues = []
         clip_paths = []
-        for _, animation_asset, animation_record, animation_chunk in animation_sources:
+        for ordinal, (
+            _, animation_asset, animation_record, animation_chunk
+        ) in enumerate(animation_sources, start=1):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("worker_cancelled")
+            if progress is not None:
+                progress({
+                    "stage": "animations",
+                    "completed": ordinal - 1,
+                    "total": len(animation_sources),
+                })
             animation_index = int(animation_asset["asset_index"])
             animation_path = str(animation_asset["path"])
             try:
@@ -5958,6 +6122,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     animation_record,
                     animation_chunk,
                     animation_asset,
+                    **cancel_options,
                 )
             except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as error:
                 if skip_incompatible:
@@ -6008,6 +6173,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
             animated_geometry = candidate_geometry
             animation_assets.append(animation_asset)
             clip_paths.append(clip_path)
+            if progress is not None:
+                progress({
+                    "stage": "animations",
+                    "completed": ordinal,
+                    "total": len(animation_sources),
+                })
+
+        if progress is not None:
+            progress({
+                "stage": "animations",
+                "completed": len(animation_sources),
+                "total": len(animation_sources),
+            })
 
         if not animation_assets:
             result = AnimatedModelBundle(
@@ -6068,6 +6246,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             or animated_glb.stat().st_mtime_ns < newest_source_mtime
             or load_cache_identity(animated_glb_meta) != cache_identity
         ):
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("worker_cancelled")
             payload = build_glb(
                 animated_document,
                 animated_geometry,
@@ -6082,6 +6262,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+        if cancel_event is not None and cancel_event.is_set():
+            raise RuntimeError("worker_cancelled")
         result = AnimatedModelBundle(
             model_asset,
             animation_assets,
@@ -6141,6 +6323,104 @@ class BrowserHandler(BaseHTTPRequestHandler):
         with glb_path.open("rb") as source:
             while data := source.read(STREAM_CHUNK_SIZE):
                 self.wfile.write(data)
+
+    def ensure_model_blend_file(
+        self,
+        glb_path: Path,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> Path:
+        blend_path = glb_path.with_suffix(".blend")
+        material_backend = PROJECT_ROOT / "blender_materials.py"
+        material_plan_backend = Path(blender_material_plan.__file__)
+        source_paths = [
+            glb_path,
+            BLENDER_MODEL_IMPORTER,
+            BLENDER_ACTION_SWITCHER,
+            material_backend,
+            material_plan_backend,
+            PROJECT_ROOT / "character_lighting.py",
+        ]
+        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
+        with MODEL_BLEND_EXPORT_LOCK:
+            if (
+                blend_path.is_file()
+                and blend_path.stat().st_mtime_ns >= newest_source_mtime
+            ):
+                return blend_path
+            if cancel_event is not None and cancel_event.is_set():
+                raise RuntimeError("worker_cancelled")
+            temporary = blend_path.with_name("model.tmp.blend")
+            temporary.unlink(missing_ok=True)
+            command = [
+                str(BLENDER_EXE),
+                "--background",
+                "--factory-startup",
+                "--python",
+                str(BLENDER_MODEL_IMPORTER),
+                "--",
+                str(glb_path),
+                str(temporary),
+            ]
+            try:
+                if cancel_event is None:
+                    result = subprocess.run(
+                        command,
+                        cwd=PROJECT_ROOT,
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=300,
+                        check=True,
+                    )
+                    stdout = getattr(result, "stdout", "") or ""
+                else:
+                    process = subprocess.Popen(
+                        command,
+                        cwd=PROJECT_ROOT,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                    )
+                    started = time.monotonic()
+                    while True:
+                        try:
+                            stdout, stderr = process.communicate(timeout=0.1)
+                            break
+                        except subprocess.TimeoutExpired:
+                            if cancel_event.is_set():
+                                process.terminate()
+                                try:
+                                    process.communicate(timeout=5)
+                                except subprocess.TimeoutExpired:
+                                    process.kill()
+                                    process.communicate()
+                                raise RuntimeError("worker_cancelled")
+                            if time.monotonic() - started >= 300:
+                                process.kill()
+                                process.communicate()
+                                raise subprocess.TimeoutExpired(command, 300)
+                    if process.returncode:
+                        raise subprocess.CalledProcessError(
+                            process.returncode,
+                            command,
+                            output=stdout,
+                            stderr=stderr,
+                        )
+                if not temporary.is_file():
+                    raise RuntimeError(
+                        "Blender export completed without producing a file: "
+                        + stdout[-2000:]
+                    )
+                if cancel_event is not None and cancel_event.is_set():
+                    raise RuntimeError("worker_cancelled")
+                os.replace(temporary, blend_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+        return blend_path
 
     def handle_manifest_asset_model_blend(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_source(query)
@@ -6210,53 +6490,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     status=422,
                 )
                 return
-            blend_path = glb_path.with_suffix(".blend")
-            material_backend = PROJECT_ROOT / "blender_materials.py"
-            material_plan_backend = Path(blender_material_plan.__file__)
-            source_paths = [
-                glb_path,
-                BLENDER_MODEL_IMPORTER,
-                BLENDER_ACTION_SWITCHER,
-                material_backend,
-                material_plan_backend,
-                PROJECT_ROOT / "character_lighting.py",
-            ]
-            newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-            with MODEL_BLEND_EXPORT_LOCK:
-                if (
-                    not blend_path.is_file()
-                    or blend_path.stat().st_mtime_ns < newest_source_mtime
-                ):
-                    temporary = blend_path.with_name("model.tmp.blend")
-                    temporary.unlink(missing_ok=True)
-                    try:
-                        result = subprocess.run(
-                            [
-                                str(BLENDER_EXE),
-                                "--background",
-                                "--factory-startup",
-                                "--python",
-                                str(BLENDER_MODEL_IMPORTER),
-                                "--",
-                                str(glb_path),
-                                str(temporary),
-                            ],
-                            cwd=PROJECT_ROOT,
-                            capture_output=True,
-                            text=True,
-                            encoding="utf-8",
-                            errors="replace",
-                            timeout=300,
-                            check=True,
-                        )
-                        if not temporary.is_file():
-                            raise RuntimeError(
-                                "Blender export completed without producing a file: "
-                                + result.stdout[-2000:]
-                            )
-                        os.replace(temporary, blend_path)
-                    finally:
-                        temporary.unlink(missing_ok=True)
+            blend_path = self.ensure_model_blend_file(glb_path)
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "Blender timed out while exporting the model")
             return

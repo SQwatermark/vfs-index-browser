@@ -221,9 +221,11 @@ worker 采用“一次请求一个子进程”。取消不能只是修改 UI 状
 - `POST /api/tasks/projectile`：校验 `projectileId` 后创建任务；
 - `POST /api/tasks/model`：按 manifest 资源身份创建普通模型或 AvatarMesh 构建任务，并报告
   资源计划、CAB 映射、对象、纹理与发布进度；
+- `POST /api/tasks/model-blend`：创建基础模型、单动画或批量动画 Blender 派生任务；
 - `GET /api/task?taskId=...`：读取原子状态，成功时可包含已发布结果；
 - `DELETE /api/task?taskId=...`：设置取消事件；只有实际运行中的本机任务可进入
   `cancelling`，终止完成后转为 `cancelled`。
+- `GET /api/task-artifact?taskId=...`：只为成功任务返回已登记产物；公开状态不包含本机路径。
 
 任务状态至少区分 `pending`、`running`、`cancelling`、`succeeded`、`failed`、
 `cancelled`。取消或失败不得写入成功结果指针，服务重启后遗留的非终态任务必须明确标为
@@ -357,6 +359,9 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 - 批量动画准备结果按请求集合写入独立清单，身份包含模型、动画资源、worker/绑定和 GLB
   版本。准备检查后的下载直接复用有效动画集合、结构化跳过原因和动画 GLB，不再重复导出与
   绑定整批片段；
+- 基础模型、当前动画和批量动画的 Blender 导出均已接入后台任务。动画逐项处理、缓存命中与
+  Blender 阶段会报告进度；取消会贯穿动画 worker，并终止仍在运行的 Blender 子进程。任务
+  artifact 接口从私有结果元数据提供下载，不向浏览器暴露绝对路径；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
@@ -378,8 +383,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
    `Convert`；
-2. 将批量动画准备和 Blender 派生接入可取消的后台任务；预检查与下载之间的重复绑定已经
-   消除；
+2. 将模型动画预览的单片 AnimationJSON 同步导出纳入任务或复用已完成任务；Blender 派生和
+   批量动画准备已经任务化，预检查与下载之间的重复绑定已经消除；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
 4. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点。

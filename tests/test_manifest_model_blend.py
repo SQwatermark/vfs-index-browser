@@ -1,5 +1,6 @@
 import io
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -72,6 +73,78 @@ class ManifestModelBlendTests(unittest.TestCase):
         self.assertEqual([2], lods)
         self.assertEqual(b"BLENDER-v404", handler.wfile.getvalue())
         self.assertEqual(b"BLENDER-v404", (model_root / "model.blend").read_bytes())
+
+    def test_cancelled_background_blend_does_not_start_blender(self):
+        _handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        glb = model_root / "model.glb"
+        cancel_event = threading.Event()
+        cancel_event.set()
+        with (
+            patch.object(server, "BLENDER_EXE", self.blender),
+            patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
+            patch.object(server, "PROJECT_ROOT", self.root),
+            patch.object(server.subprocess, "Popen") as popen,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "worker_cancelled"):
+                _handler.ensure_model_blend_file(glb, cancel_event=cancel_event)
+        popen.assert_not_called()
+
+    def test_background_blend_result_registers_private_artifact(self):
+        handler, model_root, _lods = self.make_handler("assets/model.prefab")
+        animated_glb = model_root / "animated.glb"
+        animated_glb.write_bytes(b"glb")
+        blend = model_root / "animated.blend"
+        blend.write_bytes(b"blend")
+        source = (
+            object(),
+            {"asset_index": 21, "path": "assets/idle.anim"},
+            {},
+            self.root / "idle.chk",
+        )
+        cancel_event = threading.Event()
+        reports = []
+
+        def ensure_animated(
+            _resolved,
+            selected,
+            *,
+            lod,
+            skip_incompatible,
+            cancel_event=None,
+            progress=None,
+        ):
+            self.assertEqual(0, lod)
+            self.assertFalse(skip_incompatible)
+            self.assertIs(cancel_event, cancel_event_outer)
+            progress({"stage": "animations", "completed": 1, "total": 1})
+            return server.AnimatedModelBundle(
+                {"asset_index": 7, "path": "assets/model.prefab"},
+                [selected[0][1]],
+                model_root / "model-document.json",
+                animated_glb,
+                [],
+            )
+
+        handler.ensure_animated_model_glb = ensure_animated
+        handler.ensure_model_blend_file = lambda path, *, cancel_event=None: (
+            blend
+            if path == animated_glb and cancel_event is cancel_event_outer
+            else self.fail("unexpected blend input")
+        )
+        cancel_event_outer = cancel_event
+
+        result = handler.build_model_blend_task_result(
+            handler.resolve_manifest_asset_source({}),
+            [source],
+            0,
+            cancel_event=cancel_event,
+            progress=reports.append,
+        )
+
+        self.assertTrue(result["artifactAvailable"])
+        self.assertEqual(str(blend.resolve()), result["_artifactPath"])
+        self.assertEqual("model-animations-1.blend", result["_artifactName"])
+        self.assertEqual("blender", reports[-1]["stage"])
 
     def test_rejects_non_model_asset(self):
         handler, _model_root, _lods = self.make_handler(
