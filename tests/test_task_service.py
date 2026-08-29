@@ -1,4 +1,5 @@
 import json
+import threading
 import unittest
 from pathlib import Path
 
@@ -27,6 +28,36 @@ class TaskApplicationServiceTests(unittest.TestCase):
         artifact = service.artifact("a" * 32)
         self.assertEqual(Path("model.blend"), artifact.path)
         self.assertEqual("角色.blend", artifact.name)
+
+    def test_submits_plain_and_progress_operations(self):
+        observed = []
+
+        class Registry:
+            def submit(self, kind, operation):
+                observed.append((kind, operation(threading.Event())))
+                return {"kind": kind, "state": "pending"}
+
+            def submit_with_progress(self, kind, operation):
+                reports = []
+                result = operation(threading.Event(), reports.append)
+                observed.append((kind, result, reports))
+                return {"kind": kind, "state": "pending"}
+
+        service = TaskApplicationService(Registry())
+
+        plain = service.submit("plain", lambda _cancel: {"ok": True})
+        progress = service.submit_with_progress(
+            "progress",
+            lambda _cancel, report: (report({"stage": "ready"}), "done")[1],
+        )
+
+        self.assertEqual("pending", plain["state"])
+        self.assertEqual("pending", progress["state"])
+        self.assertEqual(("plain", {"ok": True}), observed[0])
+        self.assertEqual(
+            ("progress", "done", [{"stage": "ready"}]),
+            observed[1],
+        )
 
     def test_terminal_cancel_uses_success_status(self):
         class Registry:

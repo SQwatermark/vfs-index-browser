@@ -58,7 +58,7 @@ class ServerTaskTests(unittest.TestCase):
             return {"projectileId": projectile_id, "cancelEvent": cancel_event is not None}
 
         with (
-            patch.object(server, "TASKS", FakeTasks()),
+            patch.object(server, "TASK_API", TaskApplicationService(FakeTasks())),
             patch.object(server.BrowserHandler, "build_projectile_document", build),
         ):
             handler.handle_start_projectile_task()
@@ -144,7 +144,7 @@ class ServerTaskTests(unittest.TestCase):
 
         cancel_event_outer = cancel_event
         with (
-            patch.object(server, "TASKS", FakeTasks()),
+            patch.object(server, "TASK_API", TaskApplicationService(FakeTasks())),
             patch.object(server.BrowserHandler, "build_model_task_result", build),
         ):
             handler.handle_start_model_task()
@@ -325,7 +325,7 @@ class ServerTaskTests(unittest.TestCase):
         reports = []
         cancel_event = threading.Event()
         with (
-            patch.object(server, "TASKS", FakeTasks()),
+            patch.object(server, "TASK_API", TaskApplicationService(FakeTasks())),
             patch.object(server, "BLENDER_EXE", Path(server.__file__)),
             patch.object(server.BrowserHandler, "build_model_blend_task_result", build),
         ):
@@ -396,7 +396,7 @@ class ServerTaskTests(unittest.TestCase):
 
         reports = []
         with (
-            patch.object(server, "TASKS", FakeTasks()),
+            patch.object(server, "TASK_API", TaskApplicationService(FakeTasks())),
             patch.object(server.BrowserHandler, "build_model_animation_result", build),
         ):
             handler.handle_start_model_animation_task()

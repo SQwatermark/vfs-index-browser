@@ -91,6 +91,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `unity-worker/` | 可独立构建和发布的 .NET Unity 资源 worker |
 | `task_registry.py` | 任务状态落盘、原子结果发布与当前进程取消控制 |
 | `task_service.py` | 后台任务状态、取消和产物查询的应用层边界 |
+| `task_requests.py` | 模型、动画与 Blender 后台任务的严格输入 DTO |
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |

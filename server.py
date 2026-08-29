@@ -104,6 +104,12 @@ from projectile_data import (
 from unity_worker import UnityWorkerClient, UnityWorkerError
 from task_registry import BackgroundTaskRegistry, TaskNotFoundError
 from task_service import TaskApplicationService
+from task_requests import (
+    ModelAnimationTaskRequest,
+    ModelBlendTaskRequest,
+    ModelTaskRequest,
+    TaskInputError,
+)
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -1626,7 +1632,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         # 后台任务不能捕获 HTTP handler；只复制应用服务所需的数据库配置。
         worker = object.__new__(BrowserHandler)
         worker.db_path = self.db_path
-        created = TASKS.submit(
+        created = TASK_API.submit(
             "projectile",
             lambda cancel_event: worker.build_projectile_document(
                 projectile_id,
@@ -1637,23 +1643,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_start_model_task(self) -> None:
         try:
-            body = self.read_json_body()
-            manifest_id = int(body.get("manifestId"))
-            asset_index = int(body.get("assetIndex"))
-            lod = int(body.get("lod", 0))
-            animation_value = body.get("animationAssetIndex")
-            animation_asset_index = (
-                int(animation_value) if animation_value not in (None, "") else None
-            )
-            if manifest_id < 0 or asset_index < 0 or lod not in range(4):
-                raise ValueError
-        except (TypeError, ValueError):
+            request = ModelTaskRequest.parse(self.read_json_body())
+        except (TaskInputError, ValueError):
             self.send_error_json(400, "manifestId, assetIndex or lod is invalid")
             return
 
         query = {
-            "manifestId": [str(manifest_id)],
-            "assetIndex": [str(asset_index)],
+            "manifestId": [str(request.manifest_id)],
+            "assetIndex": [str(request.asset_index)],
         }
         resolved = self.resolve_manifest_asset_source(query)
         if resolved is None:
@@ -1662,10 +1659,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "resource is not a supported model entry")
             return
         animation_resolved = None
-        if animation_asset_index is not None:
+        if request.animation_asset_index is not None:
             animation_query = {
-                "manifestId": [str(manifest_id)],
-                "assetIndex": [str(animation_asset_index)],
+                "manifestId": [str(request.manifest_id)],
+                "assetIndex": [str(request.animation_asset_index)],
             }
             animation_resolved = self.resolve_manifest_asset_source(animation_query)
             if animation_resolved is None:
@@ -1673,13 +1670,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         worker = object.__new__(BrowserHandler)
         worker.db_path = self.db_path
-        created = TASKS.submit_with_progress(
+        created = TASK_API.submit_with_progress(
             "model",
             lambda cancel_event, report_progress: worker.build_model_task_result(
-                manifest_id,
+                request.manifest_id,
                 resolved,
                 animation_resolved,
-                lod,
+                request.lod,
                 cancel_event=cancel_event,
                 progress=report_progress,
             ),
@@ -1691,29 +1688,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(503, f"Blender executable not found: {BLENDER_EXE}")
             return
         try:
-            body = self.read_json_body()
-            manifest_id = int(body.get("manifestId"))
-            asset_index = int(body.get("assetIndex"))
-            lod = int(body.get("lod", 0))
-            raw_animation_indexes = body.get("animationAssetIndexes", [])
-            if not isinstance(raw_animation_indexes, list):
-                raise ValueError
-            animation_indexes = [int(value) for value in raw_animation_indexes]
-            if (
-                manifest_id < 0
-                or asset_index < 0
-                or lod not in range(4)
-                or len(animation_indexes) > MAX_BLEND_ANIMATION_COUNT
-            ):
-                raise ValueError
-        except (TypeError, ValueError):
+            request = ModelBlendTaskRequest.parse(
+                self.read_json_body(),
+                max_animation_count=MAX_BLEND_ANIMATION_COUNT,
+            )
+        except (TaskInputError, ValueError):
             self.send_error_json(400, "model blend task input is invalid")
             return
 
         query = {
-            "manifestId": [str(manifest_id)],
-            "assetIndex": [str(asset_index)],
-            "animationAssetIndex": [str(value) for value in animation_indexes],
+            "manifestId": [str(request.manifest_id)],
+            "assetIndex": [str(request.asset_index)],
+            "animationAssetIndex": [str(value) for value in request.animation_asset_indexes],
         }
         resolved = self.resolve_manifest_asset_source(query)
         if resolved is None:
@@ -1727,12 +1713,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         worker = object.__new__(BrowserHandler)
         worker.db_path = self.db_path
-        created = TASKS.submit_with_progress(
+        created = TASK_API.submit_with_progress(
             "modelBlend",
             lambda cancel_event, report_progress: worker.build_model_blend_task_result(
                 resolved,
                 animation_sources,
-                lod,
+                request.lod,
                 cancel_event=cancel_event,
                 progress=report_progress,
             ),
@@ -1741,29 +1727,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_start_model_animation_task(self) -> None:
         try:
-            body = self.read_json_body()
-            manifest_id = int(body.get("manifestId"))
-            asset_index = int(body.get("assetIndex"))
-            animation_asset_index = int(body.get("animationAssetIndex"))
-            lod = int(body.get("lod", 0))
-            if (
-                manifest_id < 0
-                or asset_index < 0
-                or animation_asset_index < 0
-                or lod not in range(4)
-            ):
-                raise ValueError
-        except (TypeError, ValueError):
+            request = ModelAnimationTaskRequest.parse(self.read_json_body())
+        except (TaskInputError, ValueError):
             self.send_error_json(400, "model animation task input is invalid")
             return
 
         model_query = {
-            "manifestId": [str(manifest_id)],
-            "assetIndex": [str(asset_index)],
+            "manifestId": [str(request.manifest_id)],
+            "assetIndex": [str(request.asset_index)],
         }
         animation_query = {
-            "manifestId": [str(manifest_id)],
-            "assetIndex": [str(animation_asset_index)],
+            "manifestId": [str(request.manifest_id)],
+            "assetIndex": [str(request.animation_asset_index)],
         }
         model_resolved = self.resolve_manifest_asset_source(model_query)
         if model_resolved is None:
@@ -1777,12 +1752,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         worker = object.__new__(BrowserHandler)
         worker.db_path = self.db_path
-        created = TASKS.submit_with_progress(
+        created = TASK_API.submit_with_progress(
             "modelAnimation",
             lambda cancel_event, report_progress: worker.build_model_animation_result(
                 model_resolved,
                 animation_resolved,
-                lod,
+                request.lod,
                 cancel_event=cancel_event,
                 progress=report_progress,
             ),

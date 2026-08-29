@@ -50,7 +50,9 @@ AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 
 `task_registry.py` 只负责状态文件、原子结果发布、当前进程取消句柄和保留策略；
 `task_service.py` 将存储损坏或缺失统一映射成应用层的任务不存在，并给请求层提供状态、取消
 响应和已登记产物。`server.py` 只解析 HTTP 参数、选择状态码并流式写出产物，不直接解释任务
-目录或私有结果字段。后续模型与动画任务的创建编排也应沿这一边界移出 Handler。
+目录或私有结果字段。模型、动画和 Blender 创建参数由 `task_requests.py` 转成不可变 DTO，
+LOD、可选动画和批量上限不再在三个 Handler 中重复解析。后续资源身份解析与领域 operation
+组装也应沿这一边界移出 Handler。
 
 ## 关键约束
 

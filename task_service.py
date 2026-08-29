@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import threading
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from task_registry import BackgroundTaskRegistry, TaskNotFoundError
 
@@ -33,6 +35,20 @@ class TaskApplicationService:
             return self._registry.snapshot(task_id)
         except (TaskNotFoundError, OSError, json.JSONDecodeError) as error:
             raise TaskNotFoundError(task_id) from error
+
+    def submit(
+        self,
+        kind: str,
+        operation: Callable[[threading.Event], object],
+    ) -> dict:
+        return self._registry.submit(kind, operation)
+
+    def submit_with_progress(
+        self,
+        kind: str,
+        operation: Callable[[threading.Event, Callable[[dict], None]], object],
+    ) -> dict:
+        return self._registry.submit_with_progress(kind, operation)
 
     def cancel(self, task_id: str) -> TaskCancellation:
         try:
