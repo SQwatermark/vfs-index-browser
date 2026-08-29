@@ -118,6 +118,9 @@ record、asset 与依赖闭包，不再持有模型构建步骤或产物 URL 规
 Avatar 模型的已选 Mesh/Material/Avatar 解释、材质纹理 selection、导出图片名称回绑和静态
 ModelDocument/geometry 构建由 `avatar_model_document_service.py` 负责；资源闭包和 container
 仍由 Avatar 资源计划决定，重复 Texture2D 名称不会被后到产物静默覆盖。
+`avatar_model_build_service.py` 在资源计划能力之上协调依赖闭包完整性、source identity、缓存、
+build session、Worker、文档服务与 run store。Handler 只注入索引相关的计划、闭包和 Bundle 来源
+解析方法，并保留原有 HTTP/任务调用签名；缺失依赖会在创建 run 和调用 Worker 之前失败。
 
 ## 关键约束
 

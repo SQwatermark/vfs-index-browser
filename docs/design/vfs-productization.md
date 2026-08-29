@@ -757,3 +757,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `ensure_model_hierarchy` 仅保留原签名并转发输入，任务与同步调用方无需迁移。合成回归覆盖缓存
   短路、四阶段进度、Worker 步骤顺序、最终文档校验和发布回调。下一阶段对称抽取 Avatar 高层
   应用服务，P4 总门禁保持未完成。
+- Avatar 模型的计划读取、依赖闭包校验、source identity、缓存读取、五阶段 Worker/文档流水线、
+  产物 URL、metadata 和原子发布已整体移入 `avatar_model_build_service.py`。Handler 仅注入必须
+  访问 manifest 索引和本地 Bundle 表的三个查询能力，`ensure_avatar_mesh_model` 成为兼容转发。
+  合成回归覆盖计划后缓存短路、纹理路径、container selection、步骤/进度/发布，以及缺失依赖在
+  Worker 前失败。普通与 Avatar 两条模型路径的高层协调现已对称，后续可收口遗留 Handler
+  兼容方法和真实 Avatar run 门禁，P4 总门禁保持未完成。

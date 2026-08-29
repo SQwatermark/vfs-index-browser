@@ -92,6 +92,7 @@ from avatar_mesh_snapshot import (
     selected_container_paths,
 )
 from avatar_model_document_service import AvatarModelDocumentService
+from avatar_model_build_service import AvatarModelBuildService
 from npc_avatar_model import build_static_avatar_mesh_document
 from string_path_hash import StringPathHashIndex
 from npc_avatar_config import (
@@ -102,9 +103,7 @@ from npc_avatar_config import (
 )
 from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
-from model_worker_service import ModelBundleInput, ModelWorkerService
-from model_source_identity import avatar_model_source_identity
-from model_build_session import ModelBuildSession
+from model_worker_service import ModelWorkerService
 from ordinary_model_document_service import OrdinaryModelDocumentService
 from ordinary_model_build_service import OrdinaryModelBuildService
 from gltf_export import build_glb
@@ -2789,6 +2788,24 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def avatar_model_document_service(self) -> AvatarModelDocumentService:
         return AvatarModelDocumentService()
 
+    def avatar_model_build_service(self) -> AvatarModelBuildService:
+        return AvatarModelBuildService(
+            self.model_run_store(),
+            self.model_worker_service(),
+            self.avatar_model_document_service(),
+            self.load_avatar_mesh_plan,
+            self.avatar_mesh_bundle_closure,
+            self.resolve_bundle_sources,
+            selected_container_paths,
+            UNITY_WORKER.artifact_identity,
+            version=AVATAR_MODEL_SNAPSHOT_VERSION,
+            builder_paths=[
+                Path(build_static_avatar_mesh_document.__code__.co_filename),
+                Path(selected_container_paths.__code__.co_filename),
+                Path(__file__).with_name("animestudio_model.py"),
+            ],
+        )
+
     def avatar_model_snapshot_cache_paths(
         self,
         record: dict,
@@ -2903,161 +2920,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: object | None = None,
         progress: Callable[[dict], None] | None = None,
     ) -> tuple[dict, dict, Path]:
-        if lod not in range(4):
-            raise ValueError(f"LOD must be in 0..3, got {lod}")
-
-        if progress is not None:
-            progress({"stage": "avatarPlan", "completed": 1, "total": 5})
-        avatar_mesh, plan, plan_meta = self.load_avatar_mesh_plan(
+        return self.avatar_model_build_service().ensure(
             index,
             asset,
             bundle_record,
             bundle_chunk,
             lod,
             cancel_event=cancel_event,
-        )
-        bundles = self.avatar_mesh_bundle_closure(index, plan)
-        bundle_sources, missing_bundles = self.resolve_bundle_sources(bundles)
-        if missing_bundles:
-            names = ", ".join(str(bundle["name"]) for bundle in missing_bundles)
-            raise FileNotFoundError(f"AvatarMesh dependency bundles are missing: {names}")
-
-        cache_root, runs_root, run_path = self.avatar_model_snapshot_cache_paths(
-            bundle_record,
-            int(asset["asset_index"]),
-            lod,
-        )
-        builder_paths = [
-            Path(build_static_avatar_mesh_document.__code__.co_filename),
-            Path(selected_container_paths.__code__.co_filename),
-            Path(__file__).with_name("animestudio_model.py"),
-        ]
-        source_identity = avatar_model_source_identity(
-            bundle_record,
-            bundle_chunk,
-            asset,
-            lod=lod,
-            avatar_mesh=avatar_mesh,
-            resource_plan=plan,
-            bundle_sources=bundle_sources,
-            builder_paths=builder_paths,
-            tool_artifacts=UNITY_WORKER.artifact_identity(),
-        )
-        cached = self.model_run_store().load_cached(
-            cache_root,
-            run_path,
-            version=AVATAR_MODEL_SNAPSHOT_VERSION,
-            source_identity=source_identity,
-            geometry_required=True,
-        )
-        if cached is not None:
-            document, run_meta, model_path = cached
-            if progress is not None:
-                progress({"stage": "cache", "completed": 5, "total": 5})
-            return document, run_meta, model_path
-
-        session = ModelBuildSession(
-            runs_root,
-            "avatar",
-            int(bundle_record["id"]),
-            int(asset["asset_index"]),
-            5,
-            lod=lod,
             progress=progress,
         )
-        request_id = session.request_id
-        run_root = session.run_root
-        object_root = session.object_root
-        texture_root = session.texture_root
-        if not bundle_sources:
-            raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
-        worker_service = self.model_worker_service()
-        staged_inputs = worker_service.stage_inputs(run_root, [
-            ModelBundleInput(
-                f"record:{int(record['id'])}",
-                record,
-                chunk,
-                f"bundle-{int(record['id'])}.ab",
-            )
-            for record, chunk in bundle_sources
-        ])
-        primary_input_id = staged_inputs[0]["inputId"]
-        cab_root = session.cab_root
-        session.report("cabMap", 2)
-        cab_result = worker_service.build_cab_map(
-            staged_inputs,
-            cab_root,
-            session.worker_request_id("cab"),
-            cancel_event=cancel_event,
-        )
-        session.report("objects", 3)
-        object_result = worker_service.export_objects(
-            staged_inputs,
-            cab_root / "cab-map.json",
-            object_root,
-            session.worker_request_id("objects"),
-            primary_input_id=primary_input_id,
-            selection_input_ids=[value["inputId"] for value in staged_inputs],
-            included_types=["Mesh", "Material", "Avatar"],
-            containers=selected_container_paths(plan),
-            cancel_event=cancel_event,
-        )
-        session.add_step("buildCABMap", cab_result)
-        session.add_step("exportObjectSnapshots", object_result)
-
-        document_service = self.avatar_model_document_service()
-        assembly = document_service.load(object_root, plan)
-        session.report("textures", 4)
-        if assembly.texture_selections:
-            texture_result = worker_service.export_textures(
-                staged_inputs,
-                cab_root / "cab-map.json",
-                texture_root,
-                session.worker_request_id("textures"),
-                primary_input_id=primary_input_id,
-                selections=assembly.texture_selections,
-                cancel_event=cancel_event,
-            )
-            session.add_step("exportIdentifiedTextures", texture_result)
-            document_service.attach_exported_textures(
-                assembly,
-                texture_result,
-                lambda relative: (
-                        f"/api/manifest-asset/model-texture?recordId={int(bundle_record['id'])}"
-                        f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
-                        f"&run={quote(request_id)}"
-                        f"&path={quote(relative)}"
-                ),
-            )
-
-        document, geometry = document_service.build(
-            avatar_mesh,
-            assembly,
-            lod=lod,
-            buffer_uri=(
-                f"/api/manifest-asset/model-buffer?recordId={int(bundle_record['id'])}"
-                f"&assetIndex={int(asset['asset_index'])}&lod={lod}"
-                f"&run={quote(request_id)}"
-            ),
-        )
-        run_meta = session.metadata(
-            version=AVATAR_MODEL_SNAPSHOT_VERSION,
-            source=source_identity,
-            scope="avatarMeshBundleClosure",
-            resourcePlan=plan,
-            planRun=plan_meta,
-        )
-        model_path = self.model_run_store().publish(
-            cache_root,
-            run_path,
-            run_root,
-            document=document,
-            meta=run_meta,
-            geometry=geometry,
-            geometry_required=True,
-            before_pointer=lambda: session.report("publish", 5),
-        )
-        return document, run_meta, model_path
 
     def manifest_worker_service(self) -> ManifestWorkerService:
         return ManifestWorkerService(
