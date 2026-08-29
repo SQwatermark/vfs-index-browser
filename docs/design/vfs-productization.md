@@ -763,3 +763,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   合成回归覆盖计划后缓存短路、纹理路径、container selection、步骤/进度/发布，以及缺失依赖在
   Worker 前失败。普通与 Avatar 两条模型路径的高层协调现已对称，后续可收口遗留 Handler
   兼容方法和真实 Avatar run 门禁，P4 总门禁保持未完成。
+- 抽取后使用当前 `451359` manifest 的秦桔臣 AvatarMesh `191036` LOD0 从正式
+  `POST /api/tasks/model` 入口完成真实冷构建和原子发布：321 节点、9 Mesh、9 Material、9 Skin、
+  28 张纹理、2,252,808 字节 geometry，ModelDocument 校验为 0 错误；run 完整记录 CABMap、对象
+  与纹理三步，根指针 `selectedRun` 与不可变 run 完成标记一致。该证据确认新 Avatar 应用服务、
+  后台任务和 HTTP 结果链路贯通。审计时还发现误把普通 VFS record 当 `manifestId` 会令原始
+  `brotli.error` 穿透请求线程；ManifestIndex 现将其归一为稳定输入错误，由资源服务返回结构化
+  400，不再让客户端只看到连接提前结束。P4 模型应用服务子门禁完成。

@@ -76,6 +76,15 @@ class ManifestDependencyTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(payload).hexdigest(), alias["fingerprint"])
             self.assertEqual([], list(cache_dir.glob(".*.tmp")))
 
+    def test_reports_invalid_compressed_payload_as_manifest_input_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(
+                ValueError, "invalid Brotli-compressed HGM manifest"
+            ):
+                ManifestIndex.ensure(b"not a Brotli manifest", Path(directory))
+
+            self.assertEqual([], list(Path(directory).glob("manifest-*.sqlite")))
+
     def test_reads_reference_integer_array(self):
         data = b"head" + struct.pack("<i3i", 3, 1, 4, 2)
         self.assertEqual([1, 4, 2], _ref_int_array(data, 4, 0, 5))

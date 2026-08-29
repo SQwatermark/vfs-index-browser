@@ -94,6 +94,31 @@ class ManifestAssetServiceTests(unittest.TestCase):
         self.assertEqual(404, missing_bundle.exception.status)
         self.assertIn("missing.ab", str(missing_bundle.exception))
 
+    def test_maps_manifest_parser_failure_to_stable_client_error(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "index.sqlite"
+            manifest = root / "ordinary.chk"
+            manifest.write_bytes(b"not a manifest")
+            self._create_database(database, [
+                (1, "ordinary", str(manifest), "Persistent", 1, "ordinary.bin"),
+            ])
+            service = ManifestAssetService(
+                database,
+                lambda *_args: (_ for _ in ()).throw(
+                    ValueError("invalid Brotli-compressed HGM manifest")
+                ),
+                lambda *_args: (0,),
+            )
+
+            with self.assertRaises(ManifestAssetResolutionError) as raised:
+                service.resolve(1, 11)
+
+        self.assertEqual(400, raised.exception.status)
+        self.assertEqual(
+            "invalid Brotli-compressed HGM manifest", str(raised.exception)
+        )
+
     @staticmethod
     def _create_database(path: Path, rows) -> None:
         connection = sqlite3.connect(path)

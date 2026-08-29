@@ -107,7 +107,10 @@ class ManifestIndex:
         index = cls(cache_path)
         if index._valid(fingerprint):
             return index
-        data = brotli.decompress(compressed_payload)
+        try:
+            data = brotli.decompress(compressed_payload)
+        except brotli.error as error:
+            raise ValueError("invalid Brotli-compressed HGM manifest") from error
         index._build(data, fingerprint)
         return index
 
