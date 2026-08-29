@@ -747,3 +747,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   chunk mtime、asset、依赖闭包、缺失依赖、Avatar 计划/LOD、builder 和 Worker 工具身份。庄方宜
   真实普通模型 `132923/263486` 的 70 项依赖由新函数重建后与既有 `run.json` source 逐字段完全
   相等，证明模块迁移不会造成无意义缓存失效。下一阶段继续抽取 run/进度高层协调。
+- 普通与 Avatar 模型的主 request ID、CAB/对象/纹理子请求 ID、run 内目录、步骤列表、进度上报
+  和最终 metadata 已移入 `model_build_session.py`。既有 `model-*`/`avatar-*-lod*` 格式、阶段名、
+  总步数、scope 与附加字段保持不变；run store 仍独占活动指针发布职责。合成回归固定时间和
+  UUID 验证两类精确 ID、路径、步骤复制及进度载荷。Handler 中模型高层协调已显著收窄，但
+  资源计划与各服务调用次序仍待形成独立应用服务，P4 总门禁保持未完成。

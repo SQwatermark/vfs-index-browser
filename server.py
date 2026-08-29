@@ -104,6 +104,7 @@ from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
 from model_worker_service import ModelBundleInput, ModelWorkerService
 from model_source_identity import avatar_model_source_identity, ordinary_model_source_identity
+from model_build_session import ModelBuildSession
 from ordinary_model_document_service import OrdinaryModelDocumentService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
@@ -2846,13 +2847,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 progress({"stage": "cache", "completed": 4, "total": 4})
             return document, run_meta
 
-        request_id = (
-            f"model-{int(record['id'])}-{int(asset['asset_index'])}-"
-            f"{time.time_ns()}-{uuid.uuid4().hex}"
+        session = ModelBuildSession(
+            runs_root,
+            "model",
+            int(record["id"]),
+            int(asset["asset_index"]),
+            4,
+            progress=progress,
         )
-        run_root = runs_root / request_id
-        object_root = run_root / "objects"
-        texture_root = run_root / "textures"
+        request_id = session.request_id
+        run_root = session.run_root
+        object_root = session.object_root
+        texture_root = session.texture_root
         worker_service = self.model_worker_service()
         staged_inputs = worker_service.stage_inputs(run_root, [
             ModelBundleInput("manifest:primary", record, chunk_path, "entry.ab"),
@@ -2866,48 +2872,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 for dependency, dependency_chunk in dependency_sources
             ],
         ])
-        cab_root = run_root / "cab-map"
-        if progress is not None:
-            progress({"stage": "cabMap", "completed": 1, "total": 4})
+        cab_root = session.cab_root
+        session.report("cabMap", 1)
         cab_result = worker_service.build_cab_map(
             staged_inputs,
             cab_root,
-            (
-                f"model-cab-{int(record['id'])}-{int(asset['asset_index'])}-"
-                f"{time.time_ns()}"
-            ),
+            session.worker_request_id("cab"),
             cancel_event=cancel_event,
         )
-        if progress is not None:
-            progress({"stage": "objects", "completed": 2, "total": 4})
+        session.report("objects", 2)
         object_result = worker_service.export_objects(
             staged_inputs,
             cab_root / "cab-map.json",
             object_root,
-            (
-                f"model-objects-{int(record['id'])}-{int(asset['asset_index'])}-"
-                f"{time.time_ns()}"
-            ),
+            session.worker_request_id("objects"),
             primary_input_id="manifest:primary",
             selection_input_ids=[value["inputId"] for value in staged_inputs],
             included_types=MODEL_SNAPSHOT_TYPES,
             containers=[],
             cancel_event=cancel_event,
         )
-        completed_steps = [
-            {"name": "buildCABMap", "workerResult": cab_result},
-            {"name": "exportObjectSnapshots", "workerResult": object_result},
-        ]
-        run_meta = {
-            "version": MODEL_SNAPSHOT_VERSION,
-            "source": source_identity,
-            "selectedRun": request_id,
-            "steps": completed_steps,
-            "builtAtEpoch": int(time.time()),
-            "scope": "manifestDependencyClosure",
-            "dependencyBundles": dependency_bundles,
-            "missingDependencyBundles": missing_dependency_bundles,
-        }
+        session.add_step("buildCABMap", cab_result)
+        session.add_step("exportObjectSnapshots", object_result)
         assembly = document_service.assemble(
             object_root,
             logical_path=str(asset["path"]),
@@ -2918,17 +2904,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"&run={quote(request_id)}"
             ),
         )
-        if progress is not None:
-            progress({"stage": "textures", "completed": 3, "total": 4})
+        session.report("textures", 3)
         if assembly.textures:
             texture_result = worker_service.export_textures(
                 staged_inputs,
                 cab_root / "cab-map.json",
                 texture_root,
-                (
-                    f"model-textures-{int(record['id'])}-{int(asset['asset_index'])}-"
-                    f"{time.time_ns()}"
-                ),
+                session.worker_request_id("textures"),
                 primary_input_id="manifest:primary",
                 selections=[
                     {"sourceFile": identity.source_file, "pathId": identity.path_id}
@@ -2936,12 +2918,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 ],
                 cancel_event=cancel_event,
             )
-            completed_steps.append(
-                {
-                    "name": "exportIdentifiedTextures",
-                    "workerResult": texture_result,
-                }
-            )
+            session.add_step("exportIdentifiedTextures", texture_result)
             document_service.attach_exported_textures(
                 assembly,
                 texture_result,
@@ -2953,6 +2930,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 ),
             )
         document_service.finalize(assembly, missing_dependency_bundles)
+        run_meta = session.metadata(
+            version=MODEL_SNAPSHOT_VERSION,
+            source=source_identity,
+            scope="manifestDependencyClosure",
+            dependencyBundles=dependency_bundles,
+            missingDependencyBundles=missing_dependency_bundles,
+        )
         self.model_run_store().publish(
             cache_root,
             run_path,
@@ -2961,11 +2945,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             meta=run_meta,
             geometry=assembly.geometry,
             geometry_required=False,
-            before_pointer=(
-                lambda: progress({"stage": "publish", "completed": 4, "total": 4})
-                if progress is not None
-                else None
-            ),
+            before_pointer=lambda: session.report("publish", 4),
         )
         return assembly.document, run_meta
 
@@ -3082,13 +3062,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 progress({"stage": "cache", "completed": 5, "total": 5})
             return document, run_meta, model_path
 
-        request_id = (
-            f"avatar-{int(bundle_record['id'])}-{int(asset['asset_index'])}-lod{lod}-"
-            f"{time.time_ns()}-{uuid.uuid4().hex}"
+        session = ModelBuildSession(
+            runs_root,
+            "avatar",
+            int(bundle_record["id"]),
+            int(asset["asset_index"]),
+            5,
+            lod=lod,
+            progress=progress,
         )
-        run_root = runs_root / request_id
-        object_root = run_root / "objects"
-        texture_root = run_root / "textures"
+        request_id = session.request_id
+        run_root = session.run_root
+        object_root = session.object_root
+        texture_root = session.texture_root
         if not bundle_sources:
             raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
         worker_service = self.model_worker_service()
@@ -3102,60 +3088,43 @@ class BrowserHandler(BaseHTTPRequestHandler):
             for record, chunk in bundle_sources
         ])
         primary_input_id = staged_inputs[0]["inputId"]
-        cab_root = run_root / "cab-map"
-        if progress is not None:
-            progress({"stage": "cabMap", "completed": 2, "total": 5})
+        cab_root = session.cab_root
+        session.report("cabMap", 2)
         cab_result = worker_service.build_cab_map(
             staged_inputs,
             cab_root,
-            (
-                f"avatar-cab-{int(bundle_record['id'])}-"
-                f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
-            ),
+            session.worker_request_id("cab"),
             cancel_event=cancel_event,
         )
-        if progress is not None:
-            progress({"stage": "objects", "completed": 3, "total": 5})
+        session.report("objects", 3)
         object_result = worker_service.export_objects(
             staged_inputs,
             cab_root / "cab-map.json",
             object_root,
-            (
-                f"avatar-objects-{int(bundle_record['id'])}-"
-                f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
-            ),
+            session.worker_request_id("objects"),
             primary_input_id=primary_input_id,
             selection_input_ids=[value["inputId"] for value in staged_inputs],
             included_types=["Mesh", "Material", "Avatar"],
             containers=selected_container_paths(plan),
             cancel_event=cancel_event,
         )
-        completed_steps = [
-            {"name": "buildCABMap", "workerResult": cab_result},
-            {"name": "exportObjectSnapshots", "workerResult": object_result},
-        ]
+        session.add_step("buildCABMap", cab_result)
+        session.add_step("exportObjectSnapshots", object_result)
 
         document_service = self.avatar_model_document_service()
         assembly = document_service.load(object_root, plan)
-        if progress is not None:
-            progress({"stage": "textures", "completed": 4, "total": 5})
+        session.report("textures", 4)
         if assembly.texture_selections:
             texture_result = worker_service.export_textures(
                 staged_inputs,
                 cab_root / "cab-map.json",
                 texture_root,
-                (
-                    f"avatar-textures-{int(bundle_record['id'])}-"
-                    f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
-                ),
+                session.worker_request_id("textures"),
                 primary_input_id=primary_input_id,
                 selections=assembly.texture_selections,
                 cancel_event=cancel_event,
             )
-            completed_steps.append({
-                "name": "exportIdentifiedTextures",
-                "workerResult": texture_result,
-            })
+            session.add_step("exportIdentifiedTextures", texture_result)
             document_service.attach_exported_textures(
                 assembly,
                 texture_result,
@@ -3177,16 +3146,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"&run={quote(request_id)}"
             ),
         )
-        run_meta = {
-            "version": AVATAR_MODEL_SNAPSHOT_VERSION,
-            "source": source_identity,
-            "selectedRun": request_id,
-            "scope": "avatarMeshBundleClosure",
-            "resourcePlan": plan,
-            "planRun": plan_meta,
-            "steps": completed_steps,
-            "builtAtEpoch": int(time.time()),
-        }
+        run_meta = session.metadata(
+            version=AVATAR_MODEL_SNAPSHOT_VERSION,
+            source=source_identity,
+            scope="avatarMeshBundleClosure",
+            resourcePlan=plan,
+            planRun=plan_meta,
+        )
         model_path = self.model_run_store().publish(
             cache_root,
             run_path,
@@ -3195,11 +3161,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             meta=run_meta,
             geometry=geometry,
             geometry_required=True,
-            before_pointer=(
-                lambda: progress({"stage": "publish", "completed": 5, "total": 5})
-                if progress is not None
-                else None
-            ),
+            before_pointer=lambda: session.report("publish", 5),
         )
         return document, run_meta, model_path
 
