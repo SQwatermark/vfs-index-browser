@@ -75,6 +75,22 @@ from vfs_directory_service import (
     join_manifest_virtual_path,
     split_manifest_virtual_path,
 )
+from file_preview_service import (
+    AUDIO_EXTENSIONS,
+    CONTAINER_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    PREVIEW_BINARY_LIMIT,
+    PREVIEW_TEXT_LIMIT,
+    TEXT_EXTENSIONS,
+    VIDEO_EXTENSIONS,
+    FilePreviewService,
+    decode_text,
+    file_suffix,
+    guess_content_type,
+    hex_preview,
+    looks_like_text,
+    truncate_text,
+)
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -307,8 +323,6 @@ MAX_BLEND_ANIMATION_COUNT = 100
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 MANIFEST_LOGICAL_ID = "BundleManifest/Data/Bundles/Windows/manifest.hgmmap"
 PROJECTILE_API_VERSION = 1
-PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
-PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
 MEMORYPACK_SCHEMA = RUNTIME_CONFIG.memorypack_schema
 MEMORYPACK_UNION_MAP = RUNTIME_CONFIG.memorypack_union_map
@@ -342,11 +356,6 @@ SOURCE_PRIORITY = {
     "StreamingAssets": 1,
 }
 
-TEXT_EXTENSIONS = {".anim", ".json", ".lua", ".md", ".txt", ".csv", ".xml", ".yaml", ".yml"}
-IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"}
-VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
-CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
 MODEL_SNAPSHOT_TYPES = (
     "GameObject",
     "Transform",
@@ -855,10 +864,6 @@ def escape_sql_like(value: str) -> str:
     return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def file_suffix(file_name: str) -> str:
-    return Path(file_name).suffix.lower()
-
-
 def is_safe_akedb_name(value: str) -> bool:
     return re.fullmatch(r"[A-Za-z0-9_]+", value) is not None
 
@@ -913,66 +918,9 @@ def tablecfg_name_for_file(file_name: str) -> str | None:
     return name
 
 
-def guess_content_type(file_name: str, data: bytes | None = None) -> str:
-    suffix = file_suffix(file_name)
-    if suffix == ".wem":
-        return "audio/x-wem"
-    if data:
-        if data.startswith(b"\x89PNG\r\n\x1a\n"):
-            return "image/png"
-        if data.startswith(b"\xff\xd8\xff"):
-            return "image/jpeg"
-        if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-            return "image/webp"
-        if data.startswith(b"GIF87a") or data.startswith(b"GIF89a"):
-            return "image/gif"
-        if data.startswith(b"RIFF") and data[8:12] == b"WAVE":
-            return "audio/wav"
-    if suffix == ".json":
-        return "application/json; charset=utf-8"
-    if suffix in {".lua", ".md", ".txt", ".csv", ".xml", ".yaml", ".yml"}:
-        return "text/plain; charset=utf-8"
-    return mimetypes.guess_type(file_name)[0] or "application/octet-stream"
-
-
-def decode_text(data: bytes) -> tuple[str | None, str | None]:
-    for encoding in ("utf-8-sig", "utf-8", "gb18030"):
-        try:
-            return data.decode(encoding), encoding
-        except UnicodeDecodeError:
-            continue
-    return None, None
-
-
-def looks_like_text(value: str) -> bool:
-    if not value:
-        return True
-    sample = value[:8192]
-    controls = sum(1 for char in sample if ord(char) < 32 and char not in "\r\n\t")
-    return controls <= max(2, len(sample) // 100)
-
-
 def looks_like_text_bytes(data: bytes) -> bool:
     text, _ = decode_text(data)
     return text is not None and looks_like_text(text)
-
-
-def truncate_text(value: str, limit: int = PREVIEW_TEXT_LIMIT) -> tuple[str, bool]:
-    data = value.encode("utf-8")
-    if len(data) <= limit:
-        return value, False
-    return data[:limit].decode("utf-8", errors="replace"), True
-
-
-def hex_preview(data: bytes, max_bytes: int = PREVIEW_BINARY_LIMIT) -> str:
-    data = data[:max_bytes]
-    lines = []
-    for offset in range(0, len(data), 16):
-        row = data[offset : offset + 16]
-        hex_part = " ".join(f"{value:02x}" for value in row)
-        ascii_part = "".join(chr(value) if 32 <= value < 127 else "." for value in row)
-        lines.append(f"{offset:08x}  {hex_part:<47}  {ascii_part}")
-    return "\n".join(lines)
 
 
 def length_prefixed_utf8_strings(data: bytes, max_offset: int = 8192, max_count: int = 40) -> list[dict]:
@@ -3284,14 +3232,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_json({**base, "kind": kind, "message": message})
             return
 
-        if suffix in IMAGE_EXTENSIONS:
-            self.send_json({**base, "kind": "image", "contentType": guess_content_type(record["file_name"])})
-            return
-        if suffix in VIDEO_EXTENSIONS:
-            self.send_json({**base, "kind": "video", "contentType": guess_content_type(record["file_name"])})
-            return
-        if suffix in AUDIO_EXTENSIONS:
-            self.send_json({**base, "kind": "audio", "contentType": guess_content_type(record["file_name"])})
+        if suffix in IMAGE_EXTENSIONS | VIDEO_EXTENSIONS | AUDIO_EXTENSIONS:
+            self.send_json(FilePreviewService.build(
+                base,
+                record["file_name"],
+                int(record["length"]),
+                lambda limit: self.read_file_slice(record, chunk_path, limit=limit),
+            ))
             return
 
         tablecfg_name = tablecfg_name_for_file(record["file_name"])
@@ -3389,27 +3336,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 }
             )
             return
-        if text is not None and (suffix in TEXT_EXTENSIONS or looks_like_text(text)):
-            self.send_json(
-                {
-                    **base,
-                    "kind": "text",
-                    "encoding": encoding,
-                    "text": text,
-                    "truncated": truncated,
-                }
-            )
-            return
-
-        self.send_json(
-            {
-                **base,
-                "kind": "hex",
-                "hex": hex_preview(data),
-                "truncated": truncated,
-                "message": "该文件不是可直接显示的文本，当前展示解密后的前段十六进制内容。",
-            }
+        document = FilePreviewService.build(
+            base,
+            record["file_name"],
+            int(record["length"]),
+            lambda requested_limit: data[:requested_limit],
         )
+        if document["kind"] == "hex":
+            document["message"] = "该文件不是可直接显示的文本，当前展示解密后的前段十六进制内容。"
+        self.send_json(document)
 
     def handle_tablecfg_json(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
@@ -3557,26 +3492,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "asset": asset_meta,
             "message": f"来自 {manifest_asset['bundle_name']}",
         }
-        suffix = file_suffix(target.name)
-        if suffix in IMAGE_EXTENSIONS:
-            self.send_json({**base, "kind": "image", "contentType": guess_content_type(target.name)})
-            return
-        if suffix in VIDEO_EXTENSIONS:
-            self.send_json({**base, "kind": "video", "contentType": guess_content_type(target.name)})
-            return
-        if suffix in AUDIO_EXTENSIONS:
-            self.send_json({**base, "kind": "audio", "contentType": guess_content_type(target.name)})
-            return
-        limit = PREVIEW_TEXT_LIMIT if suffix in TEXT_EXTENSIONS else PREVIEW_BINARY_LIMIT
-        data = target.read_bytes()[:limit]
-        text, encoding = decode_text(data)
-        truncated = target.stat().st_size > len(data)
-        if text is not None and (suffix in TEXT_EXTENSIONS or looks_like_text(text)):
-            self.send_json(
-                {**base, "kind": "text", "encoding": encoding, "text": text, "truncated": truncated}
-            )
-            return
-        self.send_json({**base, "kind": "hex", "hex": hex_preview(data), "truncated": truncated})
+        self.send_json(FilePreviewService.build_path(base, target))
 
     def build_model_task_result(
         self,
@@ -4220,7 +4136,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
         rel_path = query.get("path", [""])[0]
         raw_url = f"/api/internal/raw?id={record['id']}&path={quote(rel_path, safe='')}"
         download_url = f"{raw_url}&download=1"
-        internal_suffix = file_suffix(target.name)
         base = {
             "file": record,
             "path": rel_path,
@@ -4231,23 +4146,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "asset": asset_meta,
             "audioEntry": audio_entry.to_json() if audio_entry else None,
         }
-        if internal_suffix in IMAGE_EXTENSIONS:
-            self.send_json({**base, "kind": "image", "contentType": guess_content_type(target.name)})
-            return
-        if internal_suffix in VIDEO_EXTENSIONS:
-            self.send_json({**base, "kind": "video", "contentType": guess_content_type(target.name)})
-            return
-        if internal_suffix in AUDIO_EXTENSIONS:
-            self.send_json({**base, "kind": "audio", "contentType": guess_content_type(target.name)})
-            return
-
-        data = target.read_bytes()[:PREVIEW_TEXT_LIMIT if internal_suffix in TEXT_EXTENSIONS else PREVIEW_BINARY_LIMIT]
-        text, encoding = decode_text(data)
-        truncated = target.stat().st_size > len(data)
-        if text is not None and (internal_suffix in TEXT_EXTENSIONS or looks_like_text(text)):
-            self.send_json({**base, "kind": "text", "encoding": encoding, "text": text, "truncated": truncated})
-            return
-        self.send_json({**base, "kind": "hex", "hex": hex_preview(data), "truncated": truncated})
+        self.send_json(FilePreviewService.build_path(base, target))
 
     def handle_internal_raw(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)

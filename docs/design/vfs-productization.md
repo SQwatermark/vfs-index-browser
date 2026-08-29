@@ -888,3 +888,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   子目录、分页文件批量回填和 manifest 虚拟目录占位，ManifestIndex 资源数通过依赖注入获取；
   Handler 只保留查询参数与虚拟路径分派。合成测试覆盖第二页批量回填、虚拟目录统计和 404，
   真实重启前后根目录 22 项、Manifest 331,714 项及物理文件分页完全一致。
+- 共享文件预览分类已抽到 `file_preview_service.py`，普通 VFS、Manifest 导出文件及容器内部产物
+  统一使用媒体 Content-Type、UTF-8/GB18030 探测、文本控制字符门禁、截断与十六进制格式；
+  TableCfg/MemoryPack 领域分支保持在其前。路径预览改为只读取上限，不再用 `read_bytes()` 先载入
+  整个文件。32 项相关回归通过，真实 Lua 与二进制 `.bytes` 的 kind、编码、截断、正文/hex 长度
+  和提示在重启前后完全一致。
