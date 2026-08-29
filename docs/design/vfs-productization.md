@@ -690,4 +690,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   精确匹配；同类型同名但无法唯一确定的文件不会猜测元数据。合成测试覆盖路径逃逸、歧义拒绝、
   递归统计和精确文件查找。真实缓存 `100542` 的 Sprite 与 Texture2D 分支均能递归列出各自
   `deco_bg04_p<pathId>.png`，两个文件都精确回绑到正确 AssetMap 类型；worker 调度与 run 发布
-  仍留在下一阶段继续拆分。
+  已在下一阶段进入通用服务。
+- AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画共用的 Unity worker run 校验、缓存
+  复验、派生文件身份和 `meta.json` 原子发布已从 `BrowserHandler` 移入
+  `worker_run_service.py`。全局发布临界区阻止并发请求重复构建或交错切换指针；构建、产物验证
+  或派生步骤失败时只回收本次未发布 run，上一份已发布指针保持逐字节不变。合成回归覆盖缓存
+  复用、路径逃逸拒绝、首次失败清理和已有发布后的失败重建；各资源特有输入与领域验证仍留待
+  后续按应用服务边界继续拆分，因此 P4 单体拆分总门禁保持未完成。

@@ -76,6 +76,11 @@ PCK 的 AKPK/BNK 结构只由 `audio_package.py` 解析；`audio_package_service
 派生 WAV。Handler 不再维护第二套宽松二进制解析器或音频缓存路径规则。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
+AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由
+`worker_run_service.py` 统一管理：服务在发布前校验 worker 声明及派生文件的路径、大小和
+SHA-256，以 `meta.json` 作为唯一发布指针，并在同一发布临界区内完成缓存复验或构建。失败
+构建只清理本次未发布目录，不改写上一份有效指针；Handler 只保留各资源能力特有的输入准备、
+worker 调用和领域校验。
 
 ## 关键约束
 

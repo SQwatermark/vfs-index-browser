@@ -144,6 +144,7 @@ from task_operations import BackgroundTaskOperations
 from runtime_config import RuntimeConfig, parse_port
 from service_logging import LOGGER, configure_service_logging
 from tool_registry import ToolRegistry
+from worker_run_service import WorkerRunService, validate_worker_artifacts
 
 try:
     from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, infer_class
@@ -166,6 +167,7 @@ INDEX_FRESHNESS_REPORT = {
 }
 INDEX_REBUILD_REPORT = {"status": "notRun"}
 MANIFEST_INDEX_REPORT = {"status": "notRun"}
+WORKER_RUNS = WorkerRunService()
 
 
 @dataclass(frozen=True)
@@ -1118,86 +1120,6 @@ def resolve_published_model_run(cache_root: Path, requested_run: str = "") -> Pa
     except (OSError, json.JSONDecodeError, TypeError):
         return None
     return selected
-
-
-def validate_worker_artifacts(
-    export_root: Path,
-    result: object,
-    *,
-    allow_empty: bool = False,
-) -> list[Path]:
-    """验证 worker 声明的全部产物，拒绝路径逃逸、重复路径和身份不一致。"""
-
-    artifacts = result.get("artifacts") if isinstance(result, dict) else None
-    if (
-        not isinstance(result, dict)
-        or not isinstance(artifacts, list)
-        or (not artifacts and not allow_empty)
-        or result.get("artifactCount") != len(artifacts)
-        or any(not isinstance(artifact, dict) for artifact in artifacts)
-    ):
-        raise RuntimeError("Unity worker returned an invalid artifact collection")
-
-    paths = []
-    relative_paths = set()
-    for artifact in artifacts:
-        relative = str(artifact.get("relativePath") or "").replace("\\", "/")
-        path = safe_relative_path(export_root, relative)
-        if not relative or relative in relative_paths or path is None or not path.is_file():
-            raise RuntimeError("Unity worker returned an invalid or duplicate artifact path")
-        relative_paths.add(relative)
-        expected_size = artifact.get("byteCount")
-        expected_sha256 = str(artifact.get("sha256") or "").casefold()
-        actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-        if (
-            not isinstance(expected_size, int)
-            or expected_size != path.stat().st_size
-            or not re.fullmatch(r"[0-9a-f]{64}", expected_sha256)
-            or expected_sha256 != actual_sha256
-        ):
-            raise RuntimeError("Unity worker artifact identity is inconsistent")
-        paths.append(path)
-    return paths
-
-
-def describe_derived_artifacts(export_root: Path, files: object) -> dict[str, dict]:
-    """把发布前派生文件转换为可在缓存命中时复验的稳定身份。"""
-
-    if not isinstance(files, dict):
-        raise RuntimeError("derived worker artifact list is inconsistent")
-    described = {}
-    for name, relative_value in files.items():
-        relative = str(relative_value).replace("\\", "/")
-        path = safe_relative_path(export_root, relative)
-        if not name or path is None or not path.is_file():
-            raise RuntimeError("derived worker artifact path is inconsistent")
-        described[str(name)] = {
-            "relativePath": relative,
-            "byteCount": path.stat().st_size,
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-        }
-    return described
-
-
-def validate_derived_artifacts(export_root: Path, described: object) -> dict[str, Path]:
-    """复验已发布的派生文件，防止半成品或事后损坏继续命中缓存。"""
-
-    if not isinstance(described, dict):
-        raise RuntimeError("cached derived artifact list is inconsistent")
-    paths = {}
-    for name, identity in described.items():
-        if not isinstance(identity, dict):
-            raise RuntimeError("cached derived artifact identity is inconsistent")
-        path = safe_relative_path(export_root, str(identity.get("relativePath") or ""))
-        if (
-            path is None
-            or not path.is_file()
-            or identity.get("byteCount") != path.stat().st_size
-            or identity.get("sha256") != hashlib.sha256(path.read_bytes()).hexdigest()
-        ):
-            raise RuntimeError("cached derived artifact identity is inconsistent")
-        paths[str(name)] = path
-    return paths
 
 
 def split_manifest_virtual_path(path: str) -> tuple[str, str] | None:
@@ -3645,7 +3567,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 cancel,
             )
 
-        return self.ensure_unity_worker_run(
+        return WORKER_RUNS.ensure(
             runs_root=runs_root,
             meta_path=meta_path,
             request_prefix=f"{export_name}-{int(asset['asset_index'])}",
@@ -3656,84 +3578,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             validate=validate,
             cancel_event=cancel_event,
         )
-
-    def ensure_unity_worker_run(
-        self,
-        *,
-        runs_root: Path,
-        meta_path: Path,
-        request_prefix: str,
-        version: int,
-        source_identity: dict,
-        invoke: Callable[[Path, Path, str, object | None], dict],
-        derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
-        validate: Callable[[Path, list[Path], dict], None] | None = None,
-        cancel_event: object | None = None,
-        allow_empty: bool = False,
-    ) -> tuple[Path, list[Path], dict]:
-        """校验并原子发布任意 worker run；输入布局由具体能力负责。"""
-
-        # meta.json 是唯一已发布指针；缓存读取不能扫描尚未完成或已经过期的 run。
-        if meta_path.is_file():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                run_name = str(meta.get("selectedRun") or "")
-                selected_run = safe_relative_path(runs_root, run_name)
-                export_root = selected_run / "exported" if selected_run is not None else None
-                if (
-                    meta.get("version") == version
-                    and meta.get("source") == source_identity
-                    and export_root is not None
-                    and export_root.is_dir()
-                ):
-                    cached_artifacts = validate_worker_artifacts(
-                        export_root,
-                        meta.get("workerResult"),
-                        allow_empty=allow_empty,
-                    )
-                    if validate is not None:
-                        validate(export_root, cached_artifacts, meta["workerResult"])
-                    expected_files = [path.relative_to(export_root).as_posix() for path in cached_artifacts]
-                    if meta.get("exportedFiles") != expected_files:
-                        raise RuntimeError("cached worker artifact list is inconsistent")
-                    validate_derived_artifacts(export_root, meta.get("derivedFiles", {}))
-                    return export_root, cached_artifacts, meta
-            except (OSError, json.JSONDecodeError, TypeError, RuntimeError):
-                pass
-
-        request_id = f"{request_prefix}-{time.time_ns()}-{uuid.uuid4().hex}"
-        run_root = runs_root / request_id
-        export_root = run_root / "exported"
-        result = invoke(run_root, export_root, request_id, cancel_event)
-        artifact_paths = validate_worker_artifacts(
-            export_root,
-            result,
-            allow_empty=allow_empty,
-        )
-        if validate is not None:
-            validate(export_root, artifact_paths, result)
-        derived_files = describe_derived_artifacts(
-            export_root,
-            derive(export_root, artifact_paths) if derive is not None else {},
-        )
-
-        meta = {
-            "version": version,
-            "source": source_identity,
-            "selectedRun": request_id,
-            "exportedFiles": [path.relative_to(export_root).as_posix() for path in artifact_paths],
-            "derivedFiles": derived_files,
-            "workerResult": result,
-            "builtAtEpoch": int(time.time()),
-        }
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_meta = meta_path.with_name(f".{meta_path.name}.{uuid.uuid4().hex}.tmp")
-        temporary_meta.write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        os.replace(temporary_meta, meta_path)
-        return export_root, artifact_paths, meta
 
     def ensure_manifest_projectile_component(
         self,
@@ -3962,7 +3806,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
 
         try:
-            export_root, artifact_paths, worker_meta = self.ensure_unity_worker_run(
+            export_root, artifact_paths, worker_meta = WORKER_RUNS.ensure(
                 runs_root=runs_root,
                 meta_path=meta_path,
                 request_prefix=f"asset-map-{int(record['id'])}",
@@ -4080,7 +3924,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     raise RuntimeError("worker preview media types do not match the request")
 
             try:
-                export_root, _artifact_paths, run_meta = self.ensure_unity_worker_run(
+                export_root, _artifact_paths, run_meta = WORKER_RUNS.ensure(
                     runs_root=runs_root,
                     meta_path=run_meta_path,
                     request_prefix=f"asset-export-{int(record['id'])}",
@@ -4142,7 +3986,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             }
 
         try:
-            export_root, _artifact_paths, run_meta = self.ensure_unity_worker_run(
+            export_root, _artifact_paths, run_meta = WORKER_RUNS.ensure(
                 runs_root=runs_root,
                 meta_path=run_meta_path,
                 request_prefix=f"asset-export-{int(record['id'])}",

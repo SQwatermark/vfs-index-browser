@@ -112,6 +112,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `service_logging.py` | 单行 JSON/文本服务日志配置与格式化 |
 | `tool_registry.py` | 可选外部工具的统一解析、能力查询与健康诊断 |
 | `unity_worker.py` | VFS 自有 Unity worker 的唯一 Python 进程适配器与健康诊断 |
+| `worker_run_service.py` | Unity worker 运行产物校验、缓存命中、失败清理与原子发布 |
 | `unity-worker/` | 可独立构建和发布的 .NET Unity 资源 worker |
 | `task_registry.py` | 任务状态落盘、原子结果发布与当前进程取消控制 |
 | `task_service.py` | 后台任务状态、取消和产物查询的应用层边界 |
