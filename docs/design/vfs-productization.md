@@ -919,3 +919,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   路径安全检查的目标文件，统一共享预览分类、asset/audioEntry 元数据和完整内部路径 URL 编码；
   Handler 保留容器分派、导出和错误映射。真实中文 stream PCK 的 `1060201.wem` 重启后仍为
   17,843 字节 hex 预览，audio ID 与 raw/download URL 完全一致。
+- `/api/raw` 与 `/api/internal/raw` 的响应描述和分块来源已抽到 `raw_file_service.py`。普通 VFS
+  记录保持 offset/length 有界流式读取，不会为下载载入完整 chunk；加密记录仍经正式整段解密后
+  输出，并对伪 JSON/文本 MIME 降级。Handler 只发送状态/响应头并迭代数据块。真实重启验证
+  `RootConfig.lua` 仍为 44 字节 UTF-8 文本，中文 PCK 的 `1060201.wem` 仍为 17,843 字节
+  `audio/x-wem`；两者 inline/attachment 文件名均保持一致。

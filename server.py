@@ -82,15 +82,14 @@ from file_preview_service import (
     TEXT_EXTENSIONS,
     VIDEO_EXTENSIONS,
     FilePreviewService,
-    decode_text,
     file_suffix,
     guess_content_type,
-    looks_like_text,
     truncate_text,
 )
 from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_file
 from internal_directory_service import InternalDirectoryService
 from internal_file_preview_service import InternalFilePreviewService
+from raw_file_service import RawFileResponse, RawFileService
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -902,11 +901,6 @@ def model_animation_query_hint(path: str, document: dict) -> str:
     return fallback
 
 
-def looks_like_text_bytes(data: bytes) -> bool:
-    text, _ = decode_text(data)
-    return text is not None and looks_like_text(text)
-
-
 def load_memorypack_union_map(path: Path) -> dict[str, dict[int, str]]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     return {base_type: {int(tag): derived_type for tag, derived_type in entries.items()} for base_type, entries in raw.items()}
@@ -984,6 +978,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def send_error_json(self, status: int, message: str) -> None:
         self.send_json({"error": message}, status=status)
+
+    def send_raw_file(self, response: RawFileResponse) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", response.content_type)
+        self.send_header("Content-Length", str(response.content_length))
+        self.send_header("Content-Disposition", response.content_disposition)
+        self.end_headers()
+        for data in response.chunks():
+            self.wfile.write(data)
 
     def require_current_index(self) -> bool:
         if INDEX_FRESHNESS_REPORT.get("status") == "current":
@@ -3124,45 +3127,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             original, record, chunk_path = resolved
 
-        file_name = Path(original["file_name"]).name or "vfs-file.bin"
-        content_type = guess_content_type(original["file_name"])
-        disposition = "attachment" if download else "inline"
-        encoded_name = quote(file_name)
-
-        if record.get("encrypted"):
-            data = self.read_file_slice(record, chunk_path)
-            content_type = guess_content_type(original["file_name"], data[:32])
-            if content_type.startswith(("application/json", "text/plain")) and not looks_like_text_bytes(data[:8192]):
-                content_type = "application/octet-stream"
-            self.send_response(200)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header(
-                "Content-Disposition",
-                f"{disposition}; filename*=UTF-8''{encoded_name}",
-            )
-            self.end_headers()
-            self.wfile.write(data)
-            return
-
-        length = int(record["length"])
-        self.send_response(200)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(length))
-        self.send_header(
-            "Content-Disposition",
-            f"{disposition}; filename*=UTF-8''{encoded_name}",
+        response = RawFileService(STREAM_CHUNK_SIZE).prepare_vfs(
+            original,
+            record,
+            chunk_path,
+            download=download,
+            read_decrypted=lambda: self.read_file_slice(record, chunk_path),
         )
-        self.end_headers()
-        with chunk_path.open("rb") as file:
-            file.seek(int(record["offset"]))
-            remaining = length
-            while remaining > 0:
-                data = file.read(min(STREAM_CHUNK_SIZE, remaining))
-                if not data:
-                    break
-                self.wfile.write(data)
-                remaining -= len(data)
+        self.send_raw_file(response)
 
     def handle_manifest_asset_preview(self, query: dict[str, list[str]]) -> None:
         resolved_source = self.resolve_manifest_asset_source(query)
@@ -3831,21 +3803,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "unsupported internal raw container")
             return
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        disposition = "attachment" if download else "inline"
-        encoded_name = quote(target.name)
-        with target.open("rb") as file:
-            sniff = file.read(32)
-        self.send_response(200)
-        self.send_header("Content-Type", guess_content_type(target.name, sniff))
-        self.send_header("Content-Length", str(target.stat().st_size))
-        self.send_header("Content-Disposition", f"{disposition}; filename*=UTF-8''{encoded_name}")
-        self.end_headers()
-        with target.open("rb") as file:
-            while True:
-                data = file.read(STREAM_CHUNK_SIZE)
-                if not data:
-                    break
-                self.wfile.write(data)
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(target, download=download)
+        )
 
     def serve_static(self, request_path: str) -> None:
         request_path = unquote(request_path)

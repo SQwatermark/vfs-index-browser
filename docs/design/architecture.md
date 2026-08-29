@@ -118,6 +118,9 @@ AB、PCK 与 USM 的内部目录文档由 `internal_directory_service.py` 按容
 工具能力，Handler 负责文件 ID/路径参数和 404 映射。
 容器内部文件经现有领域服务安全解析后，由 `internal_file_preview_service.py` 统一组装预览分类、
 资源/音频元数据和完整路径编码的 raw/download 链接；服务不负责容器导出或路径合法性判断。
+普通 VFS 原始文件和容器内部产物的响应描述与有界读取由 `raw_file_service.py` 负责。未加密 VFS
+记录只流式读取声明的 offset/length；加密记录沿用整段解密边界并校正 MIME。Handler 只发送 HTTP
+响应头和消费分块，不把 socket 或数据库交给服务。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由
