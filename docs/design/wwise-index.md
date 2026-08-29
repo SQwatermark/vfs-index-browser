@@ -13,10 +13,11 @@
 - `audio_package.py`：读取 AKPK/PCK 目录，保留 Bank、外置 Media 和 Bank 内嵌 Media。
 - `wwise_hirc.py`：切分 SoundBank chunk 与 HIRC 对象，提取有结构证据的关系。
 - `wwise_store.py`：保存 Package、Bank、Media、对象、关系与解析诊断，并提供目录查询。
+- `wwise_media_service.py`：把 Media 索引条目解析到 VFS PCK 来源并派生 WEM/WAV 产物。
 - `tools/build_wwise_index.py`：直接从本地 VFS SQLite 索引读取所有可用 PCK。
 - `tools/index_wwise_pck.py`：从已经提取出的单个 PCK 建立或替换索引。
 - `wwise_catalog_service.py`：组装 `/api/wwise/list` 虚拟目录与 `/api/wwise/preview` 文档。
-- `server.py`：映射 HTTP 错误，并提供 WEM/WAV 物理读取接口。
+- `server.py`：映射 HTTP 错误，并流式发送 WEM/WAV 产物。
 
 ## 数据模型
 

@@ -55,6 +55,7 @@ from ability_entity_data import (
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
 from wwise_store import get_wwise_media
 from wwise_catalog_service import WwiseCatalogService
+from wwise_media_service import WwiseMediaBuildError, WwiseMediaService
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError
 from usm_video_service import UsmVideoService
@@ -1133,6 +1134,24 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def wwise_catalog_service(self) -> WwiseCatalogService:
         return WwiseCatalogService(self.connect_wwise, page_size_max=PAGE_SIZE_MAX)
+
+    def lookup_wwise_media(self, pck_file_id: int, ordinal: int) -> dict | None:
+        with closing(self.connect_wwise()) as conn:
+            return get_wwise_media(conn, pck_file_id, ordinal)
+
+    def resolve_vfs_file_source(self, file_id: int) -> tuple[dict, Path] | None:
+        with closing(self.connect()) as conn:
+            row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
+            if row is None:
+                return None
+            return self.resolve_file_record_quiet(conn, row_to_dict(row))
+
+    def wwise_media_service(self) -> WwiseMediaService:
+        return WwiseMediaService(
+            self.lookup_wwise_media,
+            self.resolve_vfs_file_source,
+            self.ensure_indexed_audio_media_file,
+        )
 
     @classmethod
     def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:
@@ -2310,66 +2329,29 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_wwise_raw(self, query: dict[str, list[str]]) -> None:
         try:
-            pck_file_id = int(query.get("pckFileId", [""])[0])
-            ordinal = int(query.get("ordinal", [""])[0])
-            mode = query.get("format", ["wav"])[0].lower()
-            if mode not in {"wem", "wav"}:
-                raise ValueError("Wwise media format must be wem or wav")
-            with closing(self.connect_wwise()) as conn:
-                media = get_wwise_media(conn, pck_file_id, ordinal)
-            if media is None:
-                raise FileNotFoundError("Wwise media not found")
+            artifact = self.wwise_media_service().resolve(query)
         except ValueError as error:
             self.send_error_json(400, str(error))
             return
         except FileNotFoundError as error:
             self.send_error_json(404, str(error))
             return
+        except WwiseMediaBuildError as error:
+            self.send_error_json(500, str(error))
+            return
         except (sqlite3.DatabaseError, RuntimeError) as error:
             self.send_error_json(500, f"Wwise index error: {error}")
             return
-
-        entry = AudioEntry(
-            wem_id=int(media["media_id"], 16),
-            offset=int(media["offset"]),
-            size=int(media["size"]),
-            source=str(media["source"]),
-            language=media["language"],
-            bank_id=media["bank_id"],
-            bank_offset=media["bank_offset"],
-            bank_size=media["bank_size"],
-            bank_wem_offset=media["bank_media_offset"],
-            bank_encrypted=bool(media["bank_encrypted"]),
-        )
-        with closing(self.connect()) as conn:
-            record = self.original_file_record(conn, pck_file_id)
-            physical = self.resolve_file_record_quiet(conn, record) if record else None
-        if physical is None:
-            self.send_error_json(404, "Wwise PCK source is unavailable")
-            return
-        resolved_record, chunk_path = physical
-        try:
-            target = self.ensure_indexed_audio_media_file(
-                resolved_record,
-                chunk_path,
-                entry,
-                mode,
-                "wwise",
-            )
-        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
-            self.send_error_json(500, str(error))
-            return
-        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        disposition = "attachment" if download else "inline"
+        disposition = "attachment" if artifact.download else "inline"
         self.send_response(200)
-        self.send_header("Content-Type", guess_content_type(target.name))
-        self.send_header("Content-Length", str(target.stat().st_size))
+        self.send_header("Content-Type", guess_content_type(artifact.target.name))
+        self.send_header("Content-Length", str(artifact.target.stat().st_size))
         self.send_header(
             "Content-Disposition",
-            f"{disposition}; filename={entry.wem_id}.{mode}",
+            f"{disposition}; filename={artifact.entry.wem_id}.{artifact.mode}",
         )
         self.end_headers()
-        with target.open("rb") as file:
+        with artifact.target.open("rb") as file:
             while data := file.read(STREAM_CHUNK_SIZE):
                 self.wfile.write(data)
 

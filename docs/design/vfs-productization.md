@@ -823,3 +823,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   预览文档已移入 `wwise_catalog_service.py`。Handler 的 list/preview 路由成为薄适配；真实 SQLite
   接口回归覆盖三类目录、分页边界、Event 关系媒体 URL 和 Media 下载 URL。既有测试夹具同时补上
   主索引 `current` 门禁，确保测试请求确实进入生产路由。下一阶段抽取 Wwise 媒体物理读取边界。
+- Wwise Media 的参数校验、精确索引条目读取、`AudioEntry` 映射、VFS PCK fallback 来源解析及
+  WEM/WAV 缓存产物协调已移入 `wwise_media_service.py`。领域结果明确携带产物、格式和下载模式，
+  Handler 只保留错误映射、响应头与流式发送。合成回归覆盖完整 Bank 内媒体字段、大小写格式、
+  下载模式、无效格式、缺失条目/来源和转换失败边界；下一阶段可对称收口 AudioDialog 媒体路径。
