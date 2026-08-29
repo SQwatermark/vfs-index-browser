@@ -82,6 +82,9 @@ SHA-256，以 `meta.json` 作为唯一发布指针，并在同一指针的发布
 不同缓存指针之间不互相阻塞。失败
 构建只清理本次未发布目录，不改写上一份有效指针；Handler 只保留各资源能力特有的输入准备、
 worker 调用和领域校验。
+其中 manifest 资源的 Bundle 切片暂存、缓存身份和 Projectile、Cubemap、MonoBehaviour
+领域产物约束进一步由 `manifest_worker_service.py` 管理；AnimationClip 也复用它的通用导出
+入口。Handler 上保留的同名方法只是同步调用兼容层，不再包含 Worker 参数组装或文件派生逻辑。
 
 ## 关键约束
 

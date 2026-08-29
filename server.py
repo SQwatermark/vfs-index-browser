@@ -83,6 +83,7 @@ from manifest_asset_requests import (
     parse_manifest_asset_reference,
     parse_manifest_id,
 )
+from manifest_worker_service import CUBEMAP_FACE_NAMES, ManifestWorkerService
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
     load_exported_objects,
@@ -298,10 +299,6 @@ CHACHA_KEY = bytes.fromhex(
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = CACHE_VERSIONS.version("assetbundle-preview")
 ASSETBUNDLE_MAP_VERSION = CACHE_VERSIONS.version("assetbundle-map")
-MONOBEHAVIOUR_DUMP_VERSION = CACHE_VERSIONS.version("monobehaviour-dump")
-MONOBEHAVIOUR_RAW_VERSION = CACHE_VERSIONS.version("monobehaviour-raw")
-PROJECTILE_COMPONENT_EXPORT_VERSION = CACHE_VERSIONS.version("projectile-component-export")
-CUBEMAP_EXPORT_VERSION = CACHE_VERSIONS.version("cubemap-export")
 MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("model-snapshot")
 AVATAR_MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("avatar-model-snapshot")
 ANIMATION_CLIP_EXPORT_VERSION = CACHE_VERSIONS.version("animation-clip-export")
@@ -366,14 +363,6 @@ ASSETBUNDLE_WORKER_MEDIA_TYPES = (
     "TextAsset",
     "VideoClip",
     "AnimationClip",
-)
-CUBEMAP_FACE_NAMES = (
-    "PositiveX",
-    "NegativeX",
-    "PositiveY",
-    "NegativeY",
-    "PositiveZ",
-    "NegativeZ",
 )
 MODEL_SNAPSHOT_TYPES = (
     "GameObject",
@@ -3493,22 +3482,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         root = INTERNAL_CACHE_DIR / str(record["id"]) / "asset-export"
         return root / "runs", root / "meta.json"
 
-    def manifest_unity_worker_export_paths(
-        self,
-        record: dict,
-        asset_index: int,
-        export_name: str,
-    ) -> tuple[Path, Path]:
-        """返回某类 worker 产物的版本目录和当前版本原子指针。"""
-
-        root = (
-            INTERNAL_CACHE_DIR
-            / str(record["id"])
-            / "manifest-assets"
-            / str(asset_index)
-            / export_name
+    def manifest_worker_service(self) -> ManifestWorkerService:
+        return ManifestWorkerService(
+            INTERNAL_CACHE_DIR,
+            UNITY_WORKER,
+            self.write_file_slice,
+            WORKER_RUNS,
         )
-        return root / "runs", root / "meta.json"
 
     def ensure_manifest_unity_worker_export(
         self,
@@ -3525,58 +3505,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: object | None = None,
         allowed_suffixes: frozenset[str] | None = frozenset({".asset", ".prefab"}),
     ) -> tuple[Path, list[Path], dict]:
-        """执行 worker 操作，完整校验全部产物后原子发布缓存指针。"""
-
-        if (
-            allowed_suffixes is not None
-            and file_suffix(str(asset["path"])) not in allowed_suffixes
-        ):
-            raise ValueError("Unity worker export does not support this asset suffix")
-
-        runs_root, meta_path = self.manifest_unity_worker_export_paths(
+        return self.manifest_worker_service().ensure_export(
             record,
-            int(asset["asset_index"]),
-            export_name,
-        )
-        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "assetIndex": int(asset["asset_index"]),
-            "assetPath": normalized_container,
-            "toolArtifacts": UNITY_WORKER.artifact_identity(),
-            **identity_extra,
-        }
-
-        def run_export(
-            run_root: Path,
-            export_root: Path,
-            request_id: str,
-            cancel: object | None,
-        ) -> dict:
-            source_path = run_root / "source.ab"
-            self.write_file_slice(record, chunk_path, source_path)
-            return invoke(
-                source_path,
-                export_root,
-                normalized_container,
-                request_id,
-                cancel,
-            )
-
-        return WORKER_RUNS.ensure(
-            runs_root=runs_root,
-            meta_path=meta_path,
-            request_prefix=f"{export_name}-{int(asset['asset_index'])}",
+            chunk_path,
+            asset,
+            export_name=export_name,
             version=version,
-            source_identity=source_identity,
-            invoke=run_export,
+            identity_extra=identity_extra,
+            invoke=invoke,
             derive=derive,
             validate=validate,
             cancel_event=cancel_event,
+            allowed_suffixes=allowed_suffixes,
         )
 
     def ensure_manifest_projectile_component(
@@ -3588,40 +3528,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: object | None = None,
     ) -> tuple[Path, dict] | None:
-        """通过共用原子导出框架生成一个聚焦 Projectile 组件。"""
-
-        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
-            return None
-
-        try:
-            export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
-                record,
-                chunk_path,
-                asset,
-                export_name="projectile-component",
-                version=PROJECTILE_COMPONENT_EXPORT_VERSION,
-                identity_extra={"projectileId": projectile_id},
-                invoke=lambda source, output, container, request_id, cancel: (
-                    UNITY_WORKER.decode_projectile_component(
-                        input_path=source,
-                        output_directory=output,
-                        container=container,
-                        projectile_id=projectile_id,
-                        request_id=request_id,
-                        cancel_event=cancel,
-                    )
-                ),
-                cancel_event=cancel_event,
-            )
-        except UnityWorkerError:
-            raise
-        except RuntimeError as error:
-            raise ProjectileDecodeError(str(error)) from error
-        if len(artifact_paths) != 1:
-            raise ProjectileDecodeError(
-                f"expected one projectile artifact, found {len(artifact_paths)}"
-            )
-        return export_root, meta
+        return self.manifest_worker_service().ensure_projectile_component(
+            record,
+            chunk_path,
+            asset,
+            projectile_id,
+            cancel_event=cancel_event,
+        )
 
     def ensure_manifest_cubemap_export(
         self,
@@ -3629,47 +3542,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         chunk_path: Path,
         asset: dict,
     ) -> tuple[dict[str, Path], dict] | None:
-        if file_suffix(str(asset["path"])) not in {".exr", ".hdr", ".cubemap"}:
-            return None
-
-        def validate_faces(_root: Path, _paths: list[Path], result: dict) -> None:
-            artifacts = result.get("artifacts", [])
-            faces = [str(artifact.get("face") or "") for artifact in artifacts]
-            if len(faces) != len(CUBEMAP_FACE_NAMES) or set(faces) != set(CUBEMAP_FACE_NAMES):
-                raise RuntimeError("Unity worker returned an incomplete Cubemap face set")
-
-        export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
+        return self.manifest_worker_service().ensure_cubemap_export(
             record,
             chunk_path,
             asset,
-            export_name="cubemap",
-            version=CUBEMAP_EXPORT_VERSION,
-            identity_extra={},
-            invoke=lambda source, output, container, request_id, cancel: (
-                UNITY_WORKER.export_cubemap_faces(
-                    input_path=source,
-                    output_directory=output,
-                    container=container,
-                    request_id=request_id,
-                    cancel_event=cancel,
-                )
-            ),
-            validate=validate_faces,
-            allowed_suffixes=frozenset({".exr", ".hdr", ".cubemap"}),
         )
-        faces = {}
-        artifacts = meta.get("workerResult", {}).get("artifacts", [])
-        paths_by_relative = {
-            path.relative_to(export_root).as_posix(): path for path in artifact_paths
-        }
-        for artifact in artifacts:
-            face = str(artifact.get("face") or "")
-            path = paths_by_relative.get(str(artifact.get("relativePath") or ""))
-            if face in CUBEMAP_FACE_NAMES and path is not None and face not in faces:
-                faces[face] = path
-        if set(faces) != set(CUBEMAP_FACE_NAMES):
-            raise RuntimeError("Unity worker returned an incomplete Cubemap face set")
-        return faces, meta
 
     def ensure_manifest_monobehaviour_dump(
         self,
@@ -3679,49 +3556,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: object | None = None,
     ) -> tuple[Path, dict] | None:
-        """导出精确 container 的全部 TypeTree 文本，并生成稳定的合并预览。"""
-
-        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
-            return None
-
-        def build_combined_dump(export_root: Path, artifacts: list[Path]) -> dict[str, str]:
-            sections = []
-            for path in artifacts:
-                relative = path.relative_to(export_root).as_posix()
-                text = path.read_text(encoding="utf-8", errors="replace").rstrip()
-                sections.append(f"===== {relative} =====\n{text}")
-            combined = export_root / "combined-dump.txt"
-            combined.write_text("\n\n".join(sections) + "\n", encoding="utf-8")
-            return {"combinedDump": combined.relative_to(export_root).as_posix()}
-
-        export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
+        return self.manifest_worker_service().ensure_monobehaviour_dump(
             record,
             chunk_path,
             asset,
-            export_name="monobehaviour-typetree",
-            version=MONOBEHAVIOUR_DUMP_VERSION,
-            identity_extra={},
-            invoke=lambda source, output, container, request_id, cancel: (
-                UNITY_WORKER.export_monobehaviour_typetree_dump(
-                    input_path=source,
-                    output_directory=output,
-                    container=container,
-                    request_id=request_id,
-                    cancel_event=cancel,
-                )
-            ),
-            derive=build_combined_dump,
             cancel_event=cancel_event,
         )
-        if not artifact_paths:
-            return None
-        dump_path = safe_relative_path(
-            export_root,
-            str(meta["derivedFiles"]["combinedDump"]["relativePath"]),
-        )
-        if dump_path is None or not dump_path.is_file():
-            raise RuntimeError("published TypeTree combined dump is unavailable")
-        return dump_path, meta
 
     def ensure_manifest_monobehaviour_raw(
         self,
@@ -3731,35 +3571,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: object | None = None,
     ) -> tuple[Path, dict]:
-        """通过 VFS worker 导出一个精确 container 的 MonoBehaviour 原始字节。"""
-
-        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
-            raise ValueError("raw MonoBehaviour export requires an .asset or .prefab")
-        _export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
+        return self.manifest_worker_service().ensure_monobehaviour_raw(
             record,
             chunk_path,
             asset,
-            export_name="monobehaviour-raw",
-            version=MONOBEHAVIOUR_RAW_VERSION,
-            identity_extra={},
-            invoke=lambda source, output, container, request_id, cancel: (
-                UNITY_WORKER.export_monobehaviour_raw(
-                    input_path=source,
-                    output_directory=output,
-                    container=container,
-                    request_id=request_id,
-                    cancel_event=cancel,
-                )
-            ),
             cancel_event=cancel_event,
         )
-        if len(artifact_paths) != 1:
-            raise RuntimeError(
-                f"expected one raw MonoBehaviour artifact, found {len(artifact_paths)}"
-            )
-        # 保留既有调用方读取的字段名；它现在指向选定 run 的相对产物。
-        meta["exportedFile"] = meta["exportedFiles"][0]
-        return artifact_paths[0], meta
 
     def assetbundle_worker_map_paths(self, record: dict) -> tuple[Path, Path]:
         root = INTERNAL_CACHE_DIR / str(record["id"]) / "asset-map"

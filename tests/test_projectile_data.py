@@ -360,26 +360,27 @@ class ProjectileServerTests(unittest.TestCase):
                     "projectileComponentData": {"id": requested_id},
                 }
 
-        httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), StubProjectileHandler)
-        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
-        thread.start()
-        try:
-            with urlopen(
-                f"http://127.0.0.1:{httpd.server_port}/api/projectile"
-                f"?projectileId={projectile_id}",
-                timeout=5,
-            ) as response:
-                payload = json.load(response)
-            self.assertEqual(200, response.status)
-            self.assertEqual(projectile_id, payload["projectileId"])
-            self.assertEqual(
-                projectile_id,
-                payload["projectileComponentData"]["id"],
-            )
-        finally:
-            httpd.shutdown()
-            httpd.server_close()
-            thread.join(timeout=5)
+        with patch.object(server, "INDEX_FRESHNESS_REPORT", {"status": "current"}):
+            httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), StubProjectileHandler)
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                with urlopen(
+                    f"http://127.0.0.1:{httpd.server_port}/api/projectile"
+                    f"?projectileId={projectile_id}",
+                    timeout=5,
+                ) as response:
+                    payload = json.load(response)
+                self.assertEqual(200, response.status)
+                self.assertEqual(projectile_id, payload["projectileId"])
+                self.assertEqual(
+                    projectile_id,
+                    payload["projectileComponentData"]["id"],
+                )
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=5)
 
 
 if __name__ == "__main__":

@@ -699,3 +699,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   复用、同指针单次构建、异指针并行、路径逃逸拒绝、首次失败清理和已有发布后的失败重建；
   各资源特有输入与领域验证仍留待
   后续按应用服务边界继续拆分，因此 P4 单体拆分总门禁保持未完成。
+- manifest 资源的 source identity、Bundle 切片暂存、Worker 参数组装以及 Projectile、Cubemap、
+  MonoBehaviour TypeTree/Raw 的领域验证已移入 `manifest_worker_service.py`；AnimationClip 通过
+  同一服务的通用入口复用上述身份和发布语义。`BrowserHandler` 仅保留既有方法签名的薄转发，
+  同步入口和任务调用方无需迁移。相关回归覆盖精确 container、缓存复用、Worker 身份失效、
+  Cubemap 六面完整性、TypeTree 派生文件损坏重建、Raw 单产物约束和 Projectile 失败不发布。
+  Projectile HTTP 路由测试也改为显式声明 current 索引，避免 P4 新鲜度门禁让领域路由测试
+  偶然返回 503。
