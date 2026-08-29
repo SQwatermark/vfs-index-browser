@@ -681,4 +681,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - WEM 直读/Bank 解密、媒体级缓存身份、WEM 原子发布和 vgmstream WAV 派生也已进入
   `audio_package_service.py`。普通浏览、AudioDialog 与 Wwise 聚合入口复用同一输出服务；包内容
   身份成为缓存目录的一部分，同 record、同长度的热更不会复用旧 WEM。服务严格校验读取长度，
-  短读不会发布文件；合成测试覆盖同 media ID 不同 offset、同长度不同包身份及失败清理。
+  短读不会发布文件；合成测试覆盖同 media ID 不同 offset、同长度不同包身份及失败清理。真实
+  日语 PCK `839277` 严格解析出 `wem/34/874935228.wem`（1,626,835 字节）；首次 vgmstream
+  派生 WAV 约 583 ms，产物 21,235,244 字节，第二次约 12 ms 命中缓存。热更空包 `839270`、
+  初始 Bank 包 `1` 也能严格解析，没有依赖旧宽松解析器兜底。
