@@ -19,6 +19,7 @@
 - `wwise_store.py`：保存 Package、Bank、Media、对象、关系与解析诊断，并提供目录查询。
 - `wwise_media_service.py`：把 Media 索引条目解析到 VFS PCK 来源并派生 WEM/WAV 产物。
 - `secondary_audio_freshness.py`：启动时按稳定路径与文件长度审计二级索引。
+- `secondary_audio_rebuild.py`：在临时目录构建、验证并原子发布陈旧 Wwise 索引。
 - `tools/build_wwise_index.py`：直接从本地 VFS SQLite 索引读取所有可用 PCK。
 - `tools/index_wwise_pck.py`：从已经提取出的单个 PCK 建立或替换索引。
 - `wwise_catalog_service.py`：组装 `/api/wwise/list` 虚拟目录与 `/api/wwise/preview` 文档。
@@ -82,6 +83,12 @@ data/wwise-index.sqlite
 完整扫描时，索引中存在但本机 Chunk 缺失的语言包会明确输出“跳过”诊断；指定 ID 模式则
 把缺失源视为错误。
 
+HTTP 服务启动时会审计活动 Wwise 库。状态为 stale 时，默认自动运行相同的完整构建，但输出先
+落入活动库同目录的临时目录；只有候选库通过 SQLite 完整性、稳定 PCK 路径与长度 freshness、
+非空包集合三项门禁后才原子替换活动库，上一版保留为 `wwise-index.previous.sqlite`。失败时旧库
+保持不变，`/api/health` 通过 `secondaryAudioRebuild` 报告失败原因。可用 `--no-auto-rebuild`
+禁用自动修复，仅审计状态。
+
 从一个已提取 PCK 更新索引：
 
 ```powershell
@@ -113,7 +120,8 @@ Event 3537164
 
 ## 尚未完成
 
-- 在二级索引保存主索引内容身份，并接入启动时审计/原子重建；
+- 为 PCK 稳定路径/长度之外补充可复验的主索引内容摘要；
+- 为需要额外 TableCfg 与 PCK metadata 输入的 AudioDialog 接入同等原子自动重建流程；
 - Switch、Blend、Music Segment/Track/Playlist 的完整分支和时间结构；
 - TableCfg/Lua/关卡配置到 Event 的语义引用索引；
 - `Music` 与 `SoundEffects` 分类目录；

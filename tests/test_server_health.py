@@ -40,6 +40,7 @@ class ServerHealthTests(unittest.TestCase):
         self.assertTrue(all(not item["available"] for item in document["optionalTools"]))
         self.assertEqual([], document["legacyTools"])
         self.assertEqual("unverified", document["indexFreshness"]["status"])
+        self.assertEqual("notRun", document["secondaryAudioRebuild"]["status"])
 
     def test_health_is_degraded_when_worker_is_not_ready(self):
         class BrokenWorker:

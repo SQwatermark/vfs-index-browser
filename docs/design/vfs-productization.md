@@ -858,3 +858,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   AudioDialog/Wwise 均为 current；随机 Media WEM 仍返回 200/8,299 字节。AudioDialog 旧 schema 1
   库同样保留为 `data/audio-dialog-index.schema1-backup.sqlite`。下一阶段把已验证的“临时构建→完整性
   与 freshness 门禁→原子替换→保留旧库”流程实现为启动时自动重建服务。
+- Wwise 启动自动重建已实现于 `secondary_audio_rebuild.py` 并接入 `server.py`：stale 时在活动库同目录
+  启动无窗口子进程构建候选库，依次执行 SQLite `integrity_check`、稳定路径/长度 freshness 与非空包
+  集合门禁，全部通过才保留 `wwise-index.previous.sqlite` 并原子替换。构建失败、候选损坏或仍陈旧
+  都不会覆盖活动库，健康文档的 `secondaryAudioRebuild` 暴露 notNeeded/rebuilt/failed 状态；
+  `--no-auto-rebuild` 同时禁用主索引与二级索引修复。合成测试覆盖成功发布、构建失败和 freshness
+  失败三条路径。AudioDialog 因还需要准备 TableCfg 与 PCK metadata 输入，下一阶段复用此发布门禁，
+  不通过依赖偶然存在的本地中间文件实现假自动化。

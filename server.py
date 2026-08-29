@@ -68,6 +68,10 @@ from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
 from index_freshness import inspect_index_freshness
 from secondary_audio_freshness import inspect_secondary_audio_indexes
+from secondary_audio_rebuild import (
+    SecondaryAudioRebuildError,
+    rebuild_wwise_index_atomically,
+)
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -181,6 +185,7 @@ INDEX_FRESHNESS_REPORT = {
 INDEX_REBUILD_REPORT = {"status": "notRun"}
 MANIFEST_INDEX_REPORT = {"status": "notRun"}
 SECONDARY_AUDIO_INDEX_REPORT = {"status": "notRun"}
+SECONDARY_AUDIO_REBUILD_REPORT = {"status": "notRun"}
 WORKER_RUNS = WorkerRunService()
 
 
@@ -262,6 +267,7 @@ def build_health_document() -> dict:
         "indexRebuild": INDEX_REBUILD_REPORT,
         "manifestIndex": MANIFEST_INDEX_REPORT,
         "secondaryAudioIndexes": SECONDARY_AUDIO_INDEX_REPORT,
+        "secondaryAudioRebuild": SECONDARY_AUDIO_REBUILD_REPORT,
         "unityWorker": worker,
         "optionalTools": optional_tool_registry().diagnostics(),
         "cacheVersions": CACHE_VERSIONS.diagnostics(),
@@ -4431,14 +4437,14 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument(
         "--no-auto-rebuild",
         action="store_true",
-        help="Report a stale VFS index without rebuilding it at startup",
+        help="Report stale VFS and secondary indexes without rebuilding them at startup",
     )
     return parser.parse_args(list(argv))
 
 
 def main(argv: list[str] | None = None) -> int:
     global INDEX_FRESHNESS_REPORT, INDEX_REBUILD_REPORT, MANIFEST_INDEX_REPORT
-    global SECONDARY_AUDIO_INDEX_REPORT
+    global SECONDARY_AUDIO_INDEX_REPORT, SECONDARY_AUDIO_REBUILD_REPORT
 
     args = parse_args(argv or sys.argv[1:])
     configure_service_logging(args.log_level, args.log_format)
@@ -4478,6 +4484,40 @@ def main(argv: list[str] | None = None) -> int:
         AUDIO_DIALOG_DB,
         WWISE_DB,
     )
+    SECONDARY_AUDIO_REBUILD_REPORT = {"status": "notNeeded"}
+    if (
+        not args.no_auto_rebuild
+        and SECONDARY_AUDIO_INDEX_REPORT["wwise"]["status"] == "stale"
+    ):
+        LOGGER.warning(
+            "wwise_index_rebuild_started",
+            extra={"report": SECONDARY_AUDIO_INDEX_REPORT["wwise"]},
+        )
+        try:
+            result = rebuild_wwise_index_atomically(
+                args.db,
+                AUDIO_DIALOG_DB,
+                WWISE_DB,
+                PROJECT_ROOT,
+            )
+            SECONDARY_AUDIO_REBUILD_REPORT = {
+                "status": "rebuilt",
+                "wwise": result,
+            }
+            SECONDARY_AUDIO_INDEX_REPORT = inspect_secondary_audio_indexes(
+                args.db,
+                AUDIO_DIALOG_DB,
+                WWISE_DB,
+            )
+        except SecondaryAudioRebuildError as error:
+            SECONDARY_AUDIO_REBUILD_REPORT = {
+                "status": "failed",
+                "wwise": {
+                    "status": "failed",
+                    "message": str(error),
+                },
+            }
+            LOGGER.error("wwise_index_rebuild_failed", extra={"error": str(error)})
     if SECONDARY_AUDIO_INDEX_REPORT["status"] != "current":
         LOGGER.warning(
             "secondary_audio_index_audit_failed",
