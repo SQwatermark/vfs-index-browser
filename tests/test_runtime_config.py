@@ -23,6 +23,10 @@ class RuntimeConfigTests(unittest.TestCase):
                 config.database,
             )
             self.assertNotIn("Endaxis", str(config.default_index))
+            self.assertEqual("127.0.0.1", config.host)
+            self.assertEqual(8765, config.port)
+            self.assertEqual("info", config.log_level)
+            self.assertEqual("json", config.log_format)
 
     def test_data_root_moves_all_persistent_service_data(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -53,6 +57,10 @@ class RuntimeConfigTests(unittest.TestCase):
                 "VFS_BROWSER_INTERNAL_CACHE": str(root / "cache"),
                 "BLENDER_EXE": str(blender),
                 "FFMPEG": "ffmpeg-custom",
+                "VFS_BROWSER_HOST": "0.0.0.0",
+                "VFS_BROWSER_PORT": "9000",
+                "VFS_BROWSER_LOG_LEVEL": "WARNING",
+                "VFS_BROWSER_LOG_FORMAT": "text",
             }
 
             config = RuntimeConfig.load(project, environ=values, which=lambda _name: None)
@@ -61,6 +69,24 @@ class RuntimeConfigTests(unittest.TestCase):
             self.assertEqual(root / "cache", config.internal_cache)
             self.assertEqual(blender, config.blender_executable)
             self.assertEqual("ffmpeg-custom", config.ffmpeg)
+            self.assertEqual("0.0.0.0", config.host)
+            self.assertEqual(9000, config.port)
+            self.assertEqual("warning", config.log_level)
+            self.assertEqual("text", config.log_format)
+
+    def test_rejects_invalid_server_and_logging_values(self):
+        with tempfile.TemporaryDirectory() as directory:
+            project = Path(directory)
+            invalid_values = (
+                ({"VFS_BROWSER_PORT": "0"}, "port must be between"),
+                ({"VFS_BROWSER_PORT": "many"}, "port must be an integer"),
+                ({"VFS_BROWSER_LOG_LEVEL": "verbose"}, "VFS_BROWSER_LOG_LEVEL"),
+                ({"VFS_BROWSER_LOG_FORMAT": "xml"}, "VFS_BROWSER_LOG_FORMAT"),
+            )
+            for environ, message in invalid_values:
+                with self.subTest(environ=environ):
+                    with self.assertRaisesRegex(ValueError, message):
+                        RuntimeConfig.load(project, environ=environ, which=lambda _name: None)
 
     def test_blender_uses_path_lookup_when_not_explicitly_configured(self):
         with tempfile.TemporaryDirectory() as directory:

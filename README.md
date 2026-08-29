@@ -50,6 +50,7 @@ python server.py
 及 `code: index_stale`；健康检查、既有任务状态/取消/产物和静态页面仍可使用。
 
 默认地址为 `http://127.0.0.1:8765`。局域网访问可添加 `--host 0.0.0.0`。
+`VFS_BROWSER_HOST` 和 `VFS_BROWSER_PORT` 可设置持久默认值，命令行参数优先。
 
 持久数据默认位于仓库的 `data/`。可用一个环境变量整体迁移数据库、缓存和派生索引：
 
@@ -60,6 +61,10 @@ $env:VFS_BROWSER_DATA_ROOT = "D:\EndfieldTools\vfs-data"
 `VFS_BROWSER_DB`、`VFS_BROWSER_INDEX`、`VFS_BROWSER_INTERNAL_CACHE`、
 `VFS_BROWSER_AUDIO_DIALOG_DB`、`VFS_BROWSER_WWISE_DB` 和
 `VFS_BROWSER_SHADER_ARCHIVE_ROOT` 可继续覆盖单项。默认配置不再引用相邻 Endaxis 仓库。
+
+服务日志默认向 stderr 输出单行 JSON，可直接交给日志采集器；本地人工调试可使用
+`--log-format text`。`VFS_BROWSER_LOG_FORMAT` 和 `VFS_BROWSER_LOG_LEVEL` 可设置默认格式与
+级别，命令行 `--log-format`、`--log-level` 仍可逐次覆盖。
 
 常用参数：
 
@@ -104,6 +109,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `server.py` | VFS SQLite、HTTP API、文件读取以及各容器适配入口 |
 | `runtime_config.py` | 数据根目录、数据库、缓存、schema 与外部工具的统一环境配置 |
 | `cache_versions.py` | 服务端派生缓存产物的具名版本注册表 |
+| `service_logging.py` | 单行 JSON/文本服务日志配置与格式化 |
 | `tool_registry.py` | 可选外部工具的统一解析、能力查询与健康诊断 |
 | `unity_worker.py` | VFS 自有 Unity worker 的唯一 Python 进程适配器与健康诊断 |
 | `unity-worker/` | 可独立构建和发布的 .NET Unity 资源 worker |

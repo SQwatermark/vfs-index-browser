@@ -202,7 +202,7 @@ source file、PathID、container、长度和 SHA-256。`container` 使用精确�
 
 - [ ] 将单体 `server.py` 拆成请求层、应用服务、任务系统、缓存和基础设施适配器。
 - [ ] 长任务具备 ID、进度、取消、原子结果发布和结构化失败。
-- [ ] 配置、缓存版本、日志、端口和数据根目录有统一入口。
+- [x] 配置、缓存版本、日志、端口和数据根目录有统一入口。
 - [x] 启动时校验 VFS 主索引与当前游戏安装的一致性；索引过期时自动重建并原子切换，
   不能把陈旧索引导致的漏项返回为“资源不存在”。
 - [x] 可选外部工具通过能力注册表接入，不散落路径判断。
@@ -655,4 +655,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - `cache_versions.py` 集中登记 14 类服务端派生缓存产物版本，`server.py` 原有模型、Bundle、
   MonoBehaviour、Projectile、Cubemap、StringPathHash、音频和视频缓存常量均改为具名查询，
   健康检查同步暴露版本快照。游戏 VFS 协议、外部对象契约和持久数据库 schema 保持各自
-  所有权，不为表面统一混入缓存注册表。P4 配置总门禁现仅余端口与结构化日志入口。
+  所有权，不为表面统一混入缓存注册表。
+- `runtime_config.py` 现同时读取 `VFS_BROWSER_HOST/PORT/LOG_LEVEL/LOG_FORMAT`，CLI 参数只覆盖
+  本次进程并复用相同端口校验。`service_logging.py` 统一数据库构建、索引重建、manifest 预热、
+  HTTP 请求和服务生命周期事件，默认输出可采集的单行 JSON，保留文本格式用于本地调试。
+  P4 的配置、缓存版本、日志、端口与数据根目录子门禁完成。

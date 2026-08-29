@@ -131,7 +131,8 @@ from task_requests import (
     TaskInputError,
 )
 from task_operations import BackgroundTaskOperations
-from runtime_config import RuntimeConfig
+from runtime_config import RuntimeConfig, parse_port
+from service_logging import LOGGER, configure_service_logging
 from tool_registry import ToolRegistry
 
 try:
@@ -943,7 +944,7 @@ def build_database(index_path: Path, db_path: Path) -> None:
             file_batch.clear()
 
         if file_count % 100000 == 0:
-            print(f"indexed {file_count:,} file records", flush=True)
+            LOGGER.info("database_index_progress", extra={"fileCount": file_count})
 
     if file_batch:
         conn.executemany(
@@ -1004,7 +1005,14 @@ def build_database(index_path: Path, db_path: Path) -> None:
     )
     conn.commit()
     conn.close()
-    print(f"database built: {db_path} ({file_count:,} source records, {len(effective):,} effective records)")
+    LOGGER.info(
+        "database_built",
+        extra={
+            "database": str(db_path),
+            "sourceFileCount": file_count,
+            "effectiveFileCount": len(effective),
+        },
+    )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:
@@ -1370,7 +1378,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
     memorypack_load_error: str | None = None
 
     def log_message(self, fmt: str, *args) -> None:
-        print(f"{self.address_string()} - {fmt % args}")
+        LOGGER.info(
+            "http_request",
+            extra={
+                "clientAddress": self.client_address[0],
+                "httpMessage": fmt % args,
+            },
+        )
 
     def send_json(
         self,
@@ -6944,8 +6958,18 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", type=Path, default=DEFAULT_INDEX, help="Path to JSONL/TGZ VFS index")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB, help="SQLite database path")
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--host", default=RUNTIME_CONFIG.host)
+    parser.add_argument("--port", type=parse_port, default=RUNTIME_CONFIG.port)
+    parser.add_argument(
+        "--log-level",
+        choices=("debug", "info", "warning", "error", "critical"),
+        default=RUNTIME_CONFIG.log_level,
+    )
+    parser.add_argument(
+        "--log-format",
+        choices=("json", "text"),
+        default=RUNTIME_CONFIG.log_format,
+    )
     parser.add_argument("--rebuild", action="store_true", help="Rebuild SQLite database before serving")
     parser.add_argument("--build-only", action="store_true", help="Rebuild SQLite database and exit")
     parser.add_argument(
@@ -6960,6 +6984,7 @@ def main(argv: list[str] | None = None) -> int:
     global INDEX_FRESHNESS_REPORT, INDEX_REBUILD_REPORT, MANIFEST_INDEX_REPORT
 
     args = parse_args(argv or sys.argv[1:])
+    configure_service_logging(args.log_level, args.log_format)
     if args.rebuild or not args.db.exists():
         if not args.index.exists():
             raise SystemExit(f"index not found: {args.index}")
@@ -6974,10 +6999,9 @@ def main(argv: list[str] | None = None) -> int:
         not args.no_auto_rebuild
         and INDEX_FRESHNESS_REPORT.get("status") in {"stale", "unverified"}
     ):
-        print(
-            "VFS index is not verified against the current installation; "
-            "building a replacement before serving...",
-            flush=True,
+        LOGGER.warning(
+            "index_rebuild_started",
+            extra={"freshnessStatus": INDEX_FRESHNESS_REPORT.get("status")},
         )
         try:
             INDEX_REBUILD_REPORT = rebuild_index_atomically(
@@ -6991,7 +7015,7 @@ def main(argv: list[str] | None = None) -> int:
                 "status": "failed",
                 "message": str(error),
             }
-            print(f"VFS index rebuild failed; preserving previous database: {error}")
+            LOGGER.error("index_rebuild_failed", extra={"error": str(error)})
     manifest_service = object.__new__(BrowserHandler)
     manifest_service.db_path = args.db
     try:
@@ -7005,20 +7029,23 @@ def main(argv: list[str] | None = None) -> int:
             "status": "unavailable",
             "message": str(error),
         }
-        print(f"manifest index prewarm failed: {error}")
+        LOGGER.error("manifest_prewarm_failed", extra={"error": str(error)})
     server = ThreadingHTTPServer((args.host, args.port), BrowserHandler)
-    print(f"VFS index browser: http://{args.host}:{args.port}")
-    print(f"database: {args.db}")
-    print(
-        "index freshness: "
-        f"{INDEX_FRESHNESS_REPORT['status']} "
-        f"({INDEX_FRESHNESS_REPORT['missingChunkCount']} missing / "
-        f"{INDEX_FRESHNESS_REPORT['checkedChunkCount']} checked chunks)"
+    LOGGER.info(
+        "server_started",
+        extra={
+            "host": args.host,
+            "port": args.port,
+            "database": str(args.db),
+            "indexFreshness": INDEX_FRESHNESS_REPORT["status"],
+            "missingChunkCount": INDEX_FRESHNESS_REPORT["missingChunkCount"],
+            "checkedChunkCount": INDEX_FRESHNESS_REPORT["checkedChunkCount"],
+        },
     )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nstopped")
+        LOGGER.info("server_stopped")
     finally:
         server.server_close()
     return 0

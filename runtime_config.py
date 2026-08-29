@@ -14,6 +14,28 @@ def _path(environ: Mapping[str, str], name: str, default: Path) -> Path:
     return Path(environ.get(name, str(default)))
 
 
+def parse_port(raw: str | int) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        raise ValueError(f"port must be an integer: {raw}") from None
+    if not 1 <= value <= 65535:
+        raise ValueError(f"port must be between 1 and 65535: {raw}")
+    return value
+
+
+def _choice(
+    environ: Mapping[str, str],
+    name: str,
+    default: str,
+    choices: set[str],
+) -> str:
+    value = environ.get(name, default).lower()
+    if value not in choices:
+        raise ValueError(f"{name} must be one of {', '.join(sorted(choices))}: {value}")
+    return value
+
+
 def discover_blender_executable(
     environ: Mapping[str, str],
     which: Callable[[str], str | None],
@@ -49,6 +71,10 @@ class RuntimeConfig:
     vgmstream_cli: Path
     usm_convert: Path
     ffmpeg: str
+    host: str
+    port: int
+    log_level: str
+    log_format: str
 
     @classmethod
     def load(
@@ -119,4 +145,18 @@ class RuntimeConfig:
                 project_root / "tools" / "usm-convert.exe",
             ),
             ffmpeg=values.get("FFMPEG", "ffmpeg"),
+            host=values.get("VFS_BROWSER_HOST", "127.0.0.1"),
+            port=parse_port(values.get("VFS_BROWSER_PORT", "8765")),
+            log_level=_choice(
+                values,
+                "VFS_BROWSER_LOG_LEVEL",
+                "info",
+                {"debug", "info", "warning", "error", "critical"},
+            ),
+            log_format=_choice(
+                values,
+                "VFS_BROWSER_LOG_FORMAT",
+                "json",
+                {"json", "text"},
+            ),
         )
