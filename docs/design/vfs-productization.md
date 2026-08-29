@@ -770,3 +770,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   后台任务和 HTTP 结果链路贯通。审计时还发现误把普通 VFS record 当 `manifestId` 会令原始
   `brotli.error` 穿透请求线程；ManifestIndex 现将其归一为稳定输入错误，由资源服务返回结构化
   400，不再让客户端只看到连接提前结束。P4 模型应用服务子门禁完成。
+- 已发布 ModelDocument/geometry/texture 到基础 GLB 的读取校验、纹理 URI 身份与路径边界、材质
+  计划、导出器版本缓存身份、取消和原子 GLB 替换已移入 `model_glb_service.py`。普通与 Avatar
+  共用相同服务；Handler 仅负责先取得对应不可变模型 run，并保留供动画和 Blender 调用的兼容
+  方法。合成回归覆盖缓存复用、图片读取、record/LOD 不匹配、目录逃逸和构建前取消；重构后
+  无调用者的 Avatar 缓存路径包装已删除。下一阶段收口动画 GLB 与基础 GLB 重复的派生发布逻辑。

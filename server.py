@@ -106,6 +106,7 @@ from model_run_store import ModelRunStore, resolve_published_model_run
 from model_worker_service import ModelWorkerService
 from ordinary_model_document_service import OrdinaryModelDocumentService
 from ordinary_model_build_service import OrdinaryModelBuildService
+from model_glb_service import ModelGlbService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2806,16 +2807,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             ],
         )
 
-    def avatar_model_snapshot_cache_paths(
-        self,
-        record: dict,
-        asset_index: int,
-        lod: int,
-    ) -> tuple[Path, Path, Path]:
-        return self.model_run_store().cache_paths(
-            int(record["id"]),
-            asset_index,
-            lod=lod,
+    def model_glb_service(self) -> ModelGlbService:
+        return ModelGlbService(
+            build_glb,
+            build_blender_material_plans,
+            material_plan_cache_identity,
+            version=MODEL_GLB_VERSION,
+            exporter_path=Path(build_glb.__code__.co_filename),
+            shader_archive_root=SHADER_ARCHIVE_ROOT,
+            character_shader_path=Path(CHARACTER_NPR_PATH),
         )
 
     def ensure_animation_clip_export(
@@ -4273,54 +4273,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if published_root is None:
                 raise RuntimeError("published model run is unavailable")
             model_path = published_root / "model.json"
-        document, geometry, image_paths = self.load_model_glb_inputs(
+        glb_path = self.model_glb_service().ensure(
             asset,
             bundle_record,
             model_path,
             lod=lod,
+            cancel_event=cancel_event,
         )
-        geometry_path = model_path.with_name("geometry.bin")
-        glb_path = model_path.with_name("model.glb")
-        glb_meta_path = glb_path.with_suffix(".glb.meta.json")
-        # Exporter changes can alter the GLB without rebuilding ModelDocument.
-        exporter_path = Path(build_glb.__code__.co_filename)
-        source_paths = [
-            model_path,
-            geometry_path,
-            exporter_path,
-            *image_paths.values(),
-        ]
-        material_plans = {}
-        if SHADER_ARCHIVE_ROOT.is_dir():
-            material_plans = build_blender_material_plans(document, SHADER_ARCHIVE_ROOT)
-            source_paths.append(SHADER_ARCHIVE_ROOT / CHARACTER_NPR_PATH)
-        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-        cache_identity = {
-            "version": MODEL_GLB_VERSION,
-            "materialPlan": material_plan_cache_identity(),
-        }
-        if (
-            not glb_path.is_file()
-            or glb_path.stat().st_mtime_ns < newest_source_mtime
-            or load_cache_identity(glb_meta_path) != cache_identity
-        ):
-            if cancel_event is not None and cancel_event.is_set():
-                raise RuntimeError("worker_cancelled")
-            glb = build_glb(
-                document,
-                geometry,
-                lambda image: image_paths[str(image["id"])].read_bytes(),
-                material_plans,
-            )
-            temporary = glb_path.with_suffix(".glb.tmp")
-            temporary.write_bytes(glb)
-            os.replace(temporary, glb_path)
-            glb_meta_path.write_text(
-                json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        if cancel_event is not None and cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
         return asset, model_path, glb_path
 
     def load_model_glb_inputs(
@@ -4331,38 +4290,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         lod: int,
     ) -> tuple[dict, bytes, dict[str, Path]]:
-        document = json.loads(model_path.read_text(encoding="utf-8"))
-        geometry_path = model_path.with_name("geometry.bin")
-        if not geometry_path.is_file():
-            raise FileNotFoundError("model geometry buffer not found")
-        geometry = geometry_path.read_bytes()
-
-        is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
-        texture_root = (model_path.parent / "textures").resolve()
-        image_paths: dict[str, Path] = {}
-        for image in document.get("images", []):
-            parsed = urlparse(str(image.get("uri") or ""))
-            image_query = parse_qs(parsed.query)
-            if parsed.path != "/api/manifest-asset/model-texture":
-                raise ValueError(f"unsupported model image URI: {image.get('uri')}")
-            if int(image_query.get("recordId", ["-1"])[0]) != int(bundle_record["id"]):
-                raise ValueError("model image recordId does not match the current model")
-            if int(image_query.get("assetIndex", ["-1"])[0]) != int(asset["asset_index"]):
-                raise ValueError("model image assetIndex does not match the current model")
-            image_lod = image_query.get("lod")
-            if is_avatar_mesh and (
-                not image_lod or int(image_lod[0]) != lod
-            ):
-                raise ValueError("model image LOD does not match the current AvatarMesh")
-            image_run = image_query.get("run", [""])[0]
-            if image_run != model_path.parent.name:
-                raise ValueError("model image run does not match the current model")
-            relative = unquote(image_query.get("path", [""])[0]).replace("\\", "/").strip("/")
-            target = (texture_root / relative).resolve()
-            if not relative or texture_root not in target.parents or not target.is_file():
-                raise FileNotFoundError(f"model texture not found: {relative}")
-            image_paths[str(image["id"])] = target
-        return document, geometry, image_paths
+        return self.model_glb_service().load_inputs(
+            asset, bundle_record, model_path, lod=lod
+        )
 
     def ensure_animated_model_glb(
         self,
