@@ -354,6 +354,9 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
   CABMap、对象与纹理 worker，任务状态保存当前阶段，并在发布成功结果前完成基础 GLB 派生。
   兼容的同步模型 GET 复用同一结果构建函数；批量动画绑定与 Blender 派生下载仍是后续可
   任务化的同步路径；
+- 批量动画准备结果按请求集合写入独立清单，身份包含模型、动画资源、worker/绑定和 GLB
+  版本。准备检查后的下载直接复用有效动画集合、结构化跳过原因和动画 GLB，不再重复导出与
+  绑定整批片段；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
@@ -375,8 +378,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
    `Convert`；
-2. 将仍为同步路径的批量动画绑定和 Blender 派生接入后台任务，并消除批量导出
-   “预检查后再次绑定”的重复工作；
+2. 将批量动画准备和 Blender 派生接入可取消的后台任务；预检查与下载之间的重复绑定已经
+   消除；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
 4. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点。

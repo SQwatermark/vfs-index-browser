@@ -264,7 +264,10 @@ class ManifestModelBlendTests(unittest.TestCase):
             {},
         )
 
+        attached = []
+
         def attach(document, binary, clip, **_kwargs):
+            attached.append(clip)
             if clip["compatible"]:
                 document["animations"].append({"id": "animation:11"})
             return binary
@@ -283,10 +286,18 @@ class ManifestModelBlendTests(unittest.TestCase):
                 lod=0,
                 skip_incompatible=True,
             )
+            cached = handler.ensure_animated_model_glb(
+                model_resolved,
+                sources,
+                lod=0,
+                skip_incompatible=True,
+            )
 
         self.assertEqual([11], [asset["asset_index"] for asset in bundle.animations])
         self.assertEqual([22], [issue.asset_index for issue in bundle.issues])
         self.assertEqual(b"animated-glb", bundle.glb_path.read_bytes())
+        self.assertEqual(bundle, cached)
+        self.assertEqual(2, len(attached))
 
     def test_rejects_bundle_when_every_animation_is_incompatible(self):
         handler, model_root, _lods = self.make_handler("assets/model.prefab")

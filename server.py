@@ -5861,6 +5861,83 @@ class BrowserHandler(BaseHTTPRequestHandler):
             model_resolved,
             lod=lod,
         )
+        requested_indexes = [
+            int(item[1]["asset_index"])
+            for item in animation_sources
+        ]
+        request_key = hashlib.sha256(
+            ",".join(map(str, requested_indexes)).encode("ascii")
+        ).hexdigest()[:16]
+        request_root = model_path.parent / "animation-requests" / request_key
+        request_meta_path = request_root / "result.json"
+        request_identity = {
+            "version": MODEL_GLB_VERSION,
+            "animationClipExportVersion": ANIMATION_CLIP_EXPORT_VERSION,
+            "skipIncompatible": skip_incompatible,
+            "modelMtimeNs": model_path.stat().st_mtime_ns,
+            "bindingCodeMtimeNs": Path(
+                attach_animation_clip.__code__.co_filename
+            ).stat().st_mtime_ns,
+            "glbCodeMtimeNs": Path(build_glb.__code__.co_filename).stat().st_mtime_ns,
+            "animations": [
+                {
+                    "assetIndex": int(animation_asset["asset_index"]),
+                    "path": str(animation_asset["path"]),
+                    "recordId": animation_record.get("id"),
+                    "length": animation_record.get("length"),
+                    "fileDataMd5": animation_record.get("file_data_md5"),
+                    "chunkMtimeNs": (
+                        animation_chunk.stat().st_mtime_ns
+                        if animation_chunk.is_file()
+                        else None
+                    ),
+                }
+                for _, animation_asset, animation_record, animation_chunk
+                in animation_sources
+            ],
+        }
+        if request_meta_path.is_file():
+            try:
+                request_meta = json.loads(request_meta_path.read_text(encoding="utf-8"))
+                if request_meta.get("identity") == request_identity:
+                    effective_indexes = [
+                        int(value) for value in request_meta.get("animationAssetIndexes", [])
+                    ]
+                    by_index = {
+                        int(item[1]["asset_index"]): item[1]
+                        for item in animation_sources
+                    }
+                    effective_assets = [by_index[value] for value in effective_indexes]
+                    if effective_indexes:
+                        selection_key = hashlib.sha256(
+                            ",".join(map(str, effective_indexes)).encode("ascii")
+                        ).hexdigest()[:16]
+                        cached_glb = (
+                            model_path.parent
+                            / "animation-sets"
+                            / selection_key
+                            / "model.glb"
+                        )
+                    else:
+                        cached_glb = model_glb
+                    if cached_glb.is_file():
+                        return AnimatedModelBundle(
+                            model_asset,
+                            effective_assets,
+                            model_path,
+                            cached_glb,
+                            [
+                                AnimationExportIssue(
+                                    int(issue["assetIndex"]),
+                                    str(issue["path"]),
+                                    str(issue["stage"]),
+                                    str(issue["message"]),
+                                )
+                                for issue in request_meta.get("issues", [])
+                            ],
+                        )
+            except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+                pass
         _, _, model_record, _ = model_resolved
         document, geometry, image_paths = self.load_model_glb_inputs(
             model_asset,
@@ -5933,13 +6010,30 @@ class BrowserHandler(BaseHTTPRequestHandler):
             clip_paths.append(clip_path)
 
         if not animation_assets:
-            return AnimatedModelBundle(
+            result = AnimatedModelBundle(
                 model_asset,
                 [],
                 model_path,
                 model_glb,
                 issues,
             )
+            request_root.mkdir(parents=True, exist_ok=True)
+            temporary = request_meta_path.with_suffix(".json.tmp")
+            temporary.write_text(
+                json.dumps(
+                    {
+                        "identity": request_identity,
+                        "animationAssetIndexes": [],
+                        "issues": [issue.as_json() for issue in issues],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            os.replace(temporary, request_meta_path)
+            return result
 
         animation_indexes = [int(asset["asset_index"]) for asset in animation_assets]
         selection_key = hashlib.sha256(
@@ -5988,13 +6082,30 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 json.dumps(cache_identity, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
-        return AnimatedModelBundle(
+        result = AnimatedModelBundle(
             model_asset,
             animation_assets,
             model_path,
             animated_glb,
             issues,
         )
+        request_root.mkdir(parents=True, exist_ok=True)
+        temporary = request_meta_path.with_suffix(".json.tmp")
+        temporary.write_text(
+            json.dumps(
+                {
+                    "identity": request_identity,
+                    "animationAssetIndexes": animation_indexes,
+                    "issues": [issue.as_json() for issue in issues],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, request_meta_path)
+        return result
 
     def handle_manifest_asset_model_glb(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_asset_source(query)
