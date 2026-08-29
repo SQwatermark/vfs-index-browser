@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import struct
 import tempfile
@@ -79,10 +80,19 @@ class ServerAvatarResourceTests(unittest.TestCase):
             handler.db_path = database
             with patch.object(server, "INTERNAL_CACHE_DIR", root / "cache"):
                 first, first_meta = handler.ensure_string_path_hash_file()
+                first.write_bytes(b"stale!!")
+                meta_path = first.parent / "meta.json"
+                stale_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                stale_meta["version"] = 0
+                meta_path.write_text(json.dumps(stale_meta), encoding="utf-8")
                 second, second_meta = handler.ensure_string_path_hash_file()
 
             self.assertEqual(b"current", first.read_bytes())
             self.assertEqual(first, second)
+            self.assertEqual(
+                server.CACHE_VERSIONS.version("string-path-hash"),
+                second_meta["version"],
+            )
             self.assertEqual(2, first_meta["source"]["recordId"])
             self.assertEqual(first_meta, second_meta)
 

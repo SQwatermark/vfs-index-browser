@@ -30,6 +30,7 @@ from typing import Callable, Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
+from cache_versions import CACHE_VERSIONS
 from audio_export import VgmstreamConversionService
 from blender_export import BlenderExportService
 from ability_entity_data import (
@@ -239,6 +240,7 @@ def build_health_document() -> dict:
         "manifestIndex": MANIFEST_INDEX_REPORT,
         "unityWorker": worker,
         "optionalTools": optional_tool_registry().diagnostics(),
+        "cacheVersions": CACHE_VERSIONS.diagnostics(),
         "legacyTools": [],
     }
 
@@ -262,20 +264,20 @@ CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
 )
 VFS_PROTO_VERSION = 3
-ASSETBUNDLE_META_VERSION = 4
-ASSETBUNDLE_MAP_VERSION = 1
-MONOBEHAVIOUR_DUMP_VERSION = 3
-MONOBEHAVIOUR_RAW_VERSION = 2
-PROJECTILE_COMPONENT_EXPORT_VERSION = 2
-CUBEMAP_EXPORT_VERSION = 2
-MODEL_SNAPSHOT_VERSION = 33
-AVATAR_MODEL_SNAPSHOT_VERSION = 5
-ANIMATION_CLIP_EXPORT_VERSION = 5
+ASSETBUNDLE_META_VERSION = CACHE_VERSIONS.version("assetbundle-preview")
+ASSETBUNDLE_MAP_VERSION = CACHE_VERSIONS.version("assetbundle-map")
+MONOBEHAVIOUR_DUMP_VERSION = CACHE_VERSIONS.version("monobehaviour-dump")
+MONOBEHAVIOUR_RAW_VERSION = CACHE_VERSIONS.version("monobehaviour-raw")
+PROJECTILE_COMPONENT_EXPORT_VERSION = CACHE_VERSIONS.version("projectile-component-export")
+CUBEMAP_EXPORT_VERSION = CACHE_VERSIONS.version("cubemap-export")
+MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("model-snapshot")
+AVATAR_MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("avatar-model-snapshot")
+ANIMATION_CLIP_EXPORT_VERSION = CACHE_VERSIONS.version("animation-clip-export")
 # Increment when the GLB representation changes without changing ModelDocument.
-MODEL_GLB_VERSION = 4
-MODEL_BLEND_VERSION = 12
+MODEL_GLB_VERSION = CACHE_VERSIONS.version("model-glb")
+MODEL_BLEND_VERSION = CACHE_VERSIONS.version("model-blend")
 MAX_BLEND_ANIMATION_COUNT = 100
-AUDIO_PACKAGE_META_VERSION = 1
+AUDIO_PACKAGE_META_VERSION = CACHE_VERSIONS.version("audio-package")
 STRING_PATH_HASH_LOGICAL_ID = "ExtendData/Data/ExtendData/Main/StringPathHash.bin"
 MANIFEST_LOGICAL_ID = "BundleManifest/Data/Bundles/Windows/manifest.hgmmap"
 PROJECTILE_API_VERSION = 1
@@ -3013,12 +3015,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "fileDataMd5": str(record.get("file_data_md5") or ""),
         }
 
+        cache_version = CACHE_VERSIONS.version("string-path-hash")
         with self.shared_resource_lock:
             if target.is_file() and meta_path.is_file():
                 try:
                     meta = json.loads(meta_path.read_text(encoding="utf-8"))
                     if (
-                        meta.get("source") == identity
+                        meta.get("version") == cache_version
+                        and meta.get("source") == identity
                         and target.stat().st_size == int(record["length"])
                     ):
                         return target, meta
@@ -3028,7 +3032,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             target.unlink(missing_ok=True)
             self.write_file_slice(record, chunk_path, target)
             meta = {
-                "version": 1,
+                "version": cache_version,
                 "source": identity,
                 "builtAtEpoch": int(time.time()),
             }
@@ -4769,10 +4773,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError("USM video entry not found")
 
         target, meta_path = self.usm_cache_paths(record)
+        cache_version = CACHE_VERSIONS.version("usm-video")
         if target.exists() and meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if meta.get("fileLength") == int(record["length"]) and target.stat().st_size > 0:
+                if (
+                    meta.get("version") == cache_version
+                    and meta.get("fileLength") == int(record["length"])
+                    and target.stat().st_size > 0
+                ):
                     return target
             except (OSError, json.JSONDecodeError):
                 pass
@@ -4799,7 +4808,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         meta_path.write_text(
             json.dumps(
                 {
-                    "version": 1,
+                    "version": cache_version,
                     "fileLength": int(record["length"]),
                     "builtAtEpoch": int(time.time()),
                     "usmConvert": str(usm_convert) if usm_convert else None,

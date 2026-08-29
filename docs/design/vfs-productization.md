@@ -647,8 +647,12 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
 - `runtime_config.py` 已成为环境配置的单一加载入口。`VFS_BROWSER_DATA_ROOT` 统一迁移主库、
   manifest/任务缓存、AudioDialog/Wwise 索引和 Shader 归档，原有单项 override 保持兼容；默认
   JSONL 也改为 data root 内路径，删除了对相邻 Endaxis checkout 的隐式依赖。P4 配置项尚余
-  端口/日志结构化与缓存版本注册表，故总门禁仍保持未完成。
+  端口与结构化日志入口，故总门禁仍保持未完成。
 - `tool_registry.py` 统一解析 Blender、vgmstream、usm-convert 与 ffmpeg 的显式路径或 PATH
   命令。健康诊断、模型下载入口、音视频预览能力、转换缓存身份和实际适配器执行均消费同一
   能力快照；缺失工具只关闭对应派生能力。`server.py` 已不再散落这些工具的 `is_file/exists`
   判断，P4 的可选工具能力注册表子门禁完成。
+- `cache_versions.py` 集中登记 14 类服务端派生缓存产物版本，`server.py` 原有模型、Bundle、
+  MonoBehaviour、Projectile、Cubemap、StringPathHash、音频和视频缓存常量均改为具名查询，
+  健康检查同步暴露版本快照。游戏 VFS 协议、外部对象契约和持久数据库 schema 保持各自
+  所有权，不为表面统一混入缓存注册表。P4 配置总门禁现仅余端口与结构化日志入口。

@@ -103,6 +103,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | --- | --- |
 | `server.py` | VFS SQLite、HTTP API、文件读取以及各容器适配入口 |
 | `runtime_config.py` | 数据根目录、数据库、缓存、schema 与外部工具的统一环境配置 |
+| `cache_versions.py` | 服务端派生缓存产物的具名版本注册表 |
 | `tool_registry.py` | 可选外部工具的统一解析、能力查询与健康诊断 |
 | `unity_worker.py` | VFS 自有 Unity worker 的唯一 Python 进程适配器与健康诊断 |
 | `unity-worker/` | 可独立构建和发布的 .NET Unity 资源 worker |
