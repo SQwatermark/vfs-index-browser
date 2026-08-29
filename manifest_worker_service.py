@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Callable
 
 from cache_versions import CACHE_VERSIONS
+from assetbundle_worker_service import manifest_asset_entries
 from projectile_data import ProjectileDecodeError
 from unity_worker import UnityWorkerError
 from worker_run_service import WorkerRunService
@@ -160,6 +162,85 @@ class ManifestWorkerService:
                 f"expected one projectile artifact, found {len(artifacts)}"
             )
         return export_root, meta
+
+    def ensure_animation_clip(
+        self,
+        record: dict,
+        chunk_path: Path,
+        asset: dict,
+        map_meta: dict,
+        *,
+        cancel_event: object | None = None,
+    ) -> tuple[dict, Path, dict]:
+        animation_name = str(asset["path"]).rsplit("##", 1)[-1]
+        animation_name = animation_name.replace("\\", "/").rsplit("/", 1)[-1]
+        if animation_name.casefold().endswith(".anim"):
+            animation_name = animation_name[:-5]
+
+        matches = [
+            entry
+            for entry in manifest_asset_entries(map_meta, str(asset["path"]))
+            if str(entry.get("Type") or "") == "AnimationClip"
+            and str(entry.get("Name") or "").casefold() == animation_name.casefold()
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                "AnimationClip AssetMap identity must match exactly once, "
+                f"found {len(matches)} for {animation_name!r}"
+            )
+        path_id = int(matches[0]["PathID"])
+        expected_name = str(matches[0]["Name"])
+
+        def validate(_root: Path, artifacts: list[Path], result: dict) -> None:
+            if len(artifacts) != 1:
+                raise RuntimeError(
+                    f"expected one AnimationClip artifact, found {len(artifacts)}"
+                )
+            described = result.get("artifacts") or []
+            if len(described) != 1:
+                raise RuntimeError("AnimationClip worker result is missing its artifact")
+            try:
+                artifact_path_id = int(described[0].get("pathId"))
+            except (TypeError, ValueError) as error:
+                raise RuntimeError("AnimationClip worker returned an invalid PathID") from error
+            if (
+                artifact_path_id != path_id
+                or str(described[0].get("name") or "") != expected_name
+            ):
+                raise RuntimeError("AnimationClip worker returned a different asset identity")
+            document = json.loads(artifacts[0].read_text(encoding="utf-8-sig"))
+            if (
+                document.get("format") != "AnimeStudioAnimationClip"
+                or document.get("version") != "1.1.0"
+                or document.get("name") != expected_name
+            ):
+                raise RuntimeError("AnimationClip worker returned an incompatible document")
+
+        export_root, artifacts, meta = self.ensure_export(
+            record,
+            chunk_path,
+            asset,
+            export_name="animation",
+            version=CACHE_VERSIONS.version("animation-clip-export"),
+            identity_extra={"pathId": path_id, "animationName": expected_name},
+            invoke=lambda source, output, _container, request_id, cancel: (
+                self._worker.export_animation_clip_json(
+                    input_path=source,
+                    output_directory=output,
+                    path_id=path_id,
+                    expected_name=expected_name,
+                    request_id=request_id,
+                    cancel_event=cancel,
+                )
+            ),
+            validate=validate,
+            cancel_event=cancel_event,
+            allowed_suffixes=None,
+        )
+        target = artifacts[0]
+        clip = json.loads(target.read_text(encoding="utf-8-sig"))
+        meta["relativePath"] = target.relative_to(export_root).as_posix()
+        return clip, target, meta
 
     def ensure_cubemap_export(
         self,

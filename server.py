@@ -35,7 +35,11 @@ from assetbundle_browser import (
     metadata_by_export_name,
     metadata_for_file,
 )
-from assetbundle_worker_service import ASSETBUNDLE_EXPORT_TYPES, AssetBundleWorkerService
+from assetbundle_worker_service import (
+    ASSETBUNDLE_EXPORT_TYPES,
+    AssetBundleWorkerService,
+    manifest_asset_entries,
+)
 from audio_package_service import (
     AudioEntry,
     AudioPackageIndexService,
@@ -1027,30 +1031,6 @@ def internal_preview_kind(path: Path) -> str:
     if suffix in TEXT_EXTENSIONS:
         return "text"
     return "binary"
-
-
-def manifest_asset_entries(meta: dict, logical_path: str) -> list[dict]:
-    normalized = logical_path.replace("\\", "/").strip("/")
-    container_key = normalized.casefold()
-    entries = list(meta.get("assetEntries") or [])
-    exact = [
-        entry
-        for entry in entries
-        if str(entry.get("Container") or "").replace("\\", "/").strip("/").casefold()
-        == container_key
-    ]
-    if exact or "##" not in normalized:
-        return exact
-
-    # Imported FBX sub-assets use ``path.fbx##clip_name`` in the manifest, while
-    # AnimeStudio exposes the AnimationClip name without a container.
-    sub_asset_name = normalized.rsplit("##", 1)[1].casefold()
-    by_name = [
-        entry
-        for entry in entries
-        if str(entry.get("Name") or "").casefold() == sub_asset_name
-    ]
-    return by_name if len(by_name) == 1 else []
 
 
 def safe_relative_path(root: Path, raw_path: str) -> Path | None:
@@ -2844,84 +2824,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: object | None = None,
     ) -> tuple[dict, Path, dict]:
-        animation_name = str(asset["path"]).rsplit("##", 1)[-1]
-        # FBX 子资源直接使用 clip 名；独立 .anim 资源则需要从逻辑路径取文件名。
-        animation_name = animation_name.replace("\\", "/").rsplit("/", 1)[-1]
-        if animation_name.casefold().endswith(".anim"):
-            animation_name = animation_name[:-5]
-
         map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=False)
         if map_meta is None:
             raise RuntimeError("AnimationClip export requires a valid AssetMap")
-        matches = [
-            entry
-            for entry in manifest_asset_entries(map_meta, str(asset["path"]))
-            if str(entry.get("Type") or "") == "AnimationClip"
-            and str(entry.get("Name") or "").casefold() == animation_name.casefold()
-        ]
-        if len(matches) != 1:
-            raise RuntimeError(
-                "AnimationClip AssetMap identity must match exactly once, "
-                f"found {len(matches)} for {animation_name!r}"
-            )
-        entry = matches[0]
-        path_id = int(entry["PathID"])
-        expected_name = str(entry["Name"])
-
-        def validate_animation_export(
-            _export_root: Path,
-            artifact_paths: list[Path],
-            result: dict,
-        ) -> None:
-            if len(artifact_paths) != 1:
-                raise RuntimeError(
-                    f"expected one AnimationClip artifact, found {len(artifact_paths)}"
-                )
-            artifacts = result.get("artifacts") or []
-            if len(artifacts) != 1:
-                raise RuntimeError("AnimationClip worker result is missing its artifact")
-            artifact = artifacts[0]
-            try:
-                artifact_path_id = int(artifact.get("pathId"))
-            except (TypeError, ValueError) as error:
-                raise RuntimeError(
-                    "AnimationClip worker returned an invalid PathID"
-                ) from error
-            if artifact_path_id != path_id or str(artifact.get("name") or "") != expected_name:
-                raise RuntimeError("AnimationClip worker returned a different asset identity")
-            document = json.loads(artifact_paths[0].read_text(encoding="utf-8-sig"))
-            if (
-                document.get("format") != "AnimeStudioAnimationClip"
-                or document.get("version") != "1.1.0"
-                or document.get("name") != expected_name
-            ):
-                raise RuntimeError("AnimationClip worker returned an incompatible document")
-
-        export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
+        return self.manifest_worker_service().ensure_animation_clip(
             record,
             chunk_path,
             asset,
-            export_name="animation",
-            version=ANIMATION_CLIP_EXPORT_VERSION,
-            identity_extra={"pathId": path_id, "animationName": expected_name},
-            invoke=lambda source, output, _container, request_id, cancel: (
-                UNITY_WORKER.export_animation_clip_json(
-                    input_path=source,
-                    output_directory=output,
-                    path_id=path_id,
-                    expected_name=expected_name,
-                    request_id=request_id,
-                    cancel_event=cancel,
-                )
-            ),
-            validate=validate_animation_export,
+            map_meta,
             cancel_event=cancel_event,
-            allowed_suffixes=None,
         )
-        target = artifact_paths[0]
-        clip = json.loads(target.read_text(encoding="utf-8-sig"))
-        meta["relativePath"] = target.relative_to(export_root).as_posix()
-        return clip, target, meta
 
     def ensure_model_hierarchy(
         self,
@@ -3467,35 +3379,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             UNITY_WORKER,
             self.write_file_slice,
             WORKER_RUNS,
-        )
-
-    def ensure_manifest_unity_worker_export(
-        self,
-        record: dict,
-        chunk_path: Path,
-        asset: dict,
-        *,
-        export_name: str,
-        version: int,
-        identity_extra: dict,
-        invoke: Callable[[Path, Path, str, str, object | None], dict],
-        derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
-        validate: Callable[[Path, list[Path], dict], None] | None = None,
-        cancel_event: object | None = None,
-        allowed_suffixes: frozenset[str] | None = frozenset({".asset", ".prefab"}),
-    ) -> tuple[Path, list[Path], dict]:
-        return self.manifest_worker_service().ensure_export(
-            record,
-            chunk_path,
-            asset,
-            export_name=export_name,
-            version=version,
-            identity_extra=identity_extra,
-            invoke=invoke,
-            derive=derive,
-            validate=validate,
-            cancel_event=cancel_event,
-            allowed_suffixes=allowed_suffixes,
         )
 
     def ensure_manifest_projectile_component(

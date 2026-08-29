@@ -84,7 +84,8 @@ SHA-256，以 `meta.json` 作为唯一发布指针，并在同一指针的发布
 worker 调用和领域校验。
 其中 manifest 资源的 Bundle 切片暂存、缓存身份和 Projectile、Cubemap、MonoBehaviour
 领域产物约束进一步由 `manifest_worker_service.py` 管理；AnimationClip 也复用它的通用导出
-入口。Handler 上保留的同名方法只是同步调用兼容层，不再包含 Worker 参数组装或文件派生逻辑。
+入口，并由服务完成 AssetMap 唯一身份、PathID/名称与文档协议回验。Handler 上保留的领域
+同名方法只是同步调用兼容层，不再暴露通用 Worker 导出方法或包含文件派生逻辑。
 整 Bundle 的 AssetMap 与媒体预览输入身份、切片暂存、Worker 调用和 `AssetEntries` 契约由
 `assetbundle_worker_service.py` 管理。服务要求每项已导出或明确跳过的媒体都与 AssetMap 的
 `Type + PathID + Name + Container` 多重集合完全一致；仅含无预览协议类型的 Bundle 也发布

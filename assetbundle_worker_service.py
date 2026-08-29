@@ -44,6 +44,31 @@ def _media_identity(item: object) -> tuple[str, int, str, str]:
     )
 
 
+def manifest_asset_entries(meta: dict, logical_path: str) -> list[dict]:
+    normalized = logical_path.replace("\\", "/").strip("/")
+    container_key = normalized.casefold()
+    entries = list(meta.get("assetEntries") or [])
+    exact = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and str(entry.get("Container") or "").replace("\\", "/").strip("/").casefold()
+        == container_key
+    ]
+    if exact or "##" not in normalized:
+        return exact
+
+    # Imported FBX clips have a manifest sub-asset path but no AssetMap container.
+    sub_asset_name = normalized.rsplit("##", 1)[1].casefold()
+    by_name = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and str(entry.get("Name") or "").casefold() == sub_asset_name
+    ]
+    return by_name if len(by_name) == 1 else []
+
+
 class AssetBundleWorkerService:
     def __init__(
         self,

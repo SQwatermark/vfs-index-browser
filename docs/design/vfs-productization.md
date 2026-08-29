@@ -714,3 +714,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   空 run 发布和完整返回元数据也已移入同一服务。Handler 仅先取得 Map 再调用预览服务，并将
   失败映射到 `exportFailed`。回归覆盖 Texture2D、AnimationClip、AudioClip 降级、缓存复用，
   以及 Worker 返回错误 PathID 时拒绝发布并清理未完成 run。
+- AnimationClip 的 FBX 子资源名称回退、AssetMap 唯一项选择、精确 PathID/名称回验和
+  `AnimeStudioAnimationClip/1.1.0` 文档验证已全部移入 `manifest_worker_service.py`。Handler
+  只负责取得 AssetMap 后调用领域方法，原通用 Worker 导出兼容方法已无调用者并删除；回归
+  证明 Worker 返回不同 PathID 时不会发布缓存指针并会清理未完成 run。

@@ -130,6 +130,34 @@ class ManifestAnimationExportTests(unittest.TestCase):
                 )
         self.assertEqual([], self.calls)
 
+    def test_rejects_worker_asset_identity_without_publishing(self):
+        original_export = self.worker.export_animation_clip_json
+
+        def export_mismatch(**arguments):
+            result = original_export(**arguments)
+            result["artifacts"][0]["pathId"] = 99
+            return result
+
+        with (
+            patch.object(server, "INTERNAL_CACHE_DIR", self.root / "cache"),
+            patch.object(server, "UNITY_WORKER", self.worker),
+            patch.object(
+                self.worker,
+                "export_animation_clip_json",
+                side_effect=export_mismatch,
+            ),
+            self.assertRaisesRegex(RuntimeError, "different asset identity"),
+        ):
+            self.handler.ensure_animation_clip_export(
+                self.record,
+                self.chunk,
+                self.asset,
+            )
+
+        cache = self.root / "cache" / "42" / "manifest-assets" / "7" / "animation"
+        self.assertFalse((cache / "meta.json").exists())
+        self.assertEqual([], list((cache / "runs").glob("*")))
+
 
 if __name__ == "__main__":
     unittest.main()
