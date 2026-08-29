@@ -10,7 +10,7 @@ from typing import Callable, Mapping
 from urllib.parse import quote, unquote
 
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
-from audio_package_service import AudioEntry
+from audio_package_service import AudioEntry, validate_indexed_audio_source
 
 
 class AudioDialogConflictError(RuntimeError):
@@ -122,6 +122,7 @@ class AudioDialogService:
         if physical is None:
             raise FileNotFoundError("AudioDialog PCK source is unavailable")
         record, chunk_path = physical
+        validate_indexed_audio_source(record, entry, index_name="AudioDialog index")
         try:
             target = self._ensure_media(
                 record, chunk_path, entry, mode, "audio-dialog"

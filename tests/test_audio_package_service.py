@@ -5,7 +5,9 @@ from pathlib import Path
 from audio_package_service import (
     AudioEntry,
     AudioPackageIndexService,
+    StaleAudioIndexError,
     parse_audio_internal_path,
+    validate_indexed_audio_source,
 )
 from tests.test_audio_package import pck_fixture
 
@@ -27,6 +29,21 @@ class AudioPackageIndexServiceTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_rejects_stale_secondary_index_source_identity_and_range(self):
+        entry = AudioEntry(100, 12, 34, "sound")
+        with self.assertRaisesRegex(StaleAudioIndexError, "no longer a PCK"):
+            validate_indexed_audio_source(
+                {"id": 7, "file_name": "unrelated.bytes", "length": 1000},
+                entry,
+                index_name="fixture index",
+            )
+        with self.assertRaisesRegex(StaleAudioIndexError, "range exceeds"):
+            validate_indexed_audio_source(
+                {"id": 7, "file_name": "audio.pck", "length": 20},
+                entry,
+                index_name="fixture index",
+            )
 
     def read_range(self, offset, size):
         self.read_count += 1

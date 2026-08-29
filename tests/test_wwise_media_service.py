@@ -26,7 +26,10 @@ class WwiseMediaServiceTests(unittest.TestCase):
                 calls.append(("lookup", pck, ordinal)),
                 self.media(),
             )[1],
-            lambda pck: (calls.append(("source", pck)), ({"id": pck}, Path("pck.chk")))[1],
+            lambda pck: (
+                calls.append(("source", pck)),
+                ({"id": pck, "file_name": "default.pck", "length": 1000}, Path("pck.chk")),
+            )[1],
             lambda record, chunk, entry, mode, namespace: (
                 calls.append(("ensure", record, chunk, entry, mode, namespace)),
                 Path("cached.wav"),
@@ -83,7 +86,10 @@ class WwiseMediaServiceTests(unittest.TestCase):
     def test_wraps_artifact_build_failure(self):
         service = WwiseMediaService(
             lambda *_args: self.media(),
-            lambda *_args: ({"id": 99}, Path("pck.chk")),
+            lambda *_args: (
+                {"id": 99, "file_name": "default.pck", "length": 1000},
+                Path("pck.chk"),
+            ),
             lambda *_args: (_ for _ in ()).throw(RuntimeError("conversion failed")),
         )
 

@@ -34,6 +34,11 @@
 `dialogKey` 消歧、预览 URL，以及唯一 matched 条目到 VFS PCK 和 WEM/WAV 缓存产物的解析。
 HTTP Handler 不直接查询 AudioDialog 表，也不自行选择多候选媒体。
 
+当前二级索引 schema 只保存 `pck_file_id`。主 VFS 索引重建会重新分配数字 ID，因此运行时会在
+读取前验证该 ID 仍指向 `.pck` 且媒体范围未越界；失败时返回“重建二级音频索引”，不会读取碰巧
+占用同一 ID 的无关 VFS 文件。长期修复必须让二级索引同时保存稳定 PCK 逻辑身份和主索引内容
+身份，并在服务启动时审计/原子重建，不能靠数字 ID 猜回来源。
+
 现有 PCK 解析器生成的 `audio_meta.json` 不需要重复解析：
 `media_entries_from_audio_package_meta()` 会校验元数据版本、条目数和必需字段，再转换为
 统一物理媒体记录。PCK 文件 ID 保留在每条记录中，供后续预览 API 回到原 VFS 文件。

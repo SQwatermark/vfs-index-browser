@@ -40,6 +40,7 @@ from assetbundle_worker_service import (
 from audio_package_service import (
     AudioEntry,
     AudioPackageIndexService,
+    StaleAudioIndexError,
 )
 from cache_versions import CACHE_VERSIONS
 from blender_export import BlenderExportService
@@ -2190,6 +2191,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except AudioDialogMediaBuildError as error:
             self.send_error_json(500, str(error))
             return
+        except StaleAudioIndexError as error:
+            self.send_error_json(503, str(error))
+            return
         except sqlite3.DatabaseError as error:
             self.send_error_json(500, f"AudioDialog index error: {error}")
             return
@@ -2249,6 +2253,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         except WwiseMediaBuildError as error:
             self.send_error_json(500, str(error))
+            return
+        except StaleAudioIndexError as error:
+            self.send_error_json(503, str(error))
             return
         except (sqlite3.DatabaseError, RuntimeError) as error:
             self.send_error_json(500, f"Wwise index error: {error}")

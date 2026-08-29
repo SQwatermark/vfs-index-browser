@@ -44,7 +44,12 @@ class AudioDialogServiceTests(unittest.TestCase):
             lambda: sqlite3.connect(self.database),
             lambda pck: (
                 calls.append(("source", pck)),
-                ({"id": pck}, Path("pck.chk")) if source else None,
+                (
+                    {"id": pck, "file_name": "default.pck", "length": 1000},
+                    Path("pck.chk"),
+                )
+                if source
+                else None,
             )[1],
             lambda record, chunk, entry, mode, namespace: (
                 calls.append(("ensure", record, chunk, entry, mode, namespace)),

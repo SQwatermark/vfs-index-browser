@@ -73,7 +73,8 @@ LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task
 偏移/长度和转码工具文件信息，相同长度的游戏热更或工具升级不能误命中旧视频。
 PCK 的 AKPK/BNK 结构只由 `audio_package.py` 解析；`audio_package_service.py` 负责按 VFS
 内容身份缓存媒体索引、提供 WEM/WAV 虚拟目录、解密并原子发布 WEM，再通过 vgmstream 适配器
-派生 WAV。Handler 不再维护第二套宽松二进制解析器或音频缓存路径规则。
+派生 WAV。二级音频索引引用的 VFS 记录在读取前还会复核 `.pck` 身份和媒体范围，陈旧数字 ID
+不会落到无关文件。Handler 不再维护第二套宽松二进制解析器或音频缓存路径规则。
 AudioDialog 的逻辑目录、分页、路径/`dialogKey` 精确选择、可播放状态、公开 URL 及 PCK 媒体
 产物协调统一位于 `audio_dialog_service.py`。服务保留 missing/ambiguous/collision 证据，不会为
 不可唯一播放的条目猜选物理媒体；Handler 仅映射 400/404/409/500 并流式发送选定产物。

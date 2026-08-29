@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 from typing import Callable, Mapping
 
-from audio_package_service import AudioEntry
+from audio_package_service import AudioEntry, validate_indexed_audio_source
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,7 @@ class WwiseMediaService:
         if physical is None:
             raise FileNotFoundError("Wwise PCK source is unavailable")
         record, chunk_path = physical
+        validate_indexed_audio_source(record, entry, index_name="Wwise index")
         try:
             target = self._ensure_media(record, chunk_path, entry, mode, "wwise")
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:

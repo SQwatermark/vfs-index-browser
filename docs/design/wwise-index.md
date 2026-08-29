@@ -5,6 +5,9 @@
 这一层把本地游戏 PCK 中的物理 SoundBank、Media 和 HIRC 关系转换为可查询的 SQLite
 索引。网页只读取索引元数据；WEM/WAV 在用户预览或下载时才从原 PCK 按范围读取。
 
+`pck_file_id` 是主 VFS 索引内的非稳定数字 ID。媒体读取会复核它仍指向 `.pck` 且索引范围没有
+越过当前记录；主索引重建后的陈旧引用会明确要求重建 Wwise 二级索引，不会访问同 ID 的无关文件。
+
 它不猜测 Wwise 工程中的作者命名。数字 ID、物理位置、关系图和来自 TableCfg 的语义名称
 属于不同证据层，不能互相覆盖。
 
@@ -106,6 +109,7 @@ Event 3537164
 
 ## 尚未完成
 
+- 在二级索引保存稳定 PCK 逻辑身份与主索引内容身份，并接入启动时审计/原子重建；
 - Switch、Blend、Music Segment/Track/Playlist 的完整分支和时间结构；
 - TableCfg/Lua/关卡配置到 Event 的语义引用索引；
 - `Music` 与 `SoundEffects` 分类目录；

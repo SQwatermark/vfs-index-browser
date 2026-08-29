@@ -831,3 +831,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   映射、VFS PCK fallback 和 WEM/WAV 产物协调已统一移入 `audio_dialog_service.py`。missing、
   ambiguous 与 collision 状态仍严格禁止隐式选取；Handler 只保留错误映射和文件响应。真实 SQLite
   API 与服务回归覆盖分页、matched/missing、重复路径 409、Bank 内媒体字段和缺失 PCK 来源。
+- 真实 AudioDialog 下载审计发现当前二级索引的 `pck_file_id=832796` 在重建后的主 VFS 索引中已
+  指向 371 字节的非 PCK 文件，而旧媒体范围为 714,387,339；此前只会晚至范围读取时报错。共享
+  音频来源门禁现会验证 `.pck` 文件身份及 external/Bank 读取范围，陈旧 AudioDialog/Wwise 引用
+  统一返回 503 并要求重建二级索引。合成回归覆盖 ID 复用和范围越界。后续仍须扩展二级 schema，
+  保存稳定 PCK 逻辑身份与主索引内容 identity，并把审计和原子重建接到服务启动流程。

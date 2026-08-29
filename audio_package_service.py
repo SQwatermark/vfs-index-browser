@@ -66,6 +66,40 @@ class AudioEntry:
         )
 
 
+class StaleAudioIndexError(RuntimeError):
+    pass
+
+
+def validate_indexed_audio_source(
+    record: dict,
+    entry: AudioEntry,
+    *,
+    index_name: str,
+) -> None:
+    file_name = str(record.get("file_name") or "")
+    if not file_name.casefold().endswith(".pck"):
+        raise StaleAudioIndexError(
+            f"{index_name} references VFS file id {record.get('id')} that is no longer "
+            "a PCK; rebuild the secondary audio index"
+        )
+    if entry.bank_encrypted:
+        start = entry.bank_offset
+        size = entry.bank_size
+    else:
+        start = entry.offset
+        size = entry.size
+    if start is None or size is None or start < 0 or size < 0:
+        raise StaleAudioIndexError(
+            f"{index_name} has incomplete PCK range metadata; rebuild the secondary "
+            "audio index"
+        )
+    if start + size > int(record["length"]):
+        raise StaleAudioIndexError(
+            f"{index_name} media range exceeds current PCK file id {record.get('id')}; "
+            "rebuild the secondary audio index"
+        )
+
+
 def audio_entry_prefix(media_id: int) -> str:
     return f"{media_id:x}"[:2].rjust(2, "0")
 
