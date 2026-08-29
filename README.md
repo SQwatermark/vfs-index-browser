@@ -123,6 +123,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
+| `audio_package_service.py` | PCK 媒体索引缓存与 WEM/WAV 虚拟目录 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `usm.py` | CRI USM 视频处理 |

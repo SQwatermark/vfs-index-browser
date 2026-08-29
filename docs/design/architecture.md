@@ -71,6 +71,8 @@ LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task
 音频转换和 USM 转码分别通过独立适配器执行并负责超时、失败清理与原子产物发布。
 `usm_video_service.py` 还拥有 USM 虚拟目录和 MP4 缓存身份：身份同时包含 VFS 文件摘要、
 偏移/长度和转码工具文件信息，相同长度的游戏热更或工具升级不能误命中旧视频。
+PCK 的 AKPK/BNK 结构只由 `audio_package.py` 解析；`audio_package_service.py` 负责按 VFS
+内容身份缓存媒体索引并提供 WEM/WAV 虚拟目录。Handler 不再维护第二套宽松二进制解析器。
 
 ## 关键约束
 

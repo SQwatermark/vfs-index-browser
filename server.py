@@ -30,6 +30,11 @@ from typing import Callable, Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
+from audio_package_service import (
+    AudioPackageIndexService,
+    audio_entry_prefix,
+    parse_audio_internal_path,
+)
 from cache_versions import CACHE_VERSIONS
 from audio_export import VgmstreamConversionService
 from blender_export import BlenderExportService
@@ -222,6 +227,13 @@ def usm_video_service() -> UsmVideoService:
     )
 
 
+def audio_package_index_service() -> AudioPackageIndexService:
+    return AudioPackageIndexService(
+        INTERNAL_CACHE_DIR,
+        CACHE_VERSIONS.version("audio-package"),
+    )
+
+
 def build_health_document() -> dict:
     """汇总运行时能力；可选工具缺失不影响核心服务存活状态。"""
 
@@ -368,7 +380,6 @@ MODEL_SNAPSHOT_TYPES = (
     "Avatar",
     "LODGroup",
 )
-AUDIO_ENTRY_RE = re.compile(r"^(wem|wav)/([0-9a-f]{1,2})/([0-9]+)\.(wem|wav)$", re.IGNORECASE)
 PAGE_SIZE_MAX = 500
 MANIFEST_VIRTUAL_DIR = "__manifest_assets__"
 MANIFEST_VIRTUAL_NAME = "Manifest 资源"
@@ -569,84 +580,6 @@ def decrypt_wem_bytes(data: bytes, wem_id: int) -> bytes:
     output = bytearray(data)
     decrypt_audio_vfs_bytes(output, 0, len(output), wem_id)
     return bytes(output)
-
-
-def parse_akpk_header(header: bytes, label: str) -> tuple[bytes, int]:
-    if len(header) < 28:
-        raise ValueError(f"invalid AKPK header: {label}")
-    data = bytearray(header)
-    if data[:4] == b":)xD":
-        header_size = int.from_bytes(data[4:8], "little")
-        if header_size < 4 or header_size + 8 > len(data):
-            raise ValueError(f"invalid encrypted AKPK header size: {label}")
-        # 终末地音频包的包头会用同一套轻量异或流加密；解开后才是标准 AKPK 结构。
-        decrypt_audio_vfs_bytes(data, 12, header_size - 4, header_size)
-        data[:4] = b"AKPK"
-        data[8:12] = (1).to_bytes(4, "little")
-    if data[:4] != b"AKPK":
-        raise ValueError(f"invalid AKPK magic: {label}")
-    return bytes(data), int.from_bytes(data[4:8], "little")
-
-
-def parse_akpk_languages(data: bytes, start: int, sector_size: int) -> dict[int, str]:
-    languages = {}
-    if sector_size < 4 or start + sector_size > len(data):
-        return languages
-    count = int.from_bytes(data[start : start + 4], "little")
-    pos = start + 4
-    for _ in range(count):
-        if pos + 8 > start + sector_size:
-            break
-        name_offset = int.from_bytes(data[pos : pos + 4], "little")
-        lang_id = int.from_bytes(data[pos + 4 : pos + 8], "little")
-        name_start = start + name_offset
-        name_end = min(start + sector_size, name_start + 32)
-        raw = data[name_start:name_end]
-        if len(raw) >= 2 and (raw[0] == 0 or raw[1] == 0):
-            name = raw.decode("utf-16-le", errors="ignore").split("\x00", 1)[0]
-        else:
-            name = raw.decode("utf-8", errors="ignore").split("\x00", 1)[0]
-        if name:
-            languages[lang_id] = name
-        pos += 8
-    return languages
-
-
-def parse_bnk_wem_ranges(payload: bytes) -> list[tuple[int, int, int]]:
-    if len(payload) < 16 or payload[:4] != b"BKHD":
-        return []
-    bkhd_size = int.from_bytes(payload[4:8], "little")
-    pos = 8 + bkhd_size
-    end = len(payload)
-    if pos + 8 > end or payload[pos : pos + 4] != b"DIDX":
-        return []
-    didx_size = int.from_bytes(payload[pos + 4 : pos + 8], "little")
-    pos += 8
-    rows = []
-    for _ in range(didx_size // 12):
-        if pos + 12 > end:
-            return []
-        wem_id = int.from_bytes(payload[pos : pos + 4], "little")
-        wem_offset = int.from_bytes(payload[pos + 4 : pos + 8], "little")
-        wem_size = int.from_bytes(payload[pos + 8 : pos + 12], "little")
-        rows.append((wem_id, wem_offset, wem_size))
-        pos += 12
-    if pos + 8 > end or payload[pos : pos + 4] != b"DATA":
-        return []
-    data_offset = pos + 8
-    return [(wem_id, data_offset + wem_offset, wem_size) for wem_id, wem_offset, wem_size in rows]
-
-
-def audio_entry_prefix(wem_id: int) -> str:
-    return f"{wem_id:x}"[:2].rjust(2, "0")
-
-
-def parse_audio_internal_path(raw_path: str) -> tuple[str, int] | None:
-    normalized = unquote(raw_path).replace("\\", "/").strip("/")
-    match = AUDIO_ENTRY_RE.match(normalized)
-    if not match or match.group(1).lower() != match.group(4).lower():
-        return None
-    return match.group(1).lower(), int(match.group(3))
 
 
 def iter_ancestor_dirs(file_path: str) -> Iterator[str]:
@@ -4444,198 +4377,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
         wav_root = cache_root / "audio" / "wav"
         return meta_path, wem_root, wav_root
 
-    def read_pck_header(self, record: dict, chunk_path: Path) -> bytes:
-        probe = self.read_file_range(record, chunk_path, 0, min(28, int(record["length"])))
-        if len(probe) < 8:
-            raise ValueError("PCK is too small")
-        magic = probe[:4]
-        if magic not in {b":)xD", b"AKPK"}:
-            raise ValueError("invalid AKPK magic")
-        header_size = int.from_bytes(probe[4:8], "little")
-        read_size = header_size + 8 if magic == b":)xD" else header_size
-        if read_size < 28 or read_size > int(record["length"]):
-            raise ValueError("invalid AKPK header size")
-        return self.read_file_range(record, chunk_path, 0, read_size)
-
-    def read_pck_payload(self, record: dict, chunk_path: Path, offset: int, size: int) -> bytes:
-        return self.read_file_range(record, chunk_path, offset, size)
-
-    def parse_pck_index(self, record: dict, chunk_path: Path) -> list[AudioEntry]:
-        header, header_size = parse_akpk_header(self.read_pck_header(record, chunk_path), record["file_name"])
-        language_size = int.from_bytes(header[12:16], "little")
-        banks_size = int.from_bytes(header[16:20], "little")
-        sounds_size = int.from_bytes(header[20:24], "little")
-        has_externals = language_size + banks_size + sounds_size + 0x10 < header_size
-        externals_size = int.from_bytes(header[24:28], "little") if has_externals else 0
-        start = 28 if has_externals else 24
-        languages = parse_akpk_languages(header, start, language_size)
-        entries: list[AudioEntry] = []
-        pos = start + language_size
-
-        def parse_sector(sector_start: int, sector_size: int, is_sounds: bool, is_externals: bool) -> None:
-            if sector_size == 0 or sector_start + 4 > len(header):
-                return
-            count = int.from_bytes(header[sector_start : sector_start + 4], "little")
-            if count == 0:
-                return
-            entry_size = (sector_size - 4) // count
-            alt_mode = entry_size == 0x18
-            p = sector_start + 4
-            for _ in range(count):
-                if p + entry_size > len(header):
-                    break
-                file_id_low = int.from_bytes(header[p : p + 4], "little")
-                q = p + 4
-                file_id_high = None
-                if alt_mode and is_externals:
-                    file_id_high = int.from_bytes(header[q : q + 4], "little")
-                    q += 4
-                block_size = int.from_bytes(header[q : q + 4], "little")
-                q += 4
-                if alt_mode and is_externals:
-                    size = int.from_bytes(header[q : q + 4], "little")
-                    q += 4
-                elif alt_mode:
-                    size = int.from_bytes(header[q : q + 8], "little")
-                    q += 8
-                else:
-                    size = int.from_bytes(header[q : q + 4], "little")
-                    q += 4
-                offset = int.from_bytes(header[q : q + 4], "little")
-                lang_id = int.from_bytes(header[q + 4 : q + 8], "little") if q + 8 <= p + entry_size else 0
-                if block_size:
-                    offset *= block_size
-                language = languages.get(lang_id)
-                final_id = ((file_id_high << 32) | file_id_low) if file_id_high is not None else file_id_low
-                if is_sounds:
-                    entries.append(AudioEntry(final_id, offset, size, "external" if is_externals else "sound", language))
-                else:
-                    self.append_bank_wem_entries(record, chunk_path, entries, file_id_low, offset, size, language)
-                p += entry_size
-
-        parse_sector(pos, banks_size, False, False)
-        pos += banks_size
-        parse_sector(pos, sounds_size, True, False)
-        pos += sounds_size
-        if externals_size:
-            parse_sector(pos, externals_size, True, True)
-        return entries
-
-    def append_bank_wem_entries(
-        self,
-        record: dict,
-        chunk_path: Path,
-        entries: list[AudioEntry],
-        bank_id: int,
-        bank_offset: int,
-        bank_size: int,
-        language: str | None,
-    ) -> None:
-        if bank_size <= 0:
-            return
-        payload = self.read_pck_payload(record, chunk_path, bank_offset, bank_size)
-        bank_encrypted = False
-        ranges = parse_bnk_wem_ranges(payload)
-        if not ranges:
-            decrypted = bytearray(payload)
-            decrypt_audio_vfs_bytes(decrypted, 0, len(decrypted), bank_id)
-            payload = bytes(decrypted)
-            ranges = parse_bnk_wem_ranges(payload)
-            bank_encrypted = bool(ranges)
-        for wem_id, wem_offset, wem_size in ranges:
-            if wem_offset + wem_size > len(payload):
-                continue
-            entries.append(
-                AudioEntry(
-                    wem_id=wem_id,
-                    offset=bank_offset + wem_offset,
-                    size=wem_size,
-                    source="bank",
-                    language=language,
-                    bank_id=bank_id,
-                    bank_offset=bank_offset,
-                    bank_size=bank_size,
-                    bank_wem_offset=wem_offset,
-                    bank_encrypted=bank_encrypted,
-                )
-            )
-
     def ensure_audio_package_index(self, record: dict, chunk_path: Path) -> dict:
-        meta_path, _, _ = self.audio_cache_paths(record)
-        if meta_path.exists():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if (
-                    meta.get("version") == AUDIO_PACKAGE_META_VERSION
-                    and meta.get("fileLength") == int(record["length"])
-                    and isinstance(meta.get("entries"), list)
-                ):
-                    return meta
-            except (OSError, json.JSONDecodeError):
-                pass
-
-        entries = self.parse_pck_index(record, chunk_path)
-        meta = {
-            "version": AUDIO_PACKAGE_META_VERSION,
-            "fileLength": int(record["length"]),
-            "builtAtEpoch": int(time.time()),
-            "entryCount": len(entries),
-            "entries": [entry.to_json() for entry in entries],
-        }
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        return meta
+        return audio_package_index_service().ensure_index(
+            record,
+            lambda offset, size: self.read_file_range(
+                record,
+                chunk_path,
+                offset,
+                size,
+            ),
+        )
 
     def list_audio_package(self, meta: dict, raw_path: str) -> dict:
-        normalized = unquote(raw_path).replace("\\", "/").strip("/")
-        entries = [AudioEntry.from_json(item) for item in meta.get("entries") or []]
-        total_size = sum(entry.size for entry in entries)
-        dirs = []
-        files = []
-        if not normalized:
-            dirs = [
-                {"name": "wem", "path": "wem", "fileCount": len(entries), "totalBytes": total_size},
-                {"name": "wav", "path": "wav", "fileCount": len(entries), "totalBytes": total_size},
-            ]
-            return {"path": "", "dirs": dirs, "files": files}
-
-        parts = normalized.split("/")
-        if len(parts) == 1 and parts[0] in {"wem", "wav"}:
-            groups: dict[str, tuple[int, int]] = {}
-            for entry in entries:
-                prefix = audio_entry_prefix(entry.wem_id)
-                count, size = groups.get(prefix, (0, 0))
-                groups[prefix] = (count + 1, size + entry.size)
-            for prefix, (count, size) in sorted(groups.items()):
-                dirs.append({"name": prefix, "path": f"{parts[0]}/{prefix}", "fileCount": count, "totalBytes": size})
-            return {"path": normalized, "dirs": dirs, "files": files}
-
-        if len(parts) == 2 and parts[0] in {"wem", "wav"}:
-            mode, prefix = parts
-            for entry in sorted(entries, key=lambda item: item.wem_id):
-                if audio_entry_prefix(entry.wem_id) != prefix.lower():
-                    continue
-                name = f"{entry.wem_id}.{mode}"
-                files.append(
-                    {
-                        "name": name,
-                        "path": f"{mode}/{prefix}/{name}",
-                        "size": entry.size,
-                        "kind": "audio" if mode == "wav" else "wem",
-                        "asset": {
-                            "Name": str(entry.wem_id),
-                            "Type": "WEM",
-                            "Container": f"wwise/{entry.wem_id}.wem",
-                            "Source": entry.source,
-                            "PathID": entry.wem_id,
-                            "Language": entry.language,
-                            "BankID": entry.bank_id,
-                        },
-                    }
-                )
-            return {"path": normalized, "dirs": dirs, "files": files}
-
-        raise FileNotFoundError("audio package directory not found")
+        return audio_package_index_service().list_directory(meta, raw_path)
 
     def audio_entries_by_id(self, meta: dict) -> dict[int, AudioEntry]:
         return {AudioEntry.from_json(item).wem_id: AudioEntry.from_json(item) for item in meta.get("entries") or []}
@@ -4644,11 +4398,23 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if entry.bank_encrypted:
             if entry.bank_id is None or entry.bank_offset is None or entry.bank_size is None or entry.bank_wem_offset is None:
                 raise ValueError("encrypted bank entry is missing bank metadata")
-            bank_payload = bytearray(self.read_pck_payload(record, chunk_path, entry.bank_offset, entry.bank_size))
+            bank_payload = bytearray(
+                self.read_file_range(
+                    record,
+                    chunk_path,
+                    entry.bank_offset,
+                    entry.bank_size,
+                )
+            )
             decrypt_audio_vfs_bytes(bank_payload, 0, len(bank_payload), entry.bank_id)
             data = bytes(bank_payload[entry.bank_wem_offset : entry.bank_wem_offset + entry.size])
         else:
-            data = self.read_pck_payload(record, chunk_path, entry.offset, entry.size)
+            data = self.read_file_range(
+                record,
+                chunk_path,
+                entry.offset,
+                entry.size,
+            )
         if len(data) >= 4 and data[:4] not in {b"RIFF", b"RIFX"}:
             data = decrypt_wem_bytes(data, entry.wem_id)
         return data

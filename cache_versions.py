@@ -32,7 +32,7 @@ CACHE_VERSIONS = CacheVersionRegistry(
         "animation-clip-export": 5,
         "assetbundle-map": 1,
         "assetbundle-preview": 4,
-        "audio-package": 1,
+        "audio-package": 2,
         "avatar-model-snapshot": 5,
         "cubemap-export": 2,
         "model-blend": 12,

@@ -673,3 +673,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `mp4/sketch_guide_video_battle_enemy_break_poise_1_ct.mp4`；首次转码生成 347,495 字节 MP4
   约 284 ms，第二次约 15 ms 命中缓存。真实验证还发现 ffmpeg 依赖输出文件保留 `.mp4`
   扩展名，该约束已进入合成回归。这是 P4 单体 Handler 拆分的下一块已完成边界。
+- PCK 媒体索引与 WEM/WAV 虚拟目录已移入 `audio_package_service.py`，并直接复用已有
+  `audio_package.py` 权威 AKPK/BNK 解析器；`server.py` 中一套会宽松跳过截断行的重复解析代码
+  已删除。索引缓存身份由单纯文件长度升级为版本、record、offset 和内容 MD5，meta 通过独占
+  临时文件原子发布，`audio-package` 缓存版本升至 2。合成回归覆盖索引复用、同长度来源变化
+  失效、WEM/WAV 分层目录和严格内部路径解析；WEM 提取及 WAV 派生仍留待下一步移出 Handler。
