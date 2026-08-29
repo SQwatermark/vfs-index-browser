@@ -1162,9 +1162,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def wwise_media_service(self) -> WwiseMediaService:
         return WwiseMediaService(
             self.lookup_wwise_media,
-            self.resolve_vfs_file_source,
+            self.resolve_wwise_media_source,
             self.ensure_indexed_audio_media_file,
         )
+
+    def resolve_wwise_media_source(self, media: dict) -> tuple[dict, Path] | None:
+        logical_path = str(media.get("logical_path") or "")
+        if logical_path:
+            return self.resolve_logical_file_source(logical_path)
+        return self.resolve_vfs_file_source(int(media["pck_file_id"]))
 
     @classmethod
     def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:

@@ -26,7 +26,7 @@ class WwiseMediaService:
     def __init__(
         self,
         lookup_media: Callable[[int, int], dict | None],
-        resolve_pck_source: Callable[[int], tuple[dict, Path] | None],
+        resolve_pck_source: Callable[[dict], tuple[dict, Path] | None],
         ensure_media: Callable[[dict, Path, AudioEntry, str, str], Path],
     ) -> None:
         self._lookup_media = lookup_media
@@ -44,11 +44,16 @@ class WwiseMediaService:
         if media is None:
             raise FileNotFoundError("Wwise media not found")
         entry = self._entry(media)
-        physical = self._resolve_pck_source(pck_file_id)
+        physical = self._resolve_pck_source(media)
         if physical is None:
             raise FileNotFoundError("Wwise PCK source is unavailable")
         record, chunk_path = physical
-        validate_indexed_audio_source(record, entry, index_name="Wwise index")
+        validate_indexed_audio_source(
+            record,
+            entry,
+            index_name="Wwise index",
+            expected_file_size=int(media["package_file_size"]),
+        )
         try:
             target = self._ensure_media(record, chunk_path, entry, mode, "wwise")
         except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:

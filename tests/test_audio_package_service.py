@@ -44,6 +44,13 @@ class AudioPackageIndexServiceTests(unittest.TestCase):
                 entry,
                 index_name="fixture index",
             )
+        with self.assertRaisesRegex(StaleAudioIndexError, "size changed"):
+            validate_indexed_audio_source(
+                {"id": 7, "file_name": "audio.pck", "length": 1000},
+                entry,
+                index_name="fixture index",
+                expected_file_size=999,
+            )
 
     def read_range(self, offset, size):
         self.read_count += 1

@@ -75,12 +75,21 @@ def validate_indexed_audio_source(
     entry: AudioEntry,
     *,
     index_name: str,
+    expected_file_size: int | None = None,
 ) -> None:
     file_name = str(record.get("file_name") or "")
     if not file_name.casefold().endswith(".pck"):
         raise StaleAudioIndexError(
             f"{index_name} references VFS file id {record.get('id')} that is no longer "
             "a PCK; rebuild the secondary audio index"
+        )
+    if (
+        expected_file_size is not None
+        and int(record["length"]) != expected_file_size
+    ):
+        raise StaleAudioIndexError(
+            f"{index_name} PCK size changed from {expected_file_size} to "
+            f"{record['length']}; rebuild the secondary audio index"
         )
     if entry.bank_encrypted:
         start = entry.bank_offset

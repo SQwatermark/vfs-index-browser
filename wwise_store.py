@@ -515,7 +515,7 @@ def get_wwise_media(
     rows = _fetch_dicts(
         conn,
         """
-        SELECT m.*, p.logical_path
+        SELECT m.*, p.logical_path, p.file_size AS package_file_size
         FROM wwise_media m
         JOIN wwise_packages p ON p.pck_file_id = m.pck_file_id
         WHERE m.pck_file_id = ? AND m.ordinal = ?

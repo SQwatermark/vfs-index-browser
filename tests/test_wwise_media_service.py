@@ -7,6 +7,7 @@ from wwise_media_service import WwiseMediaBuildError, WwiseMediaService
 class WwiseMediaServiceTests(unittest.TestCase):
     def media(self):
         return {
+            "pck_file_id": 99,
             "media_id": "00000000000000ff",
             "offset": 12,
             "size": 34,
@@ -17,6 +18,8 @@ class WwiseMediaServiceTests(unittest.TestCase):
             "bank_size": 200,
             "bank_media_offset": 24,
             "bank_encrypted": 1,
+            "logical_path": "Audio/default.pck",
+            "package_file_size": 1000,
         }
 
     def test_resolves_entry_source_artifact_and_download(self):
@@ -26,9 +29,11 @@ class WwiseMediaServiceTests(unittest.TestCase):
                 calls.append(("lookup", pck, ordinal)),
                 self.media(),
             )[1],
-            lambda pck: (
-                calls.append(("source", pck)),
-                ({"id": pck, "file_name": "default.pck", "length": 1000}, Path("pck.chk")),
+            lambda media: (
+                calls.append(
+                    ("source", media["pck_file_id"], media["logical_path"])
+                ),
+                ({"id": 99, "file_name": "default.pck", "length": 1000}, Path("pck.chk")),
             )[1],
             lambda record, chunk, entry, mode, namespace: (
                 calls.append(("ensure", record, chunk, entry, mode, namespace)),
@@ -52,6 +57,7 @@ class WwiseMediaServiceTests(unittest.TestCase):
         self.assertEqual("wav", result.mode)
         self.assertTrue(result.download)
         self.assertEqual(("lookup", 99, 3), calls[0])
+        self.assertEqual(("source", 99, "Audio/default.pck"), calls[1])
         self.assertEqual("wwise", calls[2][-1])
 
     def test_rejects_invalid_mode_before_lookup(self):

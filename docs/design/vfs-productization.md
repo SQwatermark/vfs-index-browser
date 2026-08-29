@@ -836,3 +836,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   音频来源门禁现会验证 `.pck` 文件身份及 external/Bank 读取范围，陈旧 AudioDialog/Wwise 引用
   统一返回 503 并要求重建二级索引。合成回归覆盖 ID 复用和范围越界。后续仍须扩展二级 schema，
   保存稳定 PCK 逻辑身份与主索引内容 identity，并把审计和原子重建接到服务启动流程。
+- Wwise schema 2 原本已经保存 `wwise_packages.logical_path` 与 `file_size`，因此无需升级 schema 即可
+  先消除纯数字 ID 重排：媒体读取现按该精确逻辑路径在当前主索引重定位 PCK，再复核旧 `file_size`
+  与 external/Bank 范围。真实陈旧样本的旧 ID `832796` 可据路径精确迁移到当前 ID `839264`；没有
+  路径的旧条目才回退 ID 且继续受门禁保护。后续 Wwise 仍需补内容摘要及启动审计，AudioDialog
+  则需先扩 schema 保存同等稳定路径。

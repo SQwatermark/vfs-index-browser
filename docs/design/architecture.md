@@ -81,7 +81,8 @@ AudioDialog 的逻辑目录、分页、路径/`dialogKey` 精确选择、可播�
 Wwise 索引的 Events/Banks/Media 虚拟目录、分页、行到虚拟文件的映射及预览文档由
 `wwise_catalog_service.py` 负责。该服务直接消费 `wwise_store.py` 的证据型查询，不解释或猜测
 语义名称；Handler 只保留 HTTP 错误映射。`wwise_media_service.py` 再把精确 Media 条目转换为
-`AudioEntry`，解析原始 VFS PCK 来源并协调 WEM/WAV 缓存产物；HTTP 层仅决定 disposition 和流式发送。
+`AudioEntry`，按 `wwise_packages.logical_path` 在当前 VFS 索引重定位 PCK，复核建索引时的文件长度
+和媒体范围，再协调 WEM/WAV 缓存产物；HTTP 层仅决定 disposition 和流式发送。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由
