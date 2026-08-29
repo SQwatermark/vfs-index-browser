@@ -31,6 +31,8 @@ const state = {
   routeSelection: null,
   availableScopes: new Set(),
   disposeModelViewer: null,
+  modelTaskId: null,
+  modelTaskSerial: 0,
 }
 
 const scopeNames = {
@@ -183,6 +185,67 @@ async function getJson(url) {
     throw new Error(detail || `${response.status} ${response.statusText}`)
   }
   return response.json()
+}
+
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    let detail = ''
+    try {
+      detail = (await response.json()).error || ''
+    } catch {
+      // 非 JSON 错误响应仍使用 HTTP 状态作为兜底。
+    }
+    throw new Error(detail || `${response.status} ${response.statusText}`)
+  }
+  return response.json()
+}
+
+const wait = (milliseconds) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+
+async function waitForTask(taskId, onProgress = null) {
+  for (;;) {
+    const snapshot = await getJson(`/api/task?taskId=${encodeURIComponent(taskId)}`)
+    if (snapshot.state === 'succeeded') return snapshot.result
+    if (snapshot.state === 'failed') {
+      throw new Error(snapshot.error?.message || '后台任务失败')
+    }
+    if (snapshot.state === 'cancelled') throw new Error('后台任务已取消')
+    if (onProgress && snapshot.progress) onProgress(snapshot.progress)
+    await wait(250)
+  }
+}
+
+const modelProgressLabels = {
+  avatarPlan: '解析 AvatarMesh 资源计划',
+  cabMap: '建立资源依赖映射',
+  objects: '导出模型对象',
+  textures: '导出模型纹理',
+  publish: '发布模型缓存',
+  cache: '读取模型缓存',
+}
+
+function renderModelTaskProgress(progress) {
+  const label = modelProgressLabels[progress.stage] || progress.stage || '处理模型'
+  const completed = Number(progress.completed)
+  const total = Number(progress.total)
+  const detail = Number.isFinite(completed) && Number.isFinite(total) && total > 0
+    ? `（${completed}/${total}）`
+    : ''
+  $('previewContent').innerHTML = `<div class="empty">${escapeHtml(label)}${escapeHtml(detail)}</div>`
+}
+
+function cancelActiveModelTask() {
+  state.modelTaskSerial += 1
+  const taskId = state.modelTaskId
+  state.modelTaskId = null
+  if (taskId) {
+    fetch(`/api/task?taskId=${encodeURIComponent(taskId)}`, { method: 'DELETE' }).catch(() => {})
+  }
 }
 
 function renderScopes(scopes) {
@@ -489,6 +552,7 @@ function resetPreviewActions() {
 }
 
 function clearPreviewSelection() {
+  cancelActiveModelTask()
   state.selectedFileId = null
   state.selectedFileKey = null
   state.routeSelection = null
@@ -1674,6 +1738,7 @@ function renderInternalPreview(data) {
 }
 
 async function selectFile(fileId, { updateRoute = true } = {}) {
+  cancelActiveModelTask()
   state.selectedFileId = fileId
   state.selectedFileKey = `id:${fileId}`
   state.routeSelection = { kind: 'file', fileId, fileKey: state.selectedFileKey }
@@ -1689,6 +1754,7 @@ async function selectFile(fileId, { updateRoute = true } = {}) {
 async function selectVirtualFile(previewUrl, fileKey, { updateRoute = true } = {}) {
   const normalizedUrl = normalizePreviewUrl(previewUrl)
   if (!normalizedUrl) throw new Error('Invalid preview URL')
+  cancelActiveModelTask()
   state.selectedFileId = null
   state.selectedFileKey = fileKey
   state.routeSelection = { kind: 'virtual', previewUrl: normalizedUrl, fileKey }
@@ -1726,10 +1792,32 @@ async function selectModel(modelUrl, fileKey, { updateRoute = true } = {}) {
   document.querySelectorAll('#fileRows tr[data-file-key]').forEach((row) => {
     row.classList.toggle('selected', row.dataset.fileKey === fileKey)
   })
+  cancelActiveModelTask()
+  const taskSerial = state.modelTaskSerial
   renderPreviewLoading()
   try {
-    renderModelPreview(await getJson(normalizedUrl))
+    const task = await postJson('/api/tasks/model', {
+      manifestId,
+      assetIndex,
+      lod: params.get('lod') || 0,
+      animationAssetIndex: params.get('animationAssetIndex'),
+    })
+    if (state.modelTaskSerial !== taskSerial || state.selectedFileKey !== fileKey) {
+      fetch(`/api/task?taskId=${encodeURIComponent(task.taskId)}`, { method: 'DELETE' }).catch(() => {})
+      return
+    }
+    state.modelTaskId = task.taskId
+    const result = await waitForTask(task.taskId, (progress) => {
+      if (state.modelTaskSerial === taskSerial && state.modelTaskId === task.taskId && state.selectedFileKey === fileKey) {
+        renderModelTaskProgress(progress)
+      }
+    })
+    if (state.modelTaskSerial !== taskSerial || state.modelTaskId !== task.taskId || state.selectedFileKey !== fileKey) return
+    state.modelTaskId = null
+    renderModelPreview(result)
   } catch (error) {
+    if (state.modelTaskSerial !== taskSerial || state.selectedFileKey !== fileKey) return
+    state.modelTaskId = null
     $('previewContent').innerHTML = `<div class="notice">模型读取失败：${escapeHtml(error.message)}</div>`
   }
 }
@@ -1741,6 +1829,7 @@ async function selectAvatarPlan(planUrl, fileKey, { updateRoute = true } = {}) {
   const manifestId = params.get('manifestId')
   const assetIndex = params.get('assetIndex')
   if (!manifestId || !assetIndex) throw new Error('Avatar plan URL is missing its asset identity')
+  cancelActiveModelTask()
   state.selectedFileId = null
   state.selectedFileKey = fileKey
   state.routeSelection = {

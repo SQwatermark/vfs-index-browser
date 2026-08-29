@@ -28,6 +28,26 @@ class BackgroundTaskRegistryTests(unittest.TestCase):
             self.assertEqual({"value": 7}, completed["result"])
             self.assertEqual("result.json", completed["resultFile"])
 
+    def test_progress_task_publishes_latest_progress_with_result(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            registry = BackgroundTaskRegistry(lambda: root)
+
+            def operation(_cancel, report_progress):
+                report_progress({"stage": "objects", "completed": 2, "total": 4})
+                report_progress({"stage": "textures", "completed": 3, "total": 4})
+                return {"value": 9}
+
+            created = registry.submit_with_progress("sample", operation)
+            completed = self.wait_terminal(registry, created["taskId"])
+
+            self.assertEqual("succeeded", completed["state"])
+            self.assertEqual({"value": 9}, completed["result"])
+            self.assertEqual(
+                {"stage": "textures", "completed": 3, "total": 4},
+                completed["progress"],
+            )
+
     def test_cancelled_task_discards_result_and_reaches_cancelled(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

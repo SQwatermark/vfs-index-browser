@@ -111,16 +111,20 @@ GET /api/health
 响应会列出 Unity worker 的协议、版本和能力，以及 Blender、ffmpeg 等可选工具和仍被
 未迁移链路使用的旧工具。可选工具缺失不影响核心服务的 `ready` 状态。
 
-Projectile 同时提供可取消的长任务入口：
+Projectile 与模型预览提供可取消的长任务入口：
 
 ```text
 POST   /api/tasks/projectile
+POST   /api/tasks/model
 GET    /api/task?taskId=<id>
 DELETE /api/task?taskId=<id>
 ```
 
-创建请求体为 `{"projectileId":"projectile_..."}`。任务结果写入独占缓存目录，成功后才由
-原子状态文件发布；`DELETE` 会实际终止对应的独占 worker 进程，而不只是改变前端状态。
+Projectile 创建请求体为 `{"projectileId":"projectile_..."}`；模型请求体包含
+`manifestId`、`assetIndex`、`lod` 和可选的 `animationAssetIndex`。任务结果写入独占缓存目录，
+成功后才由原子状态文件发布；模型任务会在状态中报告资源计划、CAB 映射、对象、纹理和发布
+阶段。浏览器切换模型时会取消旧任务，`DELETE` 会实际终止对应的独占 worker 进程，而不只是
+改变前端状态。原同步模型查询仍保留给已有调用者兼容。
 
 ```text
 GET /api/manifest

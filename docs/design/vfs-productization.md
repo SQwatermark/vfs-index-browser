@@ -216,9 +216,11 @@ worker 采用“一次请求一个子进程”。取消不能只是修改 UI 状
 记录控制取消事件；内存中只保存小型控制句柄，任务结果写入独占目录，完成后由原子状态
 文件指向结果，禁止把大结果只保存在全局变量中。
 
-首个任务化入口使用以下协议，保留原同步查询供现有调用者兼容：
+长任务入口使用以下协议，保留原同步查询供现有调用者兼容：
 
 - `POST /api/tasks/projectile`：校验 `projectileId` 后创建任务；
+- `POST /api/tasks/model`：按 manifest 资源身份创建普通模型或 AvatarMesh 构建任务，并报告
+  资源计划、CAB 映射、对象、纹理与发布进度；
 - `GET /api/task?taskId=...`：读取原子状态，成功时可包含已发布结果；
 - `DELETE /api/task?taskId=...`：设置取消事件；只有实际运行中的本机任务可进入
   `cancelling`，终止完成后转为 `cancelled`。
@@ -348,6 +350,9 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
   白名单的 Bundle 预览媒体导出，以及精确 AnimationClip 的 AnimationJSON；
 - Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap`、`exportObjectSnapshots` 与
   `exportIdentifiedTextures`，模型和 AvatarMesh 生产路径均已接入；
+- 浏览器模型预览已改走持久化后台任务，切换资源会取消旧任务；取消事件贯穿 Avatar 计划、
+  CABMap、对象与纹理 worker，任务状态保存当前阶段。兼容的同步模型 GET 复用同一结果构建
+  函数；GLB 与 Blender 派生下载仍是后续可任务化的同步路径；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
   通用预览中的 Texture2D、Sprite、TextAsset、VideoClip、AnimationClip YAML 已接入新媒体
@@ -369,7 +374,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
    `Convert`；
-2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
+2. 将仍为同步路径的 GLB、批量动画绑定和 Blender 派生接入后台任务，并消除批量导出
+   “预检查后再次绑定”的重复工作；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
 4. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点。

@@ -32,6 +32,22 @@ class BackgroundTaskRegistry:
         kind: str,
         operation: Callable[[threading.Event], object],
     ) -> dict:
+        return self._submit(kind, operation, with_progress=False)
+
+    def submit_with_progress(
+        self,
+        kind: str,
+        operation: Callable[[threading.Event, Callable[[dict], None]], object],
+    ) -> dict:
+        return self._submit(kind, operation, with_progress=True)
+
+    def _submit(
+        self,
+        kind: str,
+        operation: Callable[..., object],
+        *,
+        with_progress: bool,
+    ) -> dict:
         task_id = uuid.uuid4().hex
         cancel_event = threading.Event()
         created = int(time.time() * 1000)
@@ -47,7 +63,7 @@ class BackgroundTaskRegistry:
             self._write_status(task_id, record)
         thread = threading.Thread(
             target=self._run,
-            args=(task_id, operation, cancel_event),
+            args=(task_id, operation, cancel_event, with_progress),
             name=f"vfs-task-{task_id}",
             daemon=True,
         )
@@ -107,8 +123,9 @@ class BackgroundTaskRegistry:
     def _run(
         self,
         task_id: str,
-        operation: Callable[[threading.Event], object],
+        operation: Callable[..., object],
         cancel_event: threading.Event,
+        with_progress: bool,
     ) -> None:
         temporary_result = self._task_root(task_id) / ".result.json.tmp"
         try:
@@ -122,7 +139,22 @@ class BackgroundTaskRegistry:
                         "updatedAtEpochMs": int(time.time() * 1000),
                     })
                 return
-            result = operation(cancel_event)
+            def report_progress(progress: dict) -> None:
+                with self._lock:
+                    current = self._read_status(task_id)
+                    if current["state"] not in INTERRUPTIBLE_STATES:
+                        return
+                    self._write_status(task_id, {
+                        **current,
+                        "updatedAtEpochMs": int(time.time() * 1000),
+                        "progress": dict(progress),
+                    })
+
+            result = (
+                operation(cancel_event, report_progress)
+                if with_progress
+                else operation(cancel_event)
+            )
             encoded = (json.dumps(result, ensure_ascii=False) + "\n").encode("utf-8")
             temporary_result.parent.mkdir(parents=True, exist_ok=True)
             temporary_result.write_bytes(encoded)

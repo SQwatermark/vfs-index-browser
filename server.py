@@ -1588,6 +1588,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/tasks/projectile":
             self.handle_start_projectile_task()
             return
+        if parsed.path == "/api/tasks/model":
+            self.handle_start_model_task()
+            return
         self.send_error_json(404, "API route not found")
 
     def do_DELETE(self) -> None:
@@ -1616,6 +1619,57 @@ class BrowserHandler(BaseHTTPRequestHandler):
             lambda cancel_event: worker.build_projectile_document(
                 projectile_id,
                 cancel_event=cancel_event,
+            ),
+        )
+        self.send_json(created, status=202, cache_control="no-store")
+
+    def handle_start_model_task(self) -> None:
+        try:
+            body = self.read_json_body()
+            manifest_id = int(body.get("manifestId"))
+            asset_index = int(body.get("assetIndex"))
+            lod = int(body.get("lod", 0))
+            animation_value = body.get("animationAssetIndex")
+            animation_asset_index = (
+                int(animation_value) if animation_value not in (None, "") else None
+            )
+            if manifest_id < 0 or asset_index < 0 or lod not in range(4):
+                raise ValueError
+        except (TypeError, ValueError):
+            self.send_error_json(400, "manifestId, assetIndex or lod is invalid")
+            return
+
+        query = {
+            "manifestId": [str(manifest_id)],
+            "assetIndex": [str(asset_index)],
+        }
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        if not is_model_entry_path(str(resolved[1]["path"])):
+            self.send_error_json(400, "resource is not a supported model entry")
+            return
+        animation_resolved = None
+        if animation_asset_index is not None:
+            animation_query = {
+                "manifestId": [str(manifest_id)],
+                "assetIndex": [str(animation_asset_index)],
+            }
+            animation_resolved = self.resolve_manifest_asset_source(animation_query)
+            if animation_resolved is None:
+                return
+
+        worker = object.__new__(BrowserHandler)
+        worker.db_path = self.db_path
+        created = TASKS.submit_with_progress(
+            "model",
+            lambda cancel_event, report_progress: worker.build_model_preview_result(
+                manifest_id,
+                resolved,
+                animation_resolved,
+                lod,
+                cancel_event=cancel_event,
+                progress=report_progress,
             ),
         )
         self.send_json(created, status=202, cache_control="no-store")
@@ -3021,6 +3075,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         dependency_bundles: list[dict],
         dependency_sources: list[tuple[dict, Path]],
         missing_dependency_bundles: list[dict],
+        *,
+        cancel_event: object | None = None,
+        progress: Callable[[dict], None] | None = None,
     ) -> tuple[dict, dict]:
         cache_root, runs_root, run_path = self.model_snapshot_cache_paths(
             record, int(asset["asset_index"])
@@ -3066,6 +3123,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     and (not document.get("images") or texture_root.exists())
                     and not validate_model_document(document)
                 ):
+                    if progress is not None:
+                        progress({"stage": "cache", "completed": 4, "total": 4})
                     return document, run_meta
             except (OSError, json.JSONDecodeError):
                 pass
@@ -3098,6 +3157,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             ],
         ]
         cab_root = run_root / "cab-map"
+        if progress is not None:
+            progress({"stage": "cabMap", "completed": 1, "total": 4})
         cab_result = UNITY_WORKER.build_cab_map(
             inputs=staged_inputs,
             output_directory=cab_root,
@@ -3105,8 +3166,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"model-cab-{int(record['id'])}-{int(asset['asset_index'])}-"
                 f"{time.time_ns()}"
             ),
+            cancel_event=cancel_event,
         )
         validate_worker_artifacts(cab_root, cab_result)
+        if progress is not None:
+            progress({"stage": "objects", "completed": 2, "total": 4})
         object_result = UNITY_WORKER.export_object_snapshots(
             inputs=staged_inputs,
             cab_map_path=cab_root / "cab-map.json",
@@ -3119,6 +3183,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"model-objects-{int(record['id'])}-{int(asset['asset_index'])}-"
                 f"{time.time_ns()}"
             ),
+            cancel_event=cancel_event,
         )
         validate_worker_artifacts(object_root, object_result)
         completed_steps = [
@@ -3166,6 +3231,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
         textures = collect_material_textures(document, objects)
         image_uris = {}
+        if progress is not None:
+            progress({"stage": "textures", "completed": 3, "total": 4})
         if textures:
             shutil.rmtree(texture_root, ignore_errors=True)
             texture_result = UNITY_WORKER.export_identified_textures(
@@ -3181,6 +3248,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     f"model-textures-{int(record['id'])}-{int(asset['asset_index'])}-"
                     f"{time.time_ns()}"
                 ),
+                cancel_event=cancel_event,
             )
             validate_worker_artifacts(texture_root, texture_result)
             completed_steps.append(
@@ -3245,6 +3313,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        if progress is not None:
+            progress({"stage": "publish", "completed": 4, "total": 4})
         os.replace(temporary_run_path, run_path)
         return document, run_meta
 
@@ -3255,11 +3325,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
         bundle_record: dict,
         bundle_chunk: Path,
         lod: int,
+        *,
+        cancel_event: object | None = None,
     ) -> tuple[dict, dict, dict]:
+        cancel_options = (
+            {"cancel_event": cancel_event} if cancel_event is not None else {}
+        )
         exported = self.ensure_manifest_monobehaviour_dump(
             bundle_record,
             bundle_chunk,
             asset,
+            **cancel_options,
         )
         if exported is None:
             raise RuntimeError("AnimeStudio produced no AvatarMesh TypeTree dump")
@@ -3298,16 +3374,22 @@ class BrowserHandler(BaseHTTPRequestHandler):
         bundle_record: dict,
         bundle_chunk: Path,
         lod: int,
+        *,
+        cancel_event: object | None = None,
+        progress: Callable[[dict], None] | None = None,
     ) -> tuple[dict, dict, Path]:
         if lod not in range(4):
             raise ValueError(f"LOD must be in 0..3, got {lod}")
 
+        if progress is not None:
+            progress({"stage": "avatarPlan", "completed": 1, "total": 5})
         avatar_mesh, plan, plan_meta = self.load_avatar_mesh_plan(
             index,
             asset,
             bundle_record,
             bundle_chunk,
             lod,
+            cancel_event=cancel_event,
         )
         bundles = self.avatar_mesh_bundle_closure(index, plan)
         bundle_sources, missing_bundles = self.resolve_bundle_sources(bundles)
@@ -3368,6 +3450,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     and (not document.get("images") or texture_root.is_dir())
                     and not validate_model_document(document)
                 ):
+                    if progress is not None:
+                        progress({"stage": "cache", "completed": 5, "total": 5})
                     return document, run_meta, model_path
             except (OSError, json.JSONDecodeError):
                 pass
@@ -3402,6 +3486,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise RuntimeError("AvatarMesh resource plan produced no Bundle inputs")
         primary_input_id = staged_inputs[0]["inputId"]
         cab_root = run_root / "cab-map"
+        if progress is not None:
+            progress({"stage": "cabMap", "completed": 2, "total": 5})
         cab_result = UNITY_WORKER.build_cab_map(
             inputs=staged_inputs,
             output_directory=cab_root,
@@ -3409,8 +3495,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"avatar-cab-{int(bundle_record['id'])}-"
                 f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
             ),
+            cancel_event=cancel_event,
         )
         validate_worker_artifacts(cab_root, cab_result)
+        if progress is not None:
+            progress({"stage": "objects", "completed": 3, "total": 5})
         object_result = UNITY_WORKER.export_object_snapshots(
             inputs=staged_inputs,
             cab_map_path=cab_root / "cab-map.json",
@@ -3423,6 +3512,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 f"avatar-objects-{int(bundle_record['id'])}-"
                 f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
             ),
+            cancel_event=cancel_event,
         )
         validate_worker_artifacts(object_root, object_result)
         completed_steps = [
@@ -3433,6 +3523,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         meshes, materials, avatar = load_exported_objects(object_root, plan)
         texture_selections = material_texture_selections(materials)
         texture_uris = {}
+        if progress is not None:
+            progress({"stage": "textures", "completed": 4, "total": 5})
         if texture_selections:
             texture_result = UNITY_WORKER.export_identified_textures(
                 inputs=staged_inputs,
@@ -3444,6 +3536,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     f"avatar-textures-{int(bundle_record['id'])}-"
                     f"{int(asset['asset_index'])}-lod{lod}-{time.time_ns()}"
                 ),
+                cancel_event=cancel_event,
             )
             validate_worker_artifacts(texture_root, texture_result)
             completed_steps.append({
@@ -3507,6 +3600,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             json.dumps(run_meta, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+        if progress is not None:
+            progress({"stage": "publish", "completed": 5, "total": 5})
         os.replace(temporary_run_path, run_path)
         return document, run_meta, model_path
 
@@ -5373,59 +5468,48 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         self.send_json({**base, "kind": "hex", "hex": hex_preview(data), "truncated": truncated})
 
-    def handle_manifest_asset_model(self, query: dict[str, list[str]]) -> None:
-        resolved = self.resolve_manifest_asset_source(query)
-        if resolved is None:
-            return
+    def build_model_preview_result(
+        self,
+        manifest_id: int,
+        resolved: tuple[ManifestIndex, dict, dict, Path],
+        animation_resolved: tuple[ManifestIndex, dict, dict, Path] | None,
+        lod: int,
+        *,
+        cancel_event: object | None = None,
+        progress: Callable[[dict], None] | None = None,
+    ) -> dict:
         index, asset, bundle_record, bundle_chunk = resolved
-        animation_resolved = self.resolve_optional_animation_source(query)
-        if query.get("animationAssetIndex") and animation_resolved is None:
-            return
         animation_asset = animation_resolved[1] if animation_resolved else None
         is_prefab = file_suffix(str(asset["path"])) == ".prefab"
         is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
         if not is_model_entry_path(str(asset["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
-            return
-        try:
-            lod = int(query.get("lod", ["0"])[0])
-            if is_avatar_mesh:
-                document, run_meta, _ = self.ensure_avatar_mesh_model(
-                    index,
-                    asset,
-                    bundle_record,
-                    bundle_chunk,
-                    lod,
-                )
-            else:
-                dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
-                dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-                document, run_meta = self.ensure_model_hierarchy(
-                    bundle_record,
-                    bundle_chunk,
-                    asset,
-                    dependencies,
-                    dependency_sources,
-                    missing_dependencies,
-                )
-        except FileNotFoundError as error:
-            self.send_json(
-                {
-                    "kind": "modelDocument",
-                    "status": "toolMissing",
-                    "message": str(error),
-                },
-                status=503,
+            raise ValueError("resource is not a supported model entry")
+        if lod not in range(4):
+            raise ValueError("lod is invalid")
+        if is_avatar_mesh:
+            document, run_meta, _ = self.ensure_avatar_mesh_model(
+                index,
+                asset,
+                bundle_record,
+                bundle_chunk,
+                lod,
+                cancel_event=cancel_event,
+                progress=progress,
             )
-            return
-        except subprocess.TimeoutExpired:
-            self.send_error_json(504, "AnimeStudio timed out while exporting the model hierarchy")
-            return
-        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
-            self.send_error_json(500, str(error))
-            return
+        else:
+            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
+            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
+            document, run_meta = self.ensure_model_hierarchy(
+                bundle_record,
+                bundle_chunk,
+                asset,
+                dependencies,
+                dependency_sources,
+                missing_dependencies,
+                cancel_event=cancel_event,
+                progress=progress,
+            )
 
-        manifest_id = int(query["manifestId"][0])
         asset_index = int(asset["asset_index"])
         lod_parameter = f"&lod={lod}" if is_avatar_mesh else ""
         animation_query_hint = model_animation_query_hint(str(asset["path"]), document)
@@ -5443,55 +5527,91 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if animation_asset
             else ""
         )
-        self.send_json(
-            {
-                "kind": "modelDocument",
-                "status": (
-                    "texturedSkinnedModel"
-                    if document.get("images") and document.get("skins")
-                    else "staticGeometry"
-                    if document.get("meshes")
-                    else "hierarchyOnly"
-                ),
-                "asset": asset,
-                "animationAsset": animation_asset,
-                "glbUrl": (
-                    f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_GLB_VERSION}"
-                ),
-                "blendUrl": (
-                    f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}{lod_parameter}{animation_parameter}"
-                    f"&v={MODEL_BLEND_VERSION}"
-                    if (is_prefab or is_avatar_mesh)
-                    and BLENDER_EXE.is_file()
-                    and BLENDER_MODEL_IMPORTER.is_file()
-                    else None
-                ),
-                "baseBlendUrl": (
-                    f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_BLEND_VERSION}"
-                    if (is_prefab or is_avatar_mesh)
-                    and BLENDER_EXE.is_file()
-                    and BLENDER_MODEL_IMPORTER.is_file()
-                    else None
-                ),
-                "animationCandidatesUrl": (
-                    f"/api/manifest-asset/model-animations?manifestId={manifest_id}"
-                    f"&assetIndex={asset_index}{lod_parameter}{animation_query_parameter}"
-                ),
-                "maxBlendAnimationCount": MAX_BLEND_ANIMATION_COUNT,
-                "animationUrl": animation_url,
-                "document": document,
-                "run": {
-                    "scope": run_meta.get("scope"),
-                    "builtAtEpoch": run_meta.get("builtAtEpoch"),
-                    "dependencyBundles": run_meta.get("dependencyBundles", []),
-                    "missingDependencyBundles": run_meta.get("missingDependencyBundles", []),
-                    "lod": lod if is_avatar_mesh else None,
+        return {
+            "kind": "modelDocument",
+            "status": (
+                "texturedSkinnedModel"
+                if document.get("images") and document.get("skins")
+                else "staticGeometry"
+                if document.get("meshes")
+                else "hierarchyOnly"
+            ),
+            "asset": asset,
+            "animationAsset": animation_asset,
+            "glbUrl": (
+                f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
+                f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_GLB_VERSION}"
+            ),
+            "blendUrl": (
+                f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
+                f"&assetIndex={asset_index}{lod_parameter}{animation_parameter}"
+                f"&v={MODEL_BLEND_VERSION}"
+                if (is_prefab or is_avatar_mesh)
+                and BLENDER_EXE.is_file()
+                and BLENDER_MODEL_IMPORTER.is_file()
+                else None
+            ),
+            "baseBlendUrl": (
+                f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
+                f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_BLEND_VERSION}"
+                if (is_prefab or is_avatar_mesh)
+                and BLENDER_EXE.is_file()
+                and BLENDER_MODEL_IMPORTER.is_file()
+                else None
+            ),
+            "animationCandidatesUrl": (
+                f"/api/manifest-asset/model-animations?manifestId={manifest_id}"
+                f"&assetIndex={asset_index}{lod_parameter}{animation_query_parameter}"
+            ),
+            "maxBlendAnimationCount": MAX_BLEND_ANIMATION_COUNT,
+            "animationUrl": animation_url,
+            "document": document,
+            "run": {
+                "scope": run_meta.get("scope"),
+                "builtAtEpoch": run_meta.get("builtAtEpoch"),
+                "dependencyBundles": run_meta.get("dependencyBundles", []),
+                "missingDependencyBundles": run_meta.get("missingDependencyBundles", []),
+                "lod": lod if is_avatar_mesh else None,
+            },
+        }
+
+    def handle_manifest_asset_model(self, query: dict[str, list[str]]) -> None:
+        resolved = self.resolve_manifest_asset_source(query)
+        if resolved is None:
+            return
+        animation_resolved = self.resolve_optional_animation_source(query)
+        if query.get("animationAssetIndex") and animation_resolved is None:
+            return
+        asset = resolved[1]
+        if not is_model_entry_path(str(asset["path"])):
+            self.send_error_json(400, "resource is not a supported model entry")
+            return
+        try:
+            lod = int(query.get("lod", ["0"])[0])
+            manifest_id = int(query["manifestId"][0])
+            payload = self.build_model_preview_result(
+                manifest_id,
+                resolved,
+                animation_resolved,
+                lod,
+            )
+        except FileNotFoundError as error:
+            self.send_json(
+                {
+                    "kind": "modelDocument",
+                    "status": "toolMissing",
+                    "message": str(error),
                 },
-            }
-        )
+                status=503,
+            )
+            return
+        except subprocess.TimeoutExpired:
+            self.send_error_json(504, "model export timed out")
+            return
+        except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
+            self.send_error_json(500, str(error))
+            return
+        self.send_json(payload)
 
     def handle_manifest_asset_avatar_plan(
         self,
