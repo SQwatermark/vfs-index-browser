@@ -665,3 +665,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   先落盘再发布、取消/领域失败不产生结果指针、领域错误码保留、进度持久化和服务重启后非
   终态转为 `task_interrupted`；Unity worker 与 Blender 适配器测试覆盖 terminate/kill 及进程
   回收。P4 长任务完整协议子门禁完成。
+- USM 虚拟目录、源身份、工具身份、缓存命中和 MP4 原子发布已从 `BrowserHandler` 移入
+  `usm_video_service.py`。缓存身份不再只比较容易碰撞的文件长度，而是包含 VFS record、
+  offset、内容 MD5 以及 usm-convert/ffmpeg 的路径、大小和修改时间；失败转换会清理独占临时
+  文件。对应 `usm-video` 缓存版本升至 2，合成测试覆盖目录契约、URL 解码、缓存复用、同长度
+  来源变化失效及失败不发布。这是 P4 单体 Handler 拆分的下一块已完成边界。

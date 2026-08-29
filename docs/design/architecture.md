@@ -69,6 +69,8 @@ LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task
 同步 query 中的 manifest/asset 身份与逗号或重复形式的动画集合，HTTP 适配方法不再各自解释
 这些字符串。外部进程也不由 Handler 直接启动：Unity worker、Blender 模型导出、vgmstream
 音频转换和 USM 转码分别通过独立适配器执行并负责超时、失败清理与原子产物发布。
+`usm_video_service.py` 还拥有 USM 虚拟目录和 MP4 缓存身份：身份同时包含 VFS 文件摘要、
+偏移/长度和转码工具文件信息，相同长度的游戏热更或工具升级不能误命中旧视频。
 
 ## 关键约束
 

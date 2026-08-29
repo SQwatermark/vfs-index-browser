@@ -6,7 +6,7 @@ from cache_versions import CACHE_VERSIONS, CacheVersionRegistry
 class CacheVersionRegistryTests(unittest.TestCase):
     def test_exposes_stable_named_versions(self):
         self.assertEqual(33, CACHE_VERSIONS.version("model-snapshot"))
-        self.assertEqual(1, CACHE_VERSIONS.version("usm-video"))
+        self.assertEqual(2, CACHE_VERSIONS.version("usm-video"))
         self.assertEqual(
             sorted(CACHE_VERSIONS.diagnostics()),
             list(CACHE_VERSIONS.diagnostics()),

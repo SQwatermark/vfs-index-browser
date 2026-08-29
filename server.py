@@ -54,7 +54,8 @@ from wwise_store import (
     wwise_summary,
 )
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
-from usm import UsmError, convert_usm_to_mp4
+from usm import UsmError
+from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
 from index_freshness import inspect_index_freshness
 from index_rebuild import (
@@ -208,6 +209,16 @@ def optional_tool_registry() -> ToolRegistry:
             "usm-convert": USM_CONVERT,
             "ffmpeg": FFMPEG,
         }
+    )
+
+
+def usm_video_service() -> UsmVideoService:
+    tools = optional_tool_registry()
+    return UsmVideoService(
+        INTERNAL_CACHE_DIR,
+        CACHE_VERSIONS.version("usm-video"),
+        usm_convert=tools.capability("usm-convert").resolved_path,
+        ffmpeg=tools.capability("ffmpeg").resolved_path or FFMPEG,
     )
 
 
@@ -4743,97 +4754,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError(f"vgmstream executable not found: {VGMSTREAM_CLI}")
         return VgmstreamConversionService(vgmstream.resolved_path).ensure_wav(wem_path, wav_path)
 
-    def usm_cache_paths(self, record: dict) -> tuple[Path, Path]:
-        cache_root = INTERNAL_CACHE_DIR / str(record["id"]) / "video"
-        file_name = f"{Path(record['file_name']).stem}.mp4"
-        return cache_root / file_name, cache_root / "video_meta.json"
-
-    def usm_virtual_path(self, record: dict) -> str:
-        return f"mp4/{Path(record['file_name']).stem}.mp4"
-
-    def list_usm_video(self, record: dict, raw_path: str) -> dict:
-        normalized = unquote(raw_path).replace("\\", "/").strip("/")
-        virtual_path = self.usm_virtual_path(record)
-        if not normalized:
-            return {
-                "path": "",
-                "dirs": [{"name": "mp4", "path": "mp4", "fileCount": 1, "totalBytes": int(record["length"])}],
-                "files": [],
-            }
-        if normalized == "mp4":
-            return {
-                "path": "mp4",
-                "dirs": [],
-                "files": [
-                    {
-                        "name": Path(virtual_path).name,
-                        "path": virtual_path,
-                        "size": int(record["length"]),
-                        "kind": "video",
-                        "asset": {
-                            "Name": Path(virtual_path).name,
-                            "Type": "MP4",
-                            "Container": record["file_name"],
-                            "Source": "USM",
-                        },
-                    }
-                ],
-            }
-        raise FileNotFoundError("USM virtual directory not found")
-
-    def ensure_usm_video_file(self, record: dict, chunk_path: Path, internal_path: str) -> Path:
-        normalized = unquote(internal_path).replace("\\", "/").strip("/")
-        if normalized != self.usm_virtual_path(record):
-            raise FileNotFoundError("USM video entry not found")
-
-        target, meta_path = self.usm_cache_paths(record)
-        cache_version = CACHE_VERSIONS.version("usm-video")
-        if target.exists() and meta_path.exists():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                if (
-                    meta.get("version") == cache_version
-                    and meta.get("fileLength") == int(record["length"])
-                    and target.stat().st_size > 0
-                ):
-                    return target
-            except (OSError, json.JSONDecodeError):
-                pass
-
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = target.with_name(f"{target.stem}.{os.getpid()}.{time.time_ns()}.mp4")
-        tools = optional_tool_registry()
-        usm_convert = tools.capability("usm-convert").resolved_path
-        ffmpeg = tools.capability("ffmpeg").resolved_path or FFMPEG
-        try:
-            convert_usm_to_mp4(
-                self.read_file_slice(record, chunk_path),
-                temp_path,
-                usm_convert=usm_convert,
-                ffmpeg=ffmpeg,
-            )
-            os.replace(temp_path, target)
-        finally:
-            if temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except OSError:
-                    pass
-        meta_path.write_text(
-            json.dumps(
-                {
-                    "version": cache_version,
-                    "fileLength": int(record["length"]),
-                    "builtAtEpoch": int(time.time()),
-                    "usmConvert": str(usm_convert) if usm_convert else None,
-                    "ffmpeg": str(ffmpeg),
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-            encoding="utf-8",
-        )
-        return target
 
     def resolve_bundle_sources(
         self,
@@ -5200,7 +5120,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "USM internal file preview expected a .usm record")
             return None
         try:
-            target = self.ensure_usm_video_file(record, chunk_path, internal_path)
+            target = usm_video_service().ensure_video(
+                record,
+                internal_path,
+                lambda: self.read_file_slice(record, chunk_path),
+            )
         except FileNotFoundError as error:
             self.send_error_json(404, str(error))
             return None
@@ -6790,7 +6714,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         if suffix == ".usm":
             try:
-                listing = self.list_usm_video(record, path)
+                listing = usm_video_service().list_directory(record, path)
             except FileNotFoundError as error:
                 self.send_error_json(404, str(error))
                 return

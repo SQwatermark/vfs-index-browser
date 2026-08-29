@@ -126,6 +126,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `usm.py` | CRI USM 视频处理 |
+| `usm_video_service.py` | USM 虚拟目录、转换工具身份与原子 MP4 缓存发布 |
 | `public/` | 无构建步骤的浏览器前端 |
 | `tools/` | 格式探测、索引提取和离线解码工具 |
 | `schemas/` | MemoryPack 已知类型与 union 映射 |
