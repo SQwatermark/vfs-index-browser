@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import server
+import blender_export
 from animestudio_animation import AnimationClipSelectionError
 
 
@@ -75,7 +76,7 @@ class ManifestModelBlendTests(unittest.TestCase):
             patch.object(server, "BLENDER_EXE", self.blender),
             patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
             patch.object(server, "PROJECT_ROOT", self.root),
-            patch.object(server.subprocess, "run", side_effect=self.run_blender),
+            patch.object(blender_export.subprocess, "run", side_effect=self.run_blender),
         ):
             handler.handle_manifest_asset_model_blend({"lod": ["2"]})
 
@@ -92,7 +93,7 @@ class ManifestModelBlendTests(unittest.TestCase):
             patch.object(server, "BLENDER_EXE", self.blender),
             patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
             patch.object(server, "PROJECT_ROOT", self.root),
-            patch.object(server.subprocess, "Popen") as popen,
+            patch.object(blender_export.subprocess, "Popen") as popen,
         ):
             with self.assertRaisesRegex(RuntimeError, "worker_cancelled"):
                 _handler.ensure_model_blend_file(glb, cancel_event=cancel_event)
@@ -193,7 +194,7 @@ class ManifestModelBlendTests(unittest.TestCase):
             patch.object(server, "BLENDER_EXE", self.blender),
             patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
             patch.object(server, "PROJECT_ROOT", self.root),
-            patch.object(server.subprocess, "run", side_effect=self.run_blender),
+            patch.object(blender_export.subprocess, "run", side_effect=self.run_blender),
         ):
             handler.handle_manifest_asset_model_blend(
                 {"animationAssetIndex": ["99"], "lod": ["0"]}
@@ -238,7 +239,7 @@ class ManifestModelBlendTests(unittest.TestCase):
             patch.object(server, "BLENDER_EXE", self.blender),
             patch.object(server, "BLENDER_MODEL_IMPORTER", self.importer),
             patch.object(server, "PROJECT_ROOT", self.root),
-            patch.object(server.subprocess, "run", side_effect=self.run_blender),
+            patch.object(blender_export.subprocess, "run", side_effect=self.run_blender),
         ):
             handler.handle_manifest_asset_model_blend(
                 {"animationAssetIndex": ["22", "11"], "lod": ["0"]}

@@ -64,7 +64,8 @@ LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task
 兼容方法。保留的同步模型、GLB、动画候选和 Blender 入口也通过统一适配方法调用同一模型
 校验；批量动画同步入口使用服务的去重、排序和解析结果。`manifest_asset_requests.py` 集中解析
 同步 query 中的 manifest/asset 身份与逗号或重复形式的动画集合，HTTP 适配方法不再各自解释
-这些字符串。
+这些字符串。外部进程也不由 Handler 直接启动：Unity worker、Blender 模型导出、vgmstream
+音频转换和 USM 转码分别通过独立适配器执行并负责超时、失败清理与原子产物发布。
 
 ## 关键约束
 

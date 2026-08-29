@@ -180,8 +180,8 @@ source file、PathID、container、长度和 SHA-256。`container` 使用精确�
 
 - [x] 实现唯一 worker 定位、调用、超时和错误翻译适配器。
 - [x] 实现 worker 进程级取消，并以 Projectile 建立首条 HTTP 任务创建/查询/取消链路。
-- [ ] 先让旧命令通过适配器转发，消除 `server.py` 中的直接 subprocess 调用。
-- [ ] 删除源码目录自动探测；保留显式开发 override，直至 P3 等价验证完成。
+- [x] 让外部命令通过独立适配器执行，消除 `server.py` 中的直接 subprocess 调用。
+- [x] 删除源码目录自动探测；worker 只使用仓库产物或显式开发 override。
 - [x] 提供 `/api/health`，显示 worker 协议/能力、可选工具及尚未迁移的旧工具依赖。
 
 完成门禁：除适配器测试外，Python 生产代码中不存在 AnimeStudio 路径或直接调用。
@@ -614,3 +614,6 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Handler 重复的入口类型判断；同步批量动画解析复用 `resolve_many`。同步 query 的
   manifest/asset 身份及批量动画集合由 `manifest_asset_requests.py` 独立校验，Handler 仅负责
   把请求错误映射为 400。
+- Blender `.blend` 构建已移入 `blender_export.py`，保留缓存新鲜度、取消时 terminate/kill、
+  五分钟超时和临时文件原子发布；WEM→WAV 已移入 `audio_export.py`，失败不会留下或发布半成品。
+  `server.py` 不再直接调用 `subprocess.run`/`Popen`，P2 Python 调用收口门禁完成。

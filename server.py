@@ -30,6 +30,8 @@ from typing import Callable, Iterable, Iterator
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
+from audio_export import VgmstreamConversionService
+from blender_export import BlenderExportService
 from ability_entity_data import (
     AbilityEntityDecodeError,
     AbilityEntityNotFoundError,
@@ -304,7 +306,6 @@ PROJECTILE_API_VERSION = 1
 PREVIEW_TEXT_LIMIT = 2 * 1024 * 1024
 PREVIEW_BINARY_LIMIT = 256 * 1024
 STREAM_CHUNK_SIZE = 1024 * 1024
-MODEL_BLEND_EXPORT_LOCK = threading.Lock()
 MEMORYPACK_SCHEMA = Path(
     os.environ.get("VFS_BROWSER_MEMORYPACK_SCHEMA", PROJECT_ROOT / "schemas" / "memorypack-known-schema.json")
 )
@@ -4719,31 +4720,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return wem_path
 
         wav_path = wav_root / prefix / f"{entry.wem_id}.wav"
-        if wav_path.exists() and wav_path.stat().st_size > 0:
-            return wav_path
-        if not VGMSTREAM_CLI.exists():
-            raise FileNotFoundError(f"vgmstream-cli.exe not found: {VGMSTREAM_CLI}")
-        wav_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = wav_path.with_name(f".{wav_path.name}.{os.getpid()}.{time.time_ns()}.tmp")
-        command = [str(VGMSTREAM_CLI), "-o", str(tmp), str(wem_path)]
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=str(VGMSTREAM_CLI.parent),
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=60,
-                check=False,
-            )
-            if completed.returncode != 0 or not tmp.exists():
-                raise RuntimeError(f"vgmstream conversion failed: {completed.stderr or completed.stdout}")
-            os.replace(tmp, wav_path)
-        finally:
-            if tmp.exists():
-                tmp.unlink()
-        return wav_path
+        return VgmstreamConversionService(VGMSTREAM_CLI).ensure_wav(wem_path, wav_path)
 
     def usm_cache_paths(self, record: dict) -> tuple[Path, Path]:
         cache_root = INTERNAL_CACHE_DIR / str(record["id"]) / "video"
@@ -6407,97 +6384,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: threading.Event | None = None,
     ) -> Path:
-        blend_path = glb_path.with_suffix(".blend")
-        material_backend = PROJECT_ROOT / "blender_materials.py"
-        material_plan_backend = Path(blender_material_plan.__file__)
-        source_paths = [
-            glb_path,
+        return BlenderExportService(
+            BLENDER_EXE,
+            PROJECT_ROOT,
             BLENDER_MODEL_IMPORTER,
-            BLENDER_ACTION_SWITCHER,
-            material_backend,
-            material_plan_backend,
-            PROJECT_ROOT / "character_lighting.py",
-        ]
-        newest_source_mtime = max(path.stat().st_mtime_ns for path in source_paths)
-        with MODEL_BLEND_EXPORT_LOCK:
-            if (
-                blend_path.is_file()
-                and blend_path.stat().st_mtime_ns >= newest_source_mtime
-            ):
-                return blend_path
-            if cancel_event is not None and cancel_event.is_set():
-                raise RuntimeError("worker_cancelled")
-            temporary = blend_path.with_name("model.tmp.blend")
-            temporary.unlink(missing_ok=True)
-            command = [
-                str(BLENDER_EXE),
-                "--background",
-                "--factory-startup",
-                "--python",
-                str(BLENDER_MODEL_IMPORTER),
-                "--",
-                str(glb_path),
-                str(temporary),
-            ]
-            try:
-                if cancel_event is None:
-                    result = subprocess.run(
-                        command,
-                        cwd=PROJECT_ROOT,
-                        capture_output=True,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                        timeout=300,
-                        check=True,
-                    )
-                    stdout = getattr(result, "stdout", "") or ""
-                else:
-                    process = subprocess.Popen(
-                        command,
-                        cwd=PROJECT_ROOT,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        encoding="utf-8",
-                        errors="replace",
-                    )
-                    started = time.monotonic()
-                    while True:
-                        try:
-                            stdout, stderr = process.communicate(timeout=0.1)
-                            break
-                        except subprocess.TimeoutExpired:
-                            if cancel_event.is_set():
-                                process.terminate()
-                                try:
-                                    process.communicate(timeout=5)
-                                except subprocess.TimeoutExpired:
-                                    process.kill()
-                                    process.communicate()
-                                raise RuntimeError("worker_cancelled")
-                            if time.monotonic() - started >= 300:
-                                process.kill()
-                                process.communicate()
-                                raise subprocess.TimeoutExpired(command, 300)
-                    if process.returncode:
-                        raise subprocess.CalledProcessError(
-                            process.returncode,
-                            command,
-                            output=stdout,
-                            stderr=stderr,
-                        )
-                if not temporary.is_file():
-                    raise RuntimeError(
-                        "Blender export completed without producing a file: "
-                        + stdout[-2000:]
-                    )
-                if cancel_event is not None and cancel_event.is_set():
-                    raise RuntimeError("worker_cancelled")
-                os.replace(temporary, blend_path)
-            finally:
-                temporary.unlink(missing_ok=True)
-        return blend_path
+            (
+                BLENDER_ACTION_SWITCHER,
+                PROJECT_ROOT / "blender_materials.py",
+                Path(blender_material_plan.__file__),
+                PROJECT_ROOT / "character_lighting.py",
+            ),
+        ).ensure_model_blend(glb_path, cancel_event=cancel_event)
 
     def handle_manifest_asset_model_blend(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_model_source(query)

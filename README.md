@@ -96,6 +96,8 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
 | `manifest_asset_requests.py` | manifest 资源身份与批量动画 query 的严格解析 |
 | `manifest_asset_service.py` | manifest/asset 身份到本地可读 AssetBundle 的解析 |
+| `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
+| `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `usm.py` | CRI USM 视频处理 |
