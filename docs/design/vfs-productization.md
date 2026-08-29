@@ -795,3 +795,10 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   成为薄转发，兼容的同步 `ensure_model_blend_file` 只取得工具能力并调用基础设施服务。合成与
   既有路由回归覆盖基础、单动画、批量诊断、全失败短路、取消和产物登记。下一阶段审计模型
   路由中剩余的结果组装与文件发送边界，再转向其他大型 Handler 领域。
+- 普通/Avatar 构建选择、依赖来源协调、模型状态分类、GLB/Blender/动画候选/单动画公开 URL、
+  run 摘要裁剪和模型任务阶段映射已移入 `model_preview_service.py`。Blender 能力通过注入快照
+  决定，不在领域结果中散落工具路径判断；任务路径在发布成功前仍强制生成基础 GLB 并检查取消。
+  Handler 的 `build_model_preview_result` 与 `build_model_task_result` 均成为薄转发。合成与既有任务
+  回归覆盖普通/Avatar、三类模型状态、LOD URL、动画参数、工具缺失、进度和 GLB 门禁。模型主
+  构建、动画、GLB、Blender 与预览结果的应用层至此均已拆出，下一阶段转向模型文件响应或其他
+  Handler 大型领域。

@@ -111,6 +111,7 @@ from model_animation_service import (
     ModelAnimationService,
 )
 from model_blend_service import ModelBlendService
+from model_preview_service import ModelPreviewService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2832,6 +2833,24 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.ensure_model_blend_file,
         )
 
+    def model_preview_service(self) -> ModelPreviewService:
+        return ModelPreviewService(
+            self.ensure_avatar_mesh_model,
+            self.ensure_model_hierarchy,
+            self.resolve_bundle_sources,
+            model_animation_query_hint,
+            lambda: (
+                optional_tool_registry().available("blender")
+                and BLENDER_MODEL_IMPORTER.is_file()
+            ),
+            self.ensure_manifest_asset_model_glb,
+            self.build_model_preview_result,
+            glb_version=MODEL_GLB_VERSION,
+            blend_version=MODEL_BLEND_VERSION,
+            animation_version=MODEL_ANIMATION_CACHE_REVISION,
+            max_blend_animation_count=MAX_BLEND_ANIMATION_COUNT,
+        )
+
     def ensure_animation_clip_export(
         self,
         record: dict,
@@ -3876,45 +3895,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: threading.Event,
         progress: Callable[[dict], None],
     ) -> dict:
-        is_avatar_mesh = is_avatar_mesh_asset_path(str(resolved[1]["path"]))
-        total = 6 if is_avatar_mesh else 5
-        stage_offsets = {
-            "avatarPlan": 0,
-            "cabMap": 1 if is_avatar_mesh else 0,
-            "objects": 2 if is_avatar_mesh else 1,
-            "textures": 3 if is_avatar_mesh else 2,
-            "publish": 4 if is_avatar_mesh else 3,
-            "cache": total - 1,
-        }
-
-        def report_model_progress(value: dict) -> None:
-            stage = str(value.get("stage") or "")
-            progress({
-                "stage": stage,
-                "completed": stage_offsets.get(stage, 0),
-                "total": total,
-            })
-
-        result = self.build_model_preview_result(
+        return self.model_preview_service().build_task(
             manifest_id,
             resolved,
             animation_resolved,
             lod,
             cancel_event=cancel_event,
-            progress=report_model_progress,
+            progress=progress,
         )
-        if cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
-        progress({"stage": "glb", "completed": total - 1, "total": total})
-        self.ensure_manifest_asset_model_glb(
-            resolved,
-            lod=lod,
-            cancel_event=cancel_event,
-        )
-        if cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
-        progress({"stage": "ready", "completed": total, "total": total})
-        return result
 
     def build_model_blend_task_result(
         self,
@@ -4023,103 +4011,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: object | None = None,
         progress: Callable[[dict], None] | None = None,
     ) -> dict:
-        index, asset, bundle_record, bundle_chunk = resolved
-        animation_asset = animation_resolved[1] if animation_resolved else None
-        is_prefab = file_suffix(str(asset["path"])) == ".prefab"
-        is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
-        if not is_model_entry_path(str(asset["path"])):
-            raise ValueError("resource is not a supported model entry")
-        if lod not in range(4):
-            raise ValueError("lod is invalid")
-        if is_avatar_mesh:
-            document, run_meta, _ = self.ensure_avatar_mesh_model(
-                index,
-                asset,
-                bundle_record,
-                bundle_chunk,
-                lod,
-                cancel_event=cancel_event,
-                progress=progress,
-            )
-        else:
-            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
-            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, run_meta = self.ensure_model_hierarchy(
-                bundle_record,
-                bundle_chunk,
-                asset,
-                dependencies,
-                dependency_sources,
-                missing_dependencies,
-                cancel_event=cancel_event,
-                progress=progress,
-            )
-
-        asset_index = int(asset["asset_index"])
-        lod_parameter = f"&lod={lod}" if is_avatar_mesh else ""
-        animation_query_hint = model_animation_query_hint(str(asset["path"]), document)
-        animation_query_parameter = f"&queryHint={quote(animation_query_hint)}"
-        animation_url = (
-            f"/api/manifest-asset/model-animation?manifestId={manifest_id}"
-            f"&assetIndex={asset_index}"
-            f"&animationAssetIndex={int(animation_asset['asset_index'])}"
-            f"&v={MODEL_ANIMATION_CACHE_REVISION}"
-            if animation_asset
-            else None
+        return self.model_preview_service().build(
+            manifest_id,
+            resolved,
+            animation_resolved,
+            lod,
+            cancel_event=cancel_event,
+            progress=progress,
         )
-        animation_parameter = (
-            f"&animationAssetIndex={int(animation_asset['asset_index'])}"
-            if animation_asset
-            else ""
-        )
-        blender_available = optional_tool_registry().available("blender")
-        return {
-            "kind": "modelDocument",
-            "status": (
-                "texturedSkinnedModel"
-                if document.get("images") and document.get("skins")
-                else "staticGeometry"
-                if document.get("meshes")
-                else "hierarchyOnly"
-            ),
-            "asset": asset,
-            "animationAsset": animation_asset,
-            "glbUrl": (
-                f"/api/manifest-asset/model-glb?manifestId={manifest_id}"
-                f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_GLB_VERSION}"
-            ),
-            "blendUrl": (
-                f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
-                f"&assetIndex={asset_index}{lod_parameter}{animation_parameter}"
-                f"&v={MODEL_BLEND_VERSION}"
-                if (is_prefab or is_avatar_mesh)
-                and blender_available
-                and BLENDER_MODEL_IMPORTER.is_file()
-                else None
-            ),
-            "baseBlendUrl": (
-                f"/api/manifest-asset/model-blend?manifestId={manifest_id}"
-                f"&assetIndex={asset_index}{lod_parameter}&v={MODEL_BLEND_VERSION}"
-                if (is_prefab or is_avatar_mesh)
-                and blender_available
-                and BLENDER_MODEL_IMPORTER.is_file()
-                else None
-            ),
-            "animationCandidatesUrl": (
-                f"/api/manifest-asset/model-animations?manifestId={manifest_id}"
-                f"&assetIndex={asset_index}{lod_parameter}{animation_query_parameter}"
-            ),
-            "maxBlendAnimationCount": MAX_BLEND_ANIMATION_COUNT,
-            "animationUrl": animation_url,
-            "document": document,
-            "run": {
-                "scope": run_meta.get("scope"),
-                "builtAtEpoch": run_meta.get("builtAtEpoch"),
-                "dependencyBundles": run_meta.get("dependencyBundles", []),
-                "missingDependencyBundles": run_meta.get("missingDependencyBundles", []),
-                "lod": lod if is_avatar_mesh else None,
-            },
-        }
 
     def handle_manifest_asset_model(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_model_source(query)

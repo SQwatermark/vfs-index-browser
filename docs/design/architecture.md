@@ -134,6 +134,10 @@ Blender 派生分成两层：`model_blend_service.py` 选择基础或动画 GLB�
 报告 Blender 阶段并构造私有 artifact 结果；`blender_export.py` 只拥有可取消外部进程、输入
 mtime 缓存和 `.blend` 发布。HTTP Handler 注入两类 GLB provider 与 Blender provider，不再
 拼装后台任务结果或直接构造导出适配器。
+`model_preview_service.py` 是模型网页结果的应用入口：按普通/Avatar 类型选择构建服务，组装
+GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将领域构建阶段映射为后台任务总
+进度。manifest 索引与 Bundle 来源仍通过注入接口访问；Handler 保留原方法名供同步路由和任务
+系统兼容，不再掌握模型结果文档的字段规则。
 
 ## 关键约束
 
