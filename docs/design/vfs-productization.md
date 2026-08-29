@@ -303,7 +303,7 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | 组件原始数据 | MonoBehaviour + `Raw`/`Dump`/`JSON` | `server.py` | P3.1 |
 | 资源映射 | `AssetMap`、显式多输入 CABMap 已迁移；模型链不再使用旧 `UseCABMap` | worker、`server.py` | P3.2 |
 | 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 不输出伪快照 | worker + `server.py` | P3.2 |
-| 通用资源 | Texture2D、Sprite、TextAsset、VideoClip 的 worker 协议已实现、生产尚未切换；AudioClip、AnimationClip 仍用 `Convert` | worker、`server.py` | P3.2/P3.3 |
+| 通用资源 | Texture2D、Sprite、TextAsset、VideoClip 已迁入 worker 与独占 run；AudioClip、AnimationClip 仍用 `Convert` | worker、`server.py` | P3.2/P3.3 |
 | 纹理身份 | 精确 Texture2D `sourceFile + pathId` 已迁移 | worker、`server.py`、`avatar_mesh_snapshot.py` | P3.3 |
 | Cubemap | 精确 container + 六面 PNG 已迁移 | worker、`server.py` | P3.3 |
 | 动画 | AnimationClip + `AnimationJSON` | `server.py` | P3.4 |
@@ -350,7 +350,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
   `exportIdentifiedTextures`，模型和 AvatarMesh 生产路径均已接入；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
   对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
-  通用预览生产路径尚未接入新媒体协议，因此所有通用 `Convert` 与动画仍由旧 CLI 执行；
+  通用预览中的 Texture2D、Sprite、TextAsset、VideoClip 已接入新媒体协议；同 Bundle 的
+  AudioClip、AnimationClip 暂作为逐文件校验的派生产物，纯旧类型 Bundle 仍走旧缓存；
 - CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
   服务端模型路径均已直接消费该契约；这两条路径已删除旧 `BuildCABMap + UseCABMap`，并将
   输入、CABMap、对象、纹理、模型文档和几何收口到独占 run，由根 `run.json` 原子发布；
@@ -364,8 +365,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. 将 Texture2D/Sprite/TextAsset/VideoClip 预览媒体接入独占 run，再分别迁移 AudioClip 和
-   AnimationClip，禁止退回任意类型 `Convert`；
+1. 分别迁移 AudioClip 和 AnimationClip，消除通用浏览最后两个 `Convert` 类型，禁止退回
+   任意类型 `Convert`；
 2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
@@ -533,3 +534,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `SpriteHelper.cs`，没有引入 FMOD 或动画 YAML/ACL 闭包。它保留 atlas、裁剪、packing
   rotation 和 tight mesh mask 逻辑；真实 `deco_bg04` 样本输出 6058 字节 PNG，SHA-256
   `eee6d7af...` 与旧 CLI 逐字节一致。
+- 通用 AssetBundle 浏览已把上述四类切入独占 `asset-export/runs/<id>`：worker 文件先按
+  长度和 SHA-256 校验，尚未迁移的 AudioClip/AnimationClip 只允许写各自类型目录并作为
+  derived files 再校验，最后原子替换根 `meta.json`。缓存命中会同时复验主产物和派生产物；
+  AssetMap 身份集合还必须与 worker 的 artifact + skipped 集合完全一致。真实 `100542`
+  Bundle 已在同一 run 发布一张 Texture2D 和一张 Sprite，第二次读取直接命中该 run。

@@ -72,8 +72,8 @@ SDK 由本目录的 `global.json` 锁定。构建必须从本仓库完成，不�
   Projectile 的聚焦解码器主体存在于被忽略的旧研究副本提交 `03336c4`，其上另有 85 行
   未提交修正；当前已迁移可由三份真实样本验证的结构，并保留未理解尾部。对象快照 worker
   已能直接消费 CABMap，`server.py` 的模型与 AvatarMesh 对象、纹理阶段也已切换；Bundle
-  预览媒体协议已实现，但生产通用导出尚未切换，Sprite、AudioClip、AnimationClip 与动画
-  等入口仍待迁移，不能据此宣称旧 CLI 已无调用者。
+  预览的 Texture2D、Sprite、TextAsset、VideoClip 已接入独占 run。AudioClip、AnimationClip
+  与动画等入口仍待迁移，不能据此宣称旧 CLI 已无调用者。
 
 真实样本边界回归示例：
 

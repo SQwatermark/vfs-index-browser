@@ -295,7 +295,7 @@ CHACHA_KEY = bytes.fromhex(
     "e95b317ac4f828569d23a86bf271dcb53e846fa75c924d671dba8e38f4ca52e1"
 )
 VFS_PROTO_VERSION = 3
-ASSETBUNDLE_META_VERSION = 3
+ASSETBUNDLE_META_VERSION = 4
 ASSETBUNDLE_MAP_VERSION = 1
 MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
@@ -363,6 +363,16 @@ ASSETBUNDLE_EXPORT_TYPES = (
     "TextAsset",
     "AudioClip",
     "VideoClip",
+    "AnimationClip",
+)
+ASSETBUNDLE_WORKER_MEDIA_TYPES = (
+    "Texture2D",
+    "Sprite",
+    "TextAsset",
+    "VideoClip",
+)
+ASSETBUNDLE_LEGACY_CONVERT_TYPES = (
+    "AudioClip",
     "AnimationClip",
 )
 CUBEMAP_FACE_NAMES = (
@@ -1309,14 +1319,19 @@ def resolve_published_model_run(cache_root: Path, requested_run: str = "") -> Pa
     return selected
 
 
-def validate_worker_artifacts(export_root: Path, result: object) -> list[Path]:
+def validate_worker_artifacts(
+    export_root: Path,
+    result: object,
+    *,
+    allow_empty: bool = False,
+) -> list[Path]:
     """验证 worker 声明的全部产物，拒绝路径逃逸、重复路径和身份不一致。"""
 
     artifacts = result.get("artifacts") if isinstance(result, dict) else None
     if (
         not isinstance(result, dict)
         or not isinstance(artifacts, list)
-        or not artifacts
+        or (not artifacts and not allow_empty)
         or result.get("artifactCount") != len(artifacts)
         or any(not isinstance(artifact, dict) for artifact in artifacts)
     ):
@@ -3584,6 +3599,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         meta_path = cache_root / "meta.json"
         return source_path, export_root, meta_path
 
+    def assetbundle_export_run_paths(self, record: dict) -> tuple[Path, Path]:
+        root = INTERNAL_CACHE_DIR / str(record["id"]) / "asset-export"
+        return root / "runs", root / "meta.json"
+
     def manifest_unity_worker_export_paths(
         self,
         record: dict,
@@ -3679,6 +3698,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
         validate: Callable[[Path, list[Path], dict], None] | None = None,
         cancel_event: object | None = None,
+        allow_empty: bool = False,
     ) -> tuple[Path, list[Path], dict]:
         """校验并原子发布任意 worker run；输入布局由具体能力负责。"""
 
@@ -3698,6 +3718,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     cached_artifacts = validate_worker_artifacts(
                         export_root,
                         meta.get("workerResult"),
+                        allow_empty=allow_empty,
                     )
                     if validate is not None:
                         validate(export_root, cached_artifacts, meta["workerResult"])
@@ -3713,7 +3734,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         run_root = runs_root / request_id
         export_root = run_root / "exported"
         result = invoke(run_root, export_root, request_id, cancel_event)
-        artifact_paths = validate_worker_artifacts(export_root, result)
+        artifact_paths = validate_worker_artifacts(
+            export_root,
+            result,
+            allow_empty=allow_empty,
+        )
         if validate is not None:
             validate(export_root, artifact_paths, result)
         derived_files = describe_derived_artifacts(
@@ -4004,6 +4029,179 @@ class BrowserHandler(BaseHTTPRequestHandler):
         }
 
     def ensure_assetbundle_export(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> tuple[Path, dict] | None:
+        map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=emit_errors)
+        if map_meta is None:
+            return None
+        asset_entries = list(map_meta["assetEntries"])
+        present_types = {
+            str(entry.get("Type") or "")
+            for entry in asset_entries
+            if isinstance(entry, dict)
+        }
+        worker_types = tuple(
+            asset_type
+            for asset_type in ASSETBUNDLE_WORKER_MEDIA_TYPES
+            if asset_type in present_types
+        )
+        legacy_types = tuple(
+            asset_type
+            for asset_type in ASSETBUNDLE_LEGACY_CONVERT_TYPES
+            if asset_type in present_types
+        )
+
+        # 尚无 worker 主产物的纯 Audio/Animation Bundle 暂时沿用旧缓存；不能用派生产物
+        # 冒充一次成功的 worker 请求。
+        if worker_types:
+            if legacy_types and not ANIMESTUDIO_CLI.exists():
+                if emit_errors:
+                    self.send_json(
+                        {
+                            "kind": "assetBundle",
+                            "status": "toolMissing",
+                            "message": f"AnimeStudio.CLI not found: {ANIMESTUDIO_CLI}",
+                        }
+                    )
+                return None
+
+            runs_root, run_meta_path = self.assetbundle_export_run_paths(record)
+            legacy_identity = None
+            if legacy_types:
+                legacy_stat = ANIMESTUDIO_CLI.stat()
+                legacy_identity = {
+                    "path": str(ANIMESTUDIO_CLI.resolve()),
+                    "size": legacy_stat.st_size,
+                    "mtimeNs": legacy_stat.st_mtime_ns,
+                }
+            source_identity = {
+                "recordId": int(record["id"]),
+                "length": int(record["length"]),
+                "offset": int(record["offset"]),
+                "chunkPath": str(record["chunk_path"]),
+                "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
+                "workerTypes": list(worker_types),
+                "legacyTypes": list(legacy_types),
+                "mapRun": map_meta.get("selectedRun"),
+                "toolArtifacts": UNITY_WORKER.artifact_identity(),
+                "legacyTool": legacy_identity,
+            }
+
+            def run_worker_media(
+                run_root: Path,
+                media_root: Path,
+                request_id: str,
+                cancel: object | None,
+            ) -> dict:
+                run_source = run_root / "source.ab"
+                self.write_file_slice(record, chunk_path, run_source)
+                return UNITY_WORKER.export_bundle_preview_media(
+                    input_path=run_source,
+                    output_directory=media_root,
+                    included_types=worker_types,
+                    request_id=request_id,
+                    cancel_event=cancel,
+                )
+
+            expected_worker_assets = {
+                (str(entry.get("Type") or ""), int(entry.get("PathID")))
+                for entry in asset_entries
+                if str(entry.get("Type") or "") in worker_types
+            }
+
+            def validate_worker_media(
+                _media_root: Path,
+                _artifact_paths: list[Path],
+                result: dict,
+            ) -> None:
+                described = list(result.get("artifacts") or []) + list(result.get("skipped") or [])
+                actual = {
+                    (str(item.get("type") or ""), int(item.get("pathId")))
+                    for item in described
+                    if isinstance(item, dict)
+                }
+                if actual != expected_worker_assets:
+                    raise RuntimeError("worker preview media identities do not match AssetMap")
+                if set(result.get("includedTypes") or []) != set(worker_types):
+                    raise RuntimeError("worker preview media types do not match the request")
+
+            def derive_legacy_media(
+                media_root: Path,
+                _artifact_paths: list[Path],
+            ) -> dict[str, str]:
+                if not legacy_types:
+                    return {}
+                export_command = [
+                    str(ANIMESTUDIO_CLI),
+                    str(media_root.parent / "source.ab"),
+                    str(media_root),
+                    "--game",
+                    "ArknightsEndfield",
+                    "--types",
+                    *legacy_types,
+                    "--export_type",
+                    "Convert",
+                    "--logger_flags",
+                    "Error",
+                    "Warning",
+                    "Info",
+                ]
+                completed = subprocess.run(
+                    export_command,
+                    cwd=str(ANIMESTUDIO_CLI.parent),
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=180,
+                    check=False,
+                )
+                if completed.returncode != 0:
+                    raise RuntimeError(
+                        "AnimeStudio failed to export remaining AssetBundle types: "
+                        + (completed.stderr or completed.stdout)
+                    )
+                derived = {}
+                for asset_type in legacy_types:
+                    type_root = media_root / asset_type
+                    if not type_root.is_dir():
+                        continue
+                    for path in sorted(type_root.rglob("*")):
+                        if path.is_file():
+                            relative = path.relative_to(media_root).as_posix()
+                            derived[f"legacy:{relative}"] = relative
+                return derived
+
+            try:
+                export_root, _artifact_paths, run_meta = self.ensure_unity_worker_run(
+                    runs_root=runs_root,
+                    meta_path=run_meta_path,
+                    request_prefix=f"asset-export-{int(record['id'])}",
+                    version=ASSETBUNDLE_META_VERSION,
+                    source_identity=source_identity,
+                    invoke=run_worker_media,
+                    derive=derive_legacy_media,
+                    validate=validate_worker_media,
+                    allow_empty=True,
+                )
+            except (UnityWorkerError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+                if emit_errors:
+                    self.send_json(
+                        {
+                            "kind": "assetBundle",
+                            "status": "exportFailed",
+                            "message": str(error),
+                        },
+                        status=500,
+                    )
+                return None
+            return export_root, {
+                **run_meta,
+                "returncode": 0,
+                "mapReturncode": 0,
+                "mapRun": map_meta,
+                "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
+                "assetEntries": asset_entries,
+            }
+
         source_path, export_root, meta_path = self.assetbundle_cache_paths(record)
         if export_root.exists() and meta_path.exists():
             try:
@@ -4030,10 +4228,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         self.write_file_slice(record, chunk_path, source_path)
         export_root.mkdir(parents=True, exist_ok=True)
-        map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=emit_errors)
-        if map_meta is None:
-            return None
-
         export_command = [
             str(ANIMESTUDIO_CLI),
             str(source_path),
