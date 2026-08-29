@@ -39,6 +39,7 @@ class ServerHealthTests(unittest.TestCase):
         )
         self.assertTrue(all(not item["available"] for item in document["optionalTools"]))
         self.assertEqual([], document["legacyTools"])
+        self.assertEqual("unverified", document["indexFreshness"]["status"])
 
     def test_health_is_degraded_when_worker_is_not_ready(self):
         class BrokenWorker:
@@ -49,6 +50,30 @@ class ServerHealthTests(unittest.TestCase):
             document = server.build_health_document()
 
         self.assertEqual("degraded", document["status"])
+
+    def test_health_is_degraded_when_index_is_known_stale(self):
+        class ReadyWorker:
+            def diagnose(self, _required_capabilities):
+                return {"status": "ready"}
+
+        with (
+            patch.object(server, "UNITY_WORKER", ReadyWorker()),
+            patch.object(
+                server,
+                "INDEX_FRESHNESS_REPORT",
+                {
+                    "status": "stale",
+                    "reason": "expected_chunks_missing",
+                    "checkedChunkCount": 10,
+                    "missingChunkCount": 1,
+                    "examples": [],
+                },
+            ),
+        ):
+            document = server.build_health_document()
+
+        self.assertEqual("degraded", document["status"])
+        self.assertEqual("stale", document["indexFreshness"]["status"])
 
     def test_handler_returns_uncached_health_document(self):
         handler = object.__new__(server.BrowserHandler)

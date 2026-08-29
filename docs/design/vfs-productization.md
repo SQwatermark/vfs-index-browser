@@ -622,3 +622,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   建立别名后跨进程重启的模型任务创建降至 161 ms。该优化不替代主索引新鲜度校验：当前
   `451359` Persistent chunk 已缺失，实际回退到旧 Streaming 来源，健康状态仍需下一阶段明确
   报告 stale 并接入自动重建。
+- `index_freshness.py` 已加入启动审计：对建库时标记存在的去重 chunk 重新检查实际文件，缺失
+  时 `/api/health` 返回 `degraded` 与 `indexFreshness.status=stale`，示例只暴露来源、block hash
+  和 chunk 文件名，不泄露本机绝对路径。本机审计 1,032 个历史可用 chunk，发现 49 个已消失，
+  耗时约 1.08 秒。未发现缺失时只报告 `unverified`，因为旧索引尚未保存 `.blc` 内容摘要；自动
+  重建与原子切换仍未实现，P4 对应门禁保持未完成。

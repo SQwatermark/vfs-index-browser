@@ -55,6 +55,7 @@ from wwise_store import (
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
+from index_freshness import inspect_index_freshness
 from manifest_asset_service import (
     ManifestAssetResolutionError,
     ManifestAssetService,
@@ -136,6 +137,13 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 UNITY_WORKER = UnityWorkerClient.discover(PROJECT_ROOT)
+INDEX_FRESHNESS_REPORT = {
+    "status": "unverified",
+    "reason": "startup_audit_not_run",
+    "checkedChunkCount": 0,
+    "missingChunkCount": 0,
+    "examples": [],
+}
 
 
 @dataclass(frozen=True)
@@ -238,9 +246,16 @@ def build_health_document() -> dict:
         "exportBundlePreviewMedia",
         "exportAnimationClipJson",
     ])
+    index_status = INDEX_FRESHNESS_REPORT.get("status")
     return {
         "apiVersion": 1,
-        "status": "ready" if worker["status"] == "ready" else "degraded",
+        "status": (
+            "ready"
+            if worker["status"] == "ready"
+            and index_status not in {"stale", "unavailable"}
+            else "degraded"
+        ),
+        "indexFreshness": INDEX_FRESHNESS_REPORT,
         "unityWorker": worker,
         "optionalTools": [
             executable_diagnostic("blender", BLENDER_EXE),
@@ -6922,6 +6937,8 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global INDEX_FRESHNESS_REPORT
+
     args = parse_args(argv or sys.argv[1:])
     if args.rebuild or not args.db.exists():
         if not args.index.exists():
@@ -6931,9 +6948,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     BrowserHandler.db_path = args.db
+    INDEX_FRESHNESS_REPORT = inspect_index_freshness(args.db)
     server = ThreadingHTTPServer((args.host, args.port), BrowserHandler)
     print(f"VFS index browser: http://{args.host}:{args.port}")
     print(f"database: {args.db}")
+    print(
+        "index freshness: "
+        f"{INDEX_FRESHNESS_REPORT['status']} "
+        f"({INDEX_FRESHNESS_REPORT['missingChunkCount']} missing / "
+        f"{INDEX_FRESHNESS_REPORT['checkedChunkCount']} checked chunks)"
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
