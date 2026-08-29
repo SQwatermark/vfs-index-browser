@@ -44,6 +44,34 @@ class ManifestAssetServiceTests(unittest.TestCase):
         self.assertEqual(bundle, chunk)
         self.assertEqual([(2, manifest)], observed)
 
+    def test_resolve_many_deduplicates_and_sorts_asset_indexes(self):
+        service = object.__new__(ManifestAssetService)
+        observed = []
+        service.resolve = lambda manifest_id, asset_index: (
+            observed.append((manifest_id, asset_index)),
+            asset_index,
+        )[1]
+
+        result = service.resolve_many(3, [22, "11", 22])
+
+        self.assertEqual([11, 22], result)
+        self.assertEqual([(3, 11), (3, 22)], observed)
+
+    def test_resolve_model_rejects_non_model_asset(self):
+        service = object.__new__(ManifestAssetService)
+        service.resolve = lambda *_args: (
+            object(),
+            {"path": "assets/sample.animation"},
+            {},
+            Path("bundle.chk"),
+        )
+
+        with self.assertRaises(ManifestAssetResolutionError) as raised:
+            service.resolve_model(3, 11)
+
+        self.assertEqual(400, raised.exception.status)
+        self.assertEqual("resource is not a supported model entry", str(raised.exception))
+
     def test_reports_missing_asset_and_bundle_without_http_dependency(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

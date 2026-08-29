@@ -28,6 +28,8 @@ manifest 负责回答“资源在哪里”，不负责解释 Unity 对象。用�
 `manifest_asset_service.py` 负责把 manifest 文件 ID 与 asset index 解析成当前可读的 manifest
 来源、AssetInfo 和 AssetBundle。Persistent 记录失效时的同逻辑文件 fallback、来源排序、
 资源不存在和 Bundle 缺失均在该服务内完成，并以带状态码的应用错误返回；它不写 HTTP 响应。
+模型入口类型校验、批量动画资源的去重和稳定排序也属于这一边界，任务 Handler 只消费已经
+解析完成的资源元组。
 
 Prefab 模型恢复使用 VFS Unity worker 的版本化对象快照协议。内嵌 AnimeStudio 核心负责
 Unity 对象身份、TypeTree 载荷和跨 Bundle PPtr 解析；服务负责从 manifest 构造依赖闭包、
@@ -58,7 +60,8 @@ AvatarMesh 采用另一种入口适配：`npc_avatar_config.py` 解析 TypeTree 
 LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task_operations.py` 为每项后台
 工作创建不带 socket、headers 或响应流的独立构建实例，并集中绑定任务种类、取消事件和进度
 回调；Handler 不再捕获自身或手写后台 lambda。manifest 资源解析核心也已移入无 HTTP 依赖的
-应用服务；后续继续把任务请求中的模型/动画组合选择从 Handler 移到该边界。
+应用服务；模型、可选单动画和批量动画任务均直接调用该服务，不再拼装查询参数后绕经 HTTP
+兼容方法。
 
 ## 关键约束
 

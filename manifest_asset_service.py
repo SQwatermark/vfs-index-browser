@@ -5,9 +5,14 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from manifest_index import ManifestIndex
+from npc_avatar_config import is_avatar_mesh_asset_path
+
+
+def is_model_entry_path(path: str) -> bool:
+    return Path(path).suffix.casefold() == ".prefab" or is_avatar_mesh_asset_path(path)
 
 
 class ManifestAssetResolutionError(RuntimeError):
@@ -84,6 +89,29 @@ class ManifestAssetService:
 
         bundle_record, bundle_chunk = bundle_source
         return index, asset, bundle_record, bundle_chunk
+
+    def resolve_many(
+        self,
+        manifest_id: int,
+        asset_indexes: Iterable[int | str],
+    ) -> list[tuple[ManifestIndex, dict, dict, Path]]:
+        return [
+            self.resolve(manifest_id, asset_index)
+            for asset_index in sorted({int(value) for value in asset_indexes})
+        ]
+
+    def resolve_model(
+        self,
+        manifest_id: int,
+        asset_index: int,
+    ) -> tuple[ManifestIndex, dict, dict, Path]:
+        resolved = self.resolve(manifest_id, asset_index)
+        if not is_model_entry_path(str(resolved[1]["path"])):
+            raise ManifestAssetResolutionError(
+                400,
+                "resource is not a supported model entry",
+            )
+        return resolved
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)

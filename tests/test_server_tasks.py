@@ -9,6 +9,20 @@ from task_service import TaskApplicationService
 
 
 class ServerTaskTests(unittest.TestCase):
+    @staticmethod
+    def resolver(values):
+        class Resolver:
+            def resolve(self, _manifest_id, asset_index):
+                return values[asset_index] if isinstance(values, dict) else values
+
+            def resolve_model(self, manifest_id, asset_index):
+                return self.resolve(manifest_id, asset_index)
+
+            def resolve_many(self, manifest_id, asset_indexes):
+                return [self.resolve(manifest_id, index) for index in sorted(set(asset_indexes))]
+
+        return Resolver()
+
     def test_task_artifact_quietly_stops_when_download_is_cancelled(self):
         class CancelledDownload:
             def write(self, _data):
@@ -118,7 +132,7 @@ class ServerTaskTests(unittest.TestCase):
             "assetIndex": 11,
             "lod": 0,
         }
-        handler.resolve_manifest_asset_source = lambda _query: resolved
+        handler.manifest_asset_service = lambda: self.resolver(resolved)
         responses = []
         handler.send_json = lambda payload, **options: responses.append((payload, options))
         handler.send_error_json = lambda status, message: self.fail(f"{status}: {message}")
@@ -298,11 +312,7 @@ class ServerTaskTests(unittest.TestCase):
             "lod": 1,
             "animationAssetIndexes": [22, 21],
         }
-        handler.resolve_manifest_asset_source = lambda query: (
-            animations[int(query["assetIndex"][0])]
-            if int(query["assetIndex"][0]) in animations
-            else model
-        )
+        handler.manifest_asset_service = lambda: self.resolver({11: model, **animations})
         responses = []
         handler.send_json = lambda payload, **options: responses.append((payload, options))
         handler.send_error_json = lambda status, message: self.fail(f"{status}: {message}")
@@ -370,9 +380,7 @@ class ServerTaskTests(unittest.TestCase):
             "animationAssetIndex": 21,
             "lod": 0,
         }
-        handler.resolve_manifest_asset_source = lambda query: resolved[
-            int(query["assetIndex"][0])
-        ]
+        handler.manifest_asset_service = lambda: self.resolver(resolved)
         responses = []
         handler.send_json = lambda payload, **options: responses.append((payload, options))
         handler.send_error_json = lambda status, message: self.fail(f"{status}: {message}")

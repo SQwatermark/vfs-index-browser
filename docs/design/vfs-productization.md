@@ -607,5 +607,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   独立构建实例、取消事件和进度回调绑定，后台闭包不再由 Handler 组装。
 - `manifest_asset_service.py` 已接管 manifest 文件来源 fallback、AssetInfo 查找、Bundle 来源
   排序与可读性选择，并通过应用错误返回原有 400/404 语义，不直接写 HTTP。合成 SQLite 测试
-  覆盖失效 Persistent manifest 回退到可读来源、缺失 asset 和缺失 Bundle；当前庄方宜
-  `451359/263486` 的真实模型任务在拆分后仍成功。下一步把模型与动画组合选择也移入该服务。
+  覆盖失效 Persistent manifest 回退到可读来源、缺失 asset、缺失 Bundle、模型类型校验与批量
+  动画去重排序。模型、可选单动画和批量动画任务已直接调用该服务，不再绕经 Handler 的 HTTP
+  查询兼容方法；当前庄方宜 `451359/263486` 的真实模型任务在拆分后仍成功，非模型资源会稳定
+  返回 400。

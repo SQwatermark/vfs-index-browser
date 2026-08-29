@@ -53,7 +53,11 @@ from wwise_store import (
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
-from manifest_asset_service import ManifestAssetResolutionError, ManifestAssetService
+from manifest_asset_service import (
+    ManifestAssetResolutionError,
+    ManifestAssetService,
+    is_model_entry_path,
+)
 from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
     load_exported_objects,
@@ -1046,10 +1050,6 @@ def is_akedb_collection(value: str) -> bool:
     return value in {"SkillData", "BuffData"}
 
 
-def is_model_entry_path(path: str) -> bool:
-    return file_suffix(path) == ".prefab" or is_avatar_mesh_asset_path(path)
-
-
 def default_model_animation_query(path: str) -> str:
     stem = Path(path.split("##", 1)[0]).stem.casefold()
     for pattern in (
@@ -1649,24 +1649,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "manifestId, assetIndex or lod is invalid")
             return
 
-        query = {
-            "manifestId": [str(request.manifest_id)],
-            "assetIndex": [str(request.asset_index)],
-        }
-        resolved = self.resolve_manifest_asset_source(query)
-        if resolved is None:
-            return
-        if not is_model_entry_path(str(resolved[1]["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
+        resolver = self.manifest_asset_service()
+        try:
+            resolved = resolver.resolve_model(request.manifest_id, request.asset_index)
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
             return
         animation_resolved = None
         if request.animation_asset_index is not None:
-            animation_query = {
-                "manifestId": [str(request.manifest_id)],
-                "assetIndex": [str(request.animation_asset_index)],
-            }
-            animation_resolved = self.resolve_manifest_asset_source(animation_query)
-            if animation_resolved is None:
+            try:
+                animation_resolved = resolver.resolve(
+                    request.manifest_id,
+                    request.animation_asset_index,
+                )
+            except ManifestAssetResolutionError as error:
+                self.send_error_json(error.status, str(error))
                 return
 
         created = self.background_task_operations().start_model(
@@ -1690,21 +1687,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "model blend task input is invalid")
             return
 
-        query = {
-            "manifestId": [str(request.manifest_id)],
-            "assetIndex": [str(request.asset_index)],
-            "animationAssetIndex": [str(value) for value in request.animation_asset_indexes],
-        }
-        resolved = self.resolve_manifest_asset_source(query)
-        if resolved is None:
+        resolver = self.manifest_asset_service()
+        try:
+            resolved = resolver.resolve_model(request.manifest_id, request.asset_index)
+            animation_sources = resolver.resolve_many(
+                request.manifest_id,
+                request.animation_asset_indexes,
+            )
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
             return
-        if not is_model_entry_path(str(resolved[1]["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
-            return
-        animation_sources = self.resolve_animation_sources(query)
-        if animation_sources is None:
-            return
-
         created = self.background_task_operations().start_model_blend(
             resolved,
             animation_sources,
@@ -1719,24 +1711,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "model animation task input is invalid")
             return
 
-        model_query = {
-            "manifestId": [str(request.manifest_id)],
-            "assetIndex": [str(request.asset_index)],
-        }
-        animation_query = {
-            "manifestId": [str(request.manifest_id)],
-            "assetIndex": [str(request.animation_asset_index)],
-        }
-        model_resolved = self.resolve_manifest_asset_source(model_query)
-        if model_resolved is None:
+        resolver = self.manifest_asset_service()
+        try:
+            model_resolved = resolver.resolve_model(
+                request.manifest_id,
+                request.asset_index,
+            )
+            animation_resolved = resolver.resolve(
+                request.manifest_id,
+                request.animation_asset_index,
+            )
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
             return
-        if not is_model_entry_path(str(model_resolved[1]["path"])):
-            self.send_error_json(400, "resource is not a supported model entry")
-            return
-        animation_resolved = self.resolve_manifest_asset_source(animation_query)
-        if animation_resolved is None:
-            return
-
         created = self.background_task_operations().start_model_animation(
             model_resolved,
             animation_resolved,
