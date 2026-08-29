@@ -302,6 +302,36 @@ class UnityWorkerClientTests(unittest.TestCase):
         )
         self.assertTrue(Path(observed["arguments"]["cabMapPath"]).is_absolute())
 
+    def test_export_cubemap_faces_uses_exact_container(self):
+        observed = {}
+
+        def run(command, **kwargs):
+            request = json.loads(Path(command[-1]).read_text(encoding="utf-8"))
+            observed.update(request)
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({
+                    "requestId": request["requestId"],
+                    "ok": True,
+                    "result": {"artifactCount": 6, "artifacts": []},
+                }),
+                "",
+            )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            UnityWorkerClient(["fake-worker"], runner=run).export_cubemap_faces(
+                input_path=root / "source.ab",
+                output_directory=root / "faces",
+                container="assets/example/light.exr",
+                request_id="cubemap-1",
+            )
+
+        self.assertEqual("exportCubemapFaces", observed["operation"])
+        self.assertEqual("assets/example/light.exr", observed["arguments"]["container"])
+        self.assertTrue(Path(observed["arguments"]["inputPath"]).is_absolute())
+
     def test_translates_structured_worker_error(self):
         def run(command, **kwargs):
             return subprocess.CompletedProcess(

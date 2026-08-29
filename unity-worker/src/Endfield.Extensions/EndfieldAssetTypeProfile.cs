@@ -47,6 +47,7 @@ internal static class EndfieldAssetTypeProfile
         ClassIDType.AnimationClip,
         ClassIDType.Animator,
         ClassIDType.AudioClip,
+        ClassIDType.Cubemap,
         ClassIDType.Font,
         ClassIDType.Material,
         ClassIDType.Mesh,

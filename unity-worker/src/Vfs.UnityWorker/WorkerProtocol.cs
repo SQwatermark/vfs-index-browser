@@ -13,7 +13,7 @@ public static class WorkerProtocol
 {
     public const string ProtocolName = "vfs-unity-worker";
     public const string ProtocolVersion = "1.0.0";
-    public const string WorkerVersion = "0.7.0";
+    public const string WorkerVersion = "0.8.0";
     public const string AnimeStudioUpstreamCommit =
         "8cdec963c4e187ea0a4a339b8969844a9574638b";
 
@@ -44,6 +44,7 @@ public static class WorkerProtocol
                     "buildCabMap",
                     "exportObjectSnapshots",
                     "exportIdentifiedTextures",
+                    "exportCubemapFaces",
                 ]));
         }
 
@@ -85,6 +86,7 @@ public static class WorkerProtocol
                 "buildCabMap" => HandleCabMapExport(request),
                 "exportObjectSnapshots" => HandleObjectSnapshotExport(request),
                 "exportIdentifiedTextures" => HandleIdentifiedTextureExport(request),
+                "exportCubemapFaces" => HandleCubemapFaceExport(request),
                 _ => WorkerResponse.Failure(new WorkerError(
                     "unknown_operation",
                     $"未知的 worker 操作：{request.Operation}",
@@ -175,6 +177,14 @@ public static class WorkerProtocol
         var arguments = request.Arguments.Deserialize<IdentifiedTextureExportRequest>(JsonOptions)
             ?? throw new JsonException("exportIdentifiedTextures 缺少 arguments。");
         var result = ObjectSnapshotExporter.ExportIdentifiedTextures(arguments);
+        return WorkerResponse.Success(result, request.RequestId);
+    }
+
+    private static WorkerResponse HandleCubemapFaceExport(WorkerRequest request)
+    {
+        var arguments = request.Arguments.Deserialize<CubemapFaceExportRequest>(JsonOptions)
+            ?? throw new JsonException("exportCubemapFaces 缺少 arguments。");
+        var result = CubemapFaceExporter.Export(arguments);
         return WorkerResponse.Success(result, request.RequestId);
     }
 }

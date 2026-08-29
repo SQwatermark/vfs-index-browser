@@ -19,7 +19,7 @@ public sealed class WorkerProtocolTests
         StringAssert.Contains(payload, WorkerProtocol.AnimeStudioUpstreamCommit);
         StringAssert.Contains(
             payload,
-            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\",\"exportIdentifiedTextures\"]");
+            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\",\"exportIdentifiedTextures\",\"exportCubemapFaces\"]");
     }
 
     [TestMethod]

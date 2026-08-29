@@ -384,6 +384,26 @@ class UnityWorkerClient:
             cancel_event=cancel_event,
         )
 
+    def export_cubemap_faces(
+        self,
+        *,
+        input_path: Path,
+        output_directory: Path,
+        container: str,
+        request_id: str,
+        cancel_event: object | None = None,
+    ) -> dict:
+        return self.request(
+            "exportCubemapFaces",
+            {
+                "inputPath": str(input_path.resolve()),
+                "outputDirectory": str(output_directory.resolve()),
+                "container": container,
+            },
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def _run(
         self,
         command: Sequence[str],

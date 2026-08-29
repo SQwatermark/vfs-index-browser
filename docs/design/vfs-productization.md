@@ -278,7 +278,7 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
 `exportMonoBehaviourTypeTreeDump`、`decodeProjectileComponent`、`buildAssetMap`、
-`buildCabMap`、`exportObjectSnapshots` 和 `exportIdentifiedTextures`，worker 版本已升至 `0.7.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
+`buildCabMap`、`exportObjectSnapshots`、`exportIdentifiedTextures` 和 `exportCubemapFaces`，worker 版本已升至 `0.8.0`。Projectile 已从巨型 CLI 中拆出可由三份真实样本证明的前缀、MoveMode 字典和
 主特效结束条件；未知尾部完整保留为 Raw words，公开结果明确为 `partial`。下一项代码工作
 已用 Python 唯一 `UnityWorkerClient` 把 Projectile 和共用 MonoBehaviour Raw 调用切换到
 新 worker。Projectile、Raw 和 TypeTree Dump 复用同一个多产物原子导出框架：每次构建
@@ -304,7 +304,7 @@ Python 当前直接使用的 AnimeStudio 操作如下：
 | 对象快照 | GameObject、Transform、Renderer、Mesh、Material、Animator、Avatar 已迁移；LODGroup 不输出伪快照 | worker + `server.py` | P3.2 |
 | 通用资源 | Texture2D、Sprite、TextAsset、AudioClip、VideoClip、AnimationClip + `Convert` | `server.py` | P3.2/P3.3 |
 | 纹理身份 | 精确 Texture2D `sourceFile + pathId` 已迁移 | worker、`server.py`、`avatar_mesh_snapshot.py` | P3.3 |
-| Cubemap | Cubemap + `Convert` | `server.py` | P3.3 |
+| Cubemap | 精确 container + 六面 PNG 已迁移 | worker、`server.py` | P3.3 |
 | 动画 | AnimationClip + `AnimationJSON` | `server.py` | P3.4 |
 | Shader | Shader 二进制包及终末地扩展 | AnimeStudio 定制源码、离线工具 | P3.5 |
 
@@ -342,13 +342,13 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 截至 2026-08-29，当前工作树的可交付边界为：
 
-- worker `0.7.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
-  聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照和精确纹理导出；
+- worker `0.8.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
+  聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理和 Cubemap 六面导出；
 - Python 唯一 `UnityWorkerClient` 已封装 `buildCabMap`、`exportObjectSnapshots` 与
   `exportIdentifiedTextures`，模型和 AvatarMesh 生产路径均已接入；
 - `server.py` 的 AssetMap 已迁移到独占 run、完整产物校验和原子指针发布。模型与 AvatarMesh
-  对象快照与引用纹理不再调用旧 `ObjectJSON`/`IdentifiedTexture`；通用 `Convert`、Cubemap
-  与动画仍由旧 CLI 执行；
+  对象快照、引用纹理和 Cubemap 不再调用旧 `ObjectJSON`/`IdentifiedTexture`/`Convert`；
+  其他通用 `Convert` 与动画仍由旧 CLI 执行；
 - CABMap JSON 是可审计的稳定中间产物，不含 baseFolder 或物理路径。worker 对象导出和两条
   服务端模型路径均已直接消费该契约；这两条路径已删除旧 `BuildCABMap + UseCABMap`，并将
   输入、CABMap、对象、纹理、模型文档和几何收口到独占 run，由根 `run.json` 原子发布；
@@ -362,7 +362,7 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. 迁移通用 Texture2D/Sprite/Cubemap 与模型层级之外的 Convert 消费者；
+1. 盘点并迁移 Cubemap 之外的通用 Texture2D/Sprite 等 Convert 消费者；
 2. 将仍为同步路径的模型构建接入后台任务、进度和取消；
 3. LODGroup 在权威配置中没有专用 CLR 解析器，必须先用真实样本确认再声明支持；当前 worker
    不输出只有对象外壳的伪 LODGroup 快照；
@@ -383,7 +383,7 @@ PNG 与旧产物逐字节一致，并成功发布 run 指针。
 
 本轮验证：.NET `36` 项通过、`4` 项未配置的外部证据测试跳过，其中对象与纹理真实闭包测试已
 显式启用并通过；Python worker、健康检查、模型 run、AvatarMesh 与 ModelDocument 聚焦测试 `35` 项
-通过；模型生产路径另以临时缓存完成端到端验证。全量 Python discovery 的 266 项仍有 3 失败、
+通过；模型生产路径另以临时缓存完成端到端验证。全量 Python discovery 的 267 项仍有 3 失败、
 5 错误，集中在动画版本旧 fixture、两项已知 MemoryPack override、runtime probe 导入、Humanoid
 oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结果。Release 构建 0 警告、0 错误，产品自有文件的
 `git diff --check` 通过。锁定导入的上游 vendor 保留其原始尾随空白，不以格式化改写破坏
@@ -517,3 +517,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   了发布指针、旧 run 和 9,971,028 字节 geometry 均未变化；56 Bundle AvatarMesh 完整链路
   仍得到 437 节点、13 Mesh、11 Material、13 Skin、38 张纹理，3,381,104 字节 geometry 与
   旧产物逐字节一致。
+- worker `0.8.0` 新增精确 container 的 `exportCubemapFaces`，严格验证六份连续完整 mip 链，
+  沿用 Unity 面序且不做 Texture2D 垂直翻转。角色环境 BC6H 样本的六张 PNG 与旧 CLI
+  逐字节一致。Cubemap 同时接入共用独占 run；领域六面集合会在根 `meta.json` 原子发布前及
+  缓存命中时复验，不完整结果不再短暂成为可见缓存。

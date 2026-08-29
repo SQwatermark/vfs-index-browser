@@ -33,8 +33,8 @@ Unity 对象身份、TypeTree 载荷和跨 Bundle PPtr 解析；服务负责从 
 SerializedFile 偏移后再导出，不依赖旧 CLI 的进程级 `Maps/` 状态。
 
 模型对象和纹理由仓库内 `unity-worker/` 的版本化构建提供。纹理选择使用精确
-`sourceFile + pathId`，不能按可能重复的资源名称猜测；尚未迁移的通用 Convert、Cubemap
-和动画入口仍临时使用旧 CLI，不构成模型链路依赖。
+`sourceFile + pathId`，不能按可能重复的资源名称猜测。Cubemap 由 worker 按精确 container
+输出六个带方向身份的面；尚未迁移的通用 Convert 和动画入口仍临时使用旧 CLI。
 
 Prefab 模型属于该层的聚合解析：服务查询 Bundle 传递依赖闭包，通过跨 Bundle PPtr 恢复 `ModelDocument`，再由独立导出器生成 GLB。ModelDocument 保留完整模型语义和原始材质参数，GLB 只承载 LOD0 通用预览所需的资源子集。
 

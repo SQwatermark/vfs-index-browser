@@ -201,9 +201,6 @@ ANIMESTUDIO_CLI = Path(
     os.environ.get("VFS_BROWSER_ANIMESTUDIO_CLI", default_animestudio_cli())
 )
 # 调试时可以分别覆盖特定导出链路，生产环境统一使用已验证的打包构建。
-ANIMESTUDIO_CUBEMAP_CLI = Path(
-    os.environ.get("VFS_BROWSER_ANIMESTUDIO_CUBEMAP_CLI", ANIMESTUDIO_CLI)
-)
 VGMSTREAM_CLI = Path(
     os.environ.get(
         "VGMSTREAM_CLI",
@@ -242,6 +239,7 @@ def build_health_document() -> dict:
         "buildCabMap",
         "exportObjectSnapshots",
         "exportIdentifiedTextures",
+        "exportCubemapFaces",
     ])
     return {
         "apiVersion": 1,
@@ -301,7 +299,7 @@ ASSETBUNDLE_MAP_VERSION = 1
 MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
 PROJECTILE_COMPONENT_EXPORT_VERSION = 1
-CUBEMAP_EXPORT_VERSION = 1
+CUBEMAP_EXPORT_VERSION = 2
 MODEL_SNAPSHOT_VERSION = 32
 AVATAR_MODEL_SNAPSHOT_VERSION = 5
 ANIMATION_CLIP_EXPORT_VERSION = 4
@@ -3613,12 +3611,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         identity_extra: dict,
         invoke: Callable[[Path, Path, str, str, object | None], dict],
         derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
+        validate: Callable[[Path, list[Path], dict], None] | None = None,
         cancel_event: object | None = None,
+        allowed_suffixes: frozenset[str] = frozenset({".asset", ".prefab"}),
     ) -> tuple[Path, list[Path], dict]:
         """执行 worker 操作，完整校验全部产物后原子发布缓存指针。"""
 
-        if file_suffix(str(asset["path"])) not in {".asset", ".prefab"}:
-            raise ValueError("Unity worker MonoBehaviour export requires an .asset or .prefab")
+        if file_suffix(str(asset["path"])) not in allowed_suffixes:
+            raise ValueError("Unity worker export does not support this asset suffix")
 
         runs_root, meta_path = self.manifest_unity_worker_export_paths(
             record,
@@ -3662,6 +3662,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             source_identity=source_identity,
             invoke=run_export,
             derive=derive,
+            validate=validate,
             cancel_event=cancel_event,
         )
 
@@ -3675,6 +3676,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         source_identity: dict,
         invoke: Callable[[Path, Path, str, object | None], dict],
         derive: Callable[[Path, list[Path]], dict[str, str]] | None = None,
+        validate: Callable[[Path, list[Path], dict], None] | None = None,
         cancel_event: object | None = None,
     ) -> tuple[Path, list[Path], dict]:
         """校验并原子发布任意 worker run；输入布局由具体能力负责。"""
@@ -3696,6 +3698,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                         export_root,
                         meta.get("workerResult"),
                     )
+                    if validate is not None:
+                        validate(export_root, cached_artifacts, meta["workerResult"])
                     expected_files = [path.relative_to(export_root).as_posix() for path in cached_artifacts]
                     if meta.get("exportedFiles") != expected_files:
                         raise RuntimeError("cached worker artifact list is inconsistent")
@@ -3709,6 +3713,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         export_root = run_root / "exported"
         result = invoke(run_root, export_root, request_id, cancel_event)
         artifact_paths = validate_worker_artifacts(export_root, result)
+        if validate is not None:
+            validate(export_root, artifact_paths, result)
         derived_files = describe_derived_artifacts(
             export_root,
             derive(export_root, artifact_paths) if derive is not None else {},
@@ -3776,20 +3782,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
         return export_root, meta
 
-    def manifest_cubemap_export_paths(
-        self,
-        record: dict,
-        asset_index: int,
-    ) -> tuple[Path, Path]:
-        root = (
-            INTERNAL_CACHE_DIR
-            / str(record["id"])
-            / "manifest-assets"
-            / str(asset_index)
-            / "cubemap"
-        )
-        return root / "exported", root / "meta.json"
-
     def ensure_manifest_cubemap_export(
         self,
         record: dict,
@@ -3798,101 +3790,44 @@ class BrowserHandler(BaseHTTPRequestHandler):
     ) -> tuple[dict[str, Path], dict] | None:
         if file_suffix(str(asset["path"])) not in {".exr", ".hdr", ".cubemap"}:
             return None
-        if not ANIMESTUDIO_CUBEMAP_CLI.exists():
-            raise FileNotFoundError(f"AnimeStudio Cubemap CLI not found: {ANIMESTUDIO_CUBEMAP_CLI}")
 
-        export_root, meta_path = self.manifest_cubemap_export_paths(
+        def validate_faces(_root: Path, _paths: list[Path], result: dict) -> None:
+            artifacts = result.get("artifacts", [])
+            faces = [str(artifact.get("face") or "") for artifact in artifacts]
+            if len(faces) != len(CUBEMAP_FACE_NAMES) or set(faces) != set(CUBEMAP_FACE_NAMES):
+                raise RuntimeError("Unity worker returned an incomplete Cubemap face set")
+
+        export_root, artifact_paths, meta = self.ensure_manifest_unity_worker_export(
             record,
-            int(asset["asset_index"]),
+            chunk_path,
+            asset,
+            export_name="cubemap",
+            version=CUBEMAP_EXPORT_VERSION,
+            identity_extra={},
+            invoke=lambda source, output, container, request_id, cancel: (
+                UNITY_WORKER.export_cubemap_faces(
+                    input_path=source,
+                    output_directory=output,
+                    container=container,
+                    request_id=request_id,
+                    cancel_event=cancel,
+                )
+            ),
+            validate=validate_faces,
+            allowed_suffixes=frozenset({".exr", ".hdr", ".cubemap"}),
         )
-        source_path, _, _ = self.assetbundle_cache_paths(record)
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "assetIndex": int(asset["asset_index"]),
-            "assetPath": str(asset["path"]),
-            "toolArtifacts": dotnet_tool_identity(ANIMESTUDIO_CUBEMAP_CLI),
+        faces = {}
+        artifacts = meta.get("workerResult", {}).get("artifacts", [])
+        paths_by_relative = {
+            path.relative_to(export_root).as_posix(): path for path in artifact_paths
         }
-
-        def exported_faces() -> dict[str, Path]:
-            faces = {}
-            for path in export_root.rglob("*"):
-                if not path.is_file() or file_suffix(path.name) not in IMAGE_EXTENSIONS:
-                    continue
-                stem = path.stem.casefold()
-                for face_name in CUBEMAP_FACE_NAMES:
-                    if stem.endswith(f"_{face_name}".casefold()):
-                        faces[face_name] = path
-                        break
-            return faces
-
-        if meta_path.is_file():
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                faces = exported_faces()
-                if (
-                    meta.get("version") == CUBEMAP_EXPORT_VERSION
-                    and meta.get("source") == source_identity
-                    and meta.get("returncode") == 0
-                ):
-                    return (faces, meta) if set(faces) == set(CUBEMAP_FACE_NAMES) else None
-            except (OSError, json.JSONDecodeError):
-                pass
-
-        self.write_file_slice(record, chunk_path, source_path)
-        shutil.rmtree(export_root, ignore_errors=True)
-        export_root.mkdir(parents=True, exist_ok=True)
-        normalized_container = str(asset["path"]).replace("\\", "/").strip("/")
-        command = [
-            str(ANIMESTUDIO_CUBEMAP_CLI),
-            str(source_path),
-            str(export_root),
-            "--game",
-            "ArknightsEndfield",
-            "--types",
-            "Cubemap",
-            "--containers",
-            f"^{re.escape(normalized_container)}$",
-            "--export_type",
-            "Convert",
-            "--group_assets",
-            "ByType",
-            "--logger_flags",
-            "Error",
-            "Warning",
-            "Info",
-        ]
-        completed = subprocess.run(
-            command,
-            cwd=str(ANIMESTUDIO_CUBEMAP_CLI.parent),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=180,
-            check=False,
-        )
-        faces = exported_faces()
-        meta = {
-            "version": CUBEMAP_EXPORT_VERSION,
-            "source": source_identity,
-            "command": command,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "builtAtEpoch": int(time.time()),
-            "faces": {
-                name: str(path.relative_to(export_root)).replace("\\", "/")
-                for name, path in faces.items()
-            },
-        }
-        meta_path.parent.mkdir(parents=True, exist_ok=True)
-        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-        if completed.returncode != 0 or set(faces) != set(CUBEMAP_FACE_NAMES):
-            return None
+        for artifact in artifacts:
+            face = str(artifact.get("face") or "")
+            path = paths_by_relative.get(str(artifact.get("relativePath") or ""))
+            if face in CUBEMAP_FACE_NAMES and path is not None and face not in faces:
+                faces[face] = path
+        if set(faces) != set(CUBEMAP_FACE_NAMES):
+            raise RuntimeError("Unity worker returned an incomplete Cubemap face set")
         return faces, meta
 
     def ensure_manifest_monobehaviour_dump(

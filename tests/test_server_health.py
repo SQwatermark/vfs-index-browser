@@ -32,6 +32,7 @@ class ServerHealthTests(unittest.TestCase):
                 "buildCabMap",
                 "exportObjectSnapshots",
                 "exportIdentifiedTextures",
+                "exportCubemapFaces",
             ],
             worker.required_capabilities,
         )
