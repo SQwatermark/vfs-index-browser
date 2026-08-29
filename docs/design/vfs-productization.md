@@ -819,3 +819,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `model_animation_catalog_service.py`。Handler 只保留模型来源解析和 HTTP 错误映射；合成回归覆盖
   普通模型不携带 LOD、Avatar 携带合法 LOD、查询裁剪、分页传递、无效 LOD 提前失败和两类缓存
   版本。模型 HTTP 应用层拆分至此形成完整边界，下一阶段转向其他大型 Handler 领域。
+- Wwise 的 Events/Banks/Media 虚拟目录、路径标准化、分页、虚拟文件字段及 event/bank/media
+  预览文档已移入 `wwise_catalog_service.py`。Handler 的 list/preview 路由成为薄适配；真实 SQLite
+  接口回归覆盖三类目录、分页边界、Event 关系媒体 URL 和 Media 下载 URL。既有测试夹具同时补上
+  主索引 `current` 门禁，确保测试请求确实进入生产路由。下一阶段抽取 Wwise 媒体物理读取边界。

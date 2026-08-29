@@ -15,7 +15,8 @@
 - `wwise_store.py`：保存 Package、Bank、Media、对象、关系与解析诊断，并提供目录查询。
 - `tools/build_wwise_index.py`：直接从本地 VFS SQLite 索引读取所有可用 PCK。
 - `tools/index_wwise_pck.py`：从已经提取出的单个 PCK 建立或替换索引。
-- `server.py`：提供 `/api/wwise/*` 列表、详情、WEM/WAV 读取接口。
+- `wwise_catalog_service.py`：组装 `/api/wwise/list` 虚拟目录与 `/api/wwise/preview` 文档。
+- `server.py`：映射 HTTP 错误，并提供 WEM/WAV 物理读取接口。
 
 ## 数据模型
 

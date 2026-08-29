@@ -53,16 +53,8 @@ from ability_entity_data import (
     select_ability_entity_asset,
 )
 from audio_dialog_store import get_audio_dialog_entry, list_audio_dialog_directory
-from wwise_store import (
-    get_wwise_bank,
-    get_wwise_event,
-    get_wwise_media,
-    list_wwise_banks,
-    list_wwise_events,
-    list_wwise_media,
-    list_wwise_media_prefixes,
-    wwise_summary,
-)
+from wwise_store import get_wwise_media
+from wwise_catalog_service import WwiseCatalogService
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError
 from usm_video_service import UsmVideoService
@@ -1138,6 +1130,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not WWISE_DB.is_file():
             raise FileNotFoundError(f"Wwise index not built: {WWISE_DB}")
         return sqlite3.connect(WWISE_DB)
+
+    def wwise_catalog_service(self) -> WwiseCatalogService:
+        return WwiseCatalogService(self.connect_wwise, page_size_max=PAGE_SIZE_MAX)
 
     @classmethod
     def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:
@@ -2286,50 +2281,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 self.wfile.write(data)
 
     def handle_wwise_list(self, query: dict[str, list[str]]) -> None:
-        path = unquote(query.get("path", [""])[0]).replace("\\", "/").strip("/")
         try:
-            page = max(int(query.get("page", ["1"])[0]), 1)
-            page_size = min(max(int(query.get("pageSize", ["100"])[0]), 1), PAGE_SIZE_MAX)
-            offset = (page - 1) * page_size
-            with closing(self.connect_wwise()) as conn:
-                summary = wwise_summary(conn)
-                dirs: list[dict] = []
-                files: list[dict] = []
-                total = 0
-                if not path:
-                    dirs = [
-                        {"name": "Events", "path": "Events", "file_count": summary["eventCount"], "total_bytes": 0},
-                        {"name": "Banks", "path": "Banks", "file_count": summary["bankCount"], "total_bytes": 0},
-                        {"name": "Media", "path": "Media", "file_count": summary["mediaCount"], "total_bytes": summary["mediaBytes"]},
-                    ]
-                elif path == "Events":
-                    total, rows = list_wwise_events(conn, limit=page_size, offset=offset)
-                    files = [self.wwise_event_file(row) for row in rows]
-                elif path == "Banks":
-                    total, rows = list_wwise_banks(conn, limit=page_size, offset=offset)
-                    files = [self.wwise_bank_file(row) for row in rows]
-                elif path == "Media":
-                    prefixes = list_wwise_media_prefixes(conn)
-                    dirs = [
-                        {
-                            "name": row["prefix"],
-                            "path": f"Media/{row['prefix']}",
-                            "file_count": row["file_count"],
-                            "total_bytes": row["total_bytes"],
-                        }
-                        for row in prefixes
-                    ]
-                elif path.startswith("Media/") and path.count("/") == 1:
-                    prefix = path.split("/", 1)[1].casefold()
-                    total, rows = list_wwise_media(
-                        conn,
-                        prefix,
-                        limit=page_size,
-                        offset=offset,
-                    )
-                    files = [self.wwise_media_file(row) for row in rows]
-                else:
-                    raise FileNotFoundError("Wwise virtual directory not found")
+            payload = self.wwise_catalog_service().list(query)
         except ValueError as error:
             self.send_error_json(400, str(error))
             return
@@ -2339,138 +2292,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except (sqlite3.DatabaseError, RuntimeError) as error:
             self.send_error_json(500, f"Wwise index error: {error}")
             return
-
-        self.send_json({
-            "path": path,
-            "summary": summary,
-            "directory": {
-                "path": path,
-                "file_count": total if path else sum(item["file_count"] for item in dirs),
-                "total_bytes": sum(item["total_bytes"] for item in dirs),
-                "encrypted_count": 0,
-                "missing_chunk_count": 0,
-            },
-            "dirs": dirs,
-            "files": files,
-            "page": {
-                "page": page,
-                "pageSize": page_size,
-                "total": total,
-                "pages": max((total + page_size - 1) // page_size, 1),
-            },
-        })
-
-    @staticmethod
-    def wwise_event_file(row: dict) -> dict:
-        params = (
-            f"kind=event&pckFileId={row['pck_file_id']}&bankId={row['bank_id']}"
-            f"&eventId={row['event_id']}"
-        )
-        return {
-            "name": f"{row['event_id']}.event",
-            "path": f"Events/{row['event_id']}.event",
-            "file_name": row["logical_path"],
-            "source": "Wwise Event",
-            "block_name": str(row["bank_id"]),
-            "chunk_file": f"{row['direct_relation_count']} direct relations",
-            "offset": row["payload_offset"],
-            "length": row["payload_size"],
-            "encrypted": False,
-            "chunk_exists": True,
-            "virtualKind": "wwiseEvent",
-            "previewUrl": f"/api/wwise/preview?{params}",
-        }
-
-    @staticmethod
-    def wwise_bank_file(row: dict) -> dict:
-        params = f"kind=bank&pckFileId={row['pck_file_id']}&bankId={row['bank_id']}"
-        return {
-            "name": f"{row['bank_id']}.bnk",
-            "path": f"Banks/{row['bank_id']}.bnk",
-            "file_name": row["logical_path"],
-            "source": "Wwise Bank",
-            "block_name": str(row["pck_file_id"]),
-            "chunk_file": (
-                f"{row['object_count']} objects / {row['relation_count']} relations"
-                f" / {row['diagnostic_count']} diagnostics"
-            ),
-            "offset": row["offset"],
-            "length": row["size"],
-            "encrypted": bool(row["encrypted"]),
-            "chunk_exists": True,
-            "virtualKind": "wwiseBank",
-            "previewUrl": f"/api/wwise/preview?{params}",
-        }
-
-    @staticmethod
-    def wwise_media_file(row: dict) -> dict:
-        params = f"kind=media&pckFileId={row['pck_file_id']}&ordinal={row['ordinal']}"
-        return {
-            "name": f"{row['media_id']}.wem",
-            "path": f"Media/{row['media_id'][-2:]}/{row['media_id']}.wem",
-            "file_name": row["logical_path"],
-            "source": row["source"],
-            "block_name": row["language"] or "sfx",
-            "chunk_file": str(row["pck_file_id"]),
-            "offset": row["offset"],
-            "length": row["size"],
-            "encrypted": bool(row["bank_encrypted"]),
-            "chunk_exists": True,
-            "virtualKind": "wwiseMedia",
-            "previewUrl": f"/api/wwise/preview?{params}",
-        }
+        self.send_json(payload)
 
     def handle_wwise_preview(self, query: dict[str, list[str]]) -> None:
-        kind = query.get("kind", [""])[0]
         try:
-            pck_file_id = int(query.get("pckFileId", [""])[0])
-            with closing(self.connect_wwise()) as conn:
-                if kind == "event":
-                    bank_id = int(query.get("bankId", [""])[0])
-                    event_id = int(query.get("eventId", [""])[0])
-                    event = get_wwise_event(conn, pck_file_id, bank_id, event_id)
-                    if event is None:
-                        raise FileNotFoundError("Wwise event not found")
-                    for media in event["media"]:
-                        media["rawUrl"] = self.wwise_media_raw_url(media, "wav")
-                        media["wemDownloadUrl"] = self.wwise_media_raw_url(media, "wem", download=True)
-                    self.send_json({"kind": "wwiseEvent", "event": event})
-                    return
-                if kind == "bank":
-                    bank_id = int(query.get("bankId", [""])[0])
-                    bank = get_wwise_bank(conn, pck_file_id, bank_id)
-                    if bank is None:
-                        raise FileNotFoundError("Wwise bank not found")
-                    self.send_json({"kind": "wwiseBank", "bank": bank})
-                    return
-                if kind == "media":
-                    ordinal = int(query.get("ordinal", [""])[0])
-                    media = get_wwise_media(conn, pck_file_id, ordinal)
-                    if media is None:
-                        raise FileNotFoundError("Wwise media not found")
-                    self.send_json({
-                        "kind": "wwiseMedia",
-                        "media": media,
-                        "rawUrl": self.wwise_media_raw_url(media, "wav"),
-                        "wemDownloadUrl": self.wwise_media_raw_url(media, "wem", download=True),
-                        "wavDownloadUrl": self.wwise_media_raw_url(media, "wav", download=True),
-                    })
-                    return
-                raise ValueError("Wwise preview kind must be event, bank or media")
+            payload = self.wwise_catalog_service().preview(query)
         except ValueError as error:
             self.send_error_json(400, str(error))
+            return
         except FileNotFoundError as error:
             self.send_error_json(404, str(error))
+            return
         except (sqlite3.DatabaseError, RuntimeError) as error:
             self.send_error_json(500, f"Wwise index error: {error}")
-
-    @staticmethod
-    def wwise_media_raw_url(media: dict, mode: str, *, download: bool = False) -> str:
-        url = (
-            f"/api/wwise/raw?pckFileId={media['pck_file_id']}"
-            f"&ordinal={media['ordinal']}&format={mode}"
-        )
-        return f"{url}&download=1" if download else url
+            return
+        self.send_json(payload)
 
     def handle_wwise_raw(self, query: dict[str, list[str]]) -> None:
         try:

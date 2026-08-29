@@ -74,6 +74,9 @@ LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task
 PCK 的 AKPK/BNK 结构只由 `audio_package.py` 解析；`audio_package_service.py` 负责按 VFS
 内容身份缓存媒体索引、提供 WEM/WAV 虚拟目录、解密并原子发布 WEM，再通过 vgmstream 适配器
 派生 WAV。Handler 不再维护第二套宽松二进制解析器或音频缓存路径规则。
+Wwise 索引的 Events/Banks/Media 虚拟目录、分页、行到虚拟文件的映射及预览文档由
+`wwise_catalog_service.py` 负责。该服务直接消费 `wwise_store.py` 的证据型查询，不解释或猜测
+语义名称；Handler 只保留 HTTP 错误映射。媒体 WEM/WAV 的物理来源解析与发送仍属于后续边界。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

@@ -41,7 +41,9 @@ class WwiseApiTests(unittest.TestCase):
             )
 
         self.original_wwise_db = server.WWISE_DB
+        self.original_index_freshness_report = server.INDEX_FRESHNESS_REPORT
         server.WWISE_DB = self.wwise_db
+        server.INDEX_FRESHNESS_REPORT = {"status": "current"}
         self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), QuietBrowserHandler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
@@ -52,6 +54,7 @@ class WwiseApiTests(unittest.TestCase):
         self.httpd.server_close()
         self.thread.join(timeout=5)
         server.WWISE_DB = self.original_wwise_db
+        server.INDEX_FRESHNESS_REPORT = self.original_index_freshness_report
         self.temp.cleanup()
 
     def get_json(self, path):
@@ -77,6 +80,24 @@ class WwiseApiTests(unittest.TestCase):
         self.assertEqual(list(MEDIA), payload["event"]["media_ids"])
         self.assertEqual(3, len(payload["event"]["media"]))
         self.assertIn("/api/wwise/raw", payload["event"]["media"][0]["rawUrl"])
+
+    def test_lists_banks_and_media_and_previews_media(self):
+        _, banks = self.get_json("/api/wwise/list?path=Banks")
+        _, media_root = self.get_json(
+            "/api/wwise/list?path=%5CMedia%5C&page=0&pageSize=999999"
+        )
+        _, media = self.get_json(
+            f"/api/wwise/list?path={media_root['dirs'][0]['path']}"
+        )
+        _, preview = self.get_json(media["files"][0]["previewUrl"])
+
+        self.assertEqual("wwiseBank", banks["files"][0]["virtualKind"])
+        self.assertEqual("Media", media_root["path"])
+        self.assertEqual(1, media_root["page"]["page"])
+        self.assertEqual(server.PAGE_SIZE_MAX, media_root["page"]["pageSize"])
+        self.assertEqual("wwiseMedia", preview["kind"])
+        self.assertIn("format=wav", preview["rawUrl"])
+        self.assertIn("download=1", preview["wemDownloadUrl"])
 
 
 if __name__ == "__main__":
