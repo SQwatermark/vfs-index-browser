@@ -153,6 +153,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `file_preview_service.py` | 普通、Manifest 与容器内部文件共享的媒体/文本/十六进制预览 |
 | `vfs_file_preview_service.py` | VFS 容器、TableCfg、JSON/MemoryPack 与通用预览应用层 |
 | `internal_directory_service.py` | AB/PCK/USM 内部虚拟目录的统一应用层文档组装 |
+| `internal_file_preview_service.py` | 容器内部已解析文件的预览与稳定 raw/download 链接组装 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |

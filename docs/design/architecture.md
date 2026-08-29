@@ -116,6 +116,8 @@ MemoryPack 能力，既不查询 SQLite 也不发送 HTTP；Handler 只解析 ID
 AB、PCK 与 USM 的内部目录文档由 `internal_directory_service.py` 按容器类型协调。AssetBundle
 导出、音频 metadata 和 USM 目录仍是独立依赖；服务只合并 listing、来源身份、缓存元数据与可选
 工具能力，Handler 负责文件 ID/路径参数和 404 映射。
+容器内部文件经现有领域服务安全解析后，由 `internal_file_preview_service.py` 统一组装预览分类、
+资源/音频元数据和完整路径编码的 raw/download 链接；服务不负责容器导出或路径合法性判断。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

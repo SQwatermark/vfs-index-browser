@@ -915,3 +915,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   Handler 只负责定位资源、触发导出和映射失败，应用服务不读取 VFS 或调用 Worker。真实重启后
   `t_sky_cube_004.exr` 的 6 面、5,680,951 字节和默认面 URL，以及 MonoBehaviourDump 的 kind、
   1,486 字节、正文长度和链接均与迁移前一致。
+- AB/PCK/USM 内部文件预览组装已抽到 `internal_file_preview_service.py`：服务消费已通过领域解析与
+  路径安全检查的目标文件，统一共享预览分类、asset/audioEntry 元数据和完整内部路径 URL 编码；
+  Handler 保留容器分派、导出和错误映射。真实中文 stream PCK 的 `1060201.wem` 重启后仍为
+  17,843 字节 hex 预览，audio ID 与 raw/download URL 完全一致。

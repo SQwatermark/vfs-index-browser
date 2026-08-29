@@ -90,6 +90,7 @@ from file_preview_service import (
 )
 from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_file
 from internal_directory_service import InternalDirectoryService
+from internal_file_preview_service import InternalFilePreviewService
 from index_rebuild import (
     IndexRebuildError,
     load_index_source_roots,
@@ -3791,19 +3792,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "unsupported internal preview container")
             return
         rel_path = query.get("path", [""])[0]
-        raw_url = f"/api/internal/raw?id={record['id']}&path={quote(rel_path, safe='')}"
-        download_url = f"{raw_url}&download=1"
-        base = {
-            "file": record,
-            "path": rel_path,
-            "name": target.name,
-            "size": target.stat().st_size,
-            "rawUrl": raw_url,
-            "downloadUrl": download_url,
-            "asset": asset_meta,
-            "audioEntry": audio_entry.to_json() if audio_entry else None,
-        }
-        self.send_json(FilePreviewService.build_path(base, target))
+        self.send_json(
+            InternalFilePreviewService().build(
+                record,
+                target,
+                rel_path,
+                asset=asset_meta,
+                audio_entry=audio_entry.to_json() if audio_entry else None,
+            )
+        )
 
     def handle_internal_raw(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
