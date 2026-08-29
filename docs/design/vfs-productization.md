@@ -789,3 +789,9 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `324382` 已从正式 `POST /api/tasks/model-blend` 冷路径通过：1/1 动画绑定、0 诊断，发布
   20,357,548 字节动画 GLB、17,021,947 字节 Blender 产物和一致的请求清单，任务约 7.5 秒成功。
   下一阶段收口模型 Blender 应用服务。
+- 基础/动画 GLB 选择、批量时启用 skip-incompatible、全部动画失败时禁止启动 Blender、Blender
+  阶段进度和私有 artifact 名称/类型/路径结果已移入 `model_blend_service.py`。既有
+  `BlenderExportService` 继续独占外部进程、取消和 `.blend` 缓存发布；Handler 的任务构建方法
+  成为薄转发，兼容的同步 `ensure_model_blend_file` 只取得工具能力并调用基础设施服务。合成与
+  既有路由回归覆盖基础、单动画、批量诊断、全失败短路、取消和产物登记。下一阶段审计模型
+  路由中剩余的结果组装与文件发送边界，再转向其他大型 Handler 领域。

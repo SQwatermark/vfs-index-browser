@@ -130,6 +130,10 @@ build session、Worker、文档服务与 run store。Handler 只注入索引相�
 动画 GLB 协调位于 `model_animation_service.py`。每个片段先在文档副本上绑定，只有产生兼容
 轨道才提交到累计结果；失败片段在允许跳过时形成区分 `clipExport` 与 `modelBinding` 的诊断。
 请求清单通过唯一临时文件原子切换，缓存恢复仍会复核有效动画集合对应的 GLB 是否存在。
+Blender 派生分成两层：`model_blend_service.py` 选择基础或动画 GLB、处理全部动画不兼容的短路、
+报告 Blender 阶段并构造私有 artifact 结果；`blender_export.py` 只拥有可取消外部进程、输入
+mtime 缓存和 `.blend` 发布。HTTP Handler 注入两类 GLB provider 与 Blender provider，不再
+拼装后台任务结果或直接构造导出适配器。
 
 ## 关键约束
 

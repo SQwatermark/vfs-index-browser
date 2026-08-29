@@ -110,6 +110,7 @@ from model_animation_service import (
     AnimationExportIssue,
     ModelAnimationService,
 )
+from model_blend_service import ModelBlendService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2808,6 +2809,29 @@ class BrowserHandler(BaseHTTPRequestHandler):
             binding_path=Path(attach_animation_clip.__code__.co_filename),
         )
 
+    def blender_export_service(self) -> BlenderExportService:
+        blender = optional_tool_registry().capability("blender")
+        if blender.resolved_path is None:
+            raise FileNotFoundError(f"Blender executable not found: {BLENDER_EXE}")
+        return BlenderExportService(
+            blender.resolved_path,
+            PROJECT_ROOT,
+            BLENDER_MODEL_IMPORTER,
+            (
+                BLENDER_ACTION_SWITCHER,
+                PROJECT_ROOT / "blender_materials.py",
+                Path(blender_material_plan.__file__),
+                PROJECT_ROOT / "character_lighting.py",
+            ),
+        )
+
+    def model_blend_service(self) -> ModelBlendService:
+        return ModelBlendService(
+            self.ensure_manifest_asset_model_glb,
+            self.ensure_animated_model_glb,
+            self.ensure_model_blend_file,
+        )
+
     def ensure_animation_clip_export(
         self,
         record: dict,
@@ -3901,56 +3925,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: threading.Event,
         progress: Callable[[dict], None],
     ) -> dict:
-        if animation_sources:
-            bundle = self.ensure_animated_model_glb(
-                resolved,
-                animation_sources,
-                lod=lod,
-                skip_incompatible=len(animation_sources) > 1,
-                cancel_event=cancel_event,
-                progress=progress,
-            )
-            asset = bundle.asset
-            animation_assets = bundle.animations
-            glb_path = bundle.glb_path
-            issues = bundle.issues
-        else:
-            progress({"stage": "modelGlb", "completed": 0, "total": 1})
-            asset, _, glb_path = self.ensure_manifest_asset_model_glb(
-                resolved,
-                lod=lod,
-                cancel_event=cancel_event,
-            )
-            animation_assets = []
-            issues = []
-        if animation_sources and not animation_assets:
-            return {
-                "kind": "modelBlendPreparation",
-                "requestedCount": len(animation_sources),
-                "exportedCount": 0,
-                "issues": [issue.as_json() for issue in issues],
-                "artifactAvailable": False,
-            }
-        if cancel_event.is_set():
-            raise RuntimeError("worker_cancelled")
-        progress({"stage": "blender", "completed": 0, "total": 1})
-        blend_path = self.ensure_model_blend_file(
-            glb_path,
+        return self.model_blend_service().prepare(
+            resolved,
+            animation_sources,
+            lod,
             cancel_event=cancel_event,
+            progress=progress,
         )
-        progress({"stage": "blender", "completed": 1, "total": 1})
-        suffix = f"-animations-{len(animation_assets)}" if animation_assets else ""
-        name = f"{Path(str(asset['path'])).stem}{suffix}.blend"
-        return {
-            "kind": "modelBlendPreparation",
-            "requestedCount": len(animation_sources),
-            "exportedCount": len(animation_assets),
-            "issues": [issue.as_json() for issue in issues],
-            "artifactAvailable": True,
-            "_artifactPath": str(blend_path.resolve()),
-            "_artifactName": name,
-            "_artifactContentType": "application/x-blender",
-        }
 
     def build_model_animation_result(
         self,
@@ -4340,20 +4321,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: threading.Event | None = None,
     ) -> Path:
-        blender = optional_tool_registry().capability("blender")
-        if blender.resolved_path is None:
-            raise FileNotFoundError(f"Blender executable not found: {BLENDER_EXE}")
-        return BlenderExportService(
-            blender.resolved_path,
-            PROJECT_ROOT,
-            BLENDER_MODEL_IMPORTER,
-            (
-                BLENDER_ACTION_SWITCHER,
-                PROJECT_ROOT / "blender_materials.py",
-                Path(blender_material_plan.__file__),
-                PROJECT_ROOT / "character_lighting.py",
-            ),
-        ).ensure_model_blend(glb_path, cancel_event=cancel_event)
+        return self.blender_export_service().ensure_model_blend(
+            glb_path, cancel_event=cancel_event
+        )
 
     def handle_manifest_asset_model_blend(self, query: dict[str, list[str]]) -> None:
         resolved = self.resolve_manifest_model_source(query)
