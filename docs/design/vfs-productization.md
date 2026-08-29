@@ -733,3 +733,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   合成回归覆盖多 Bundle 顺序与身份、三类参数传递、重复/逃逸输入拒绝和错误产物摘要拒绝。
   纹理输出遇到非空目录会保留现场并明确失败，不再由通用服务递归删除任意路径。下一阶段继续
   拆普通与 Avatar 各自的领域文档组装，P4 总门禁保持未完成。
+- 普通 manifest 模型的对象加载、裸快照拒绝、唯一根节点选择、层级与 geometry 构建、材质
+  Texture2D 收集、精确图片回绑、缺失纹理/Bundle 诊断和最终语义校验已移入
+  `ordinary_model_document_service.py`。缓存 identity 仍读取原层级 builder 的文件时间，纯重构
+  不会让全部真实模型失效。回归覆盖最小完整层级、裸 JSON 拒绝和 `sourceFile + pathId` 纹理
+  回绑。下一阶段处理 Avatar 模型领域组装，P4 总门禁保持未完成。

@@ -102,6 +102,10 @@ Avatar 模型则始终要求 geometry。HTTP 按显式 run 读取旧资源也复
 具体模型管线只决定输入闭包、对象类型、container 与纹理 selection，并负责把结构化产物组装
 为各自 ModelDocument。纹理输出必须位于新的空目录；服务遇到非空目录会失败并保留现场，
 不会递归删除调用方路径或用新产物掩盖陈旧文件。
+普通 manifest 模型的对象快照解释和领域组装由 `ordinary_model_document_service.py` 负责：
+选择唯一 container 根节点、构造层级与 geometry、收集材质 Texture2D 身份，再按
+`sourceFile + pathId` 回绑 Worker 图片。缺失纹理和依赖 Bundle 形成稳定诊断，最终文档必须
+通过 ModelDocument 语义校验后才能交给 run store 发布。
 
 ## 关键约束
 

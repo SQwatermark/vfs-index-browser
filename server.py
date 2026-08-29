@@ -101,17 +101,10 @@ from npc_avatar_config import (
     parse_avatar_mesh,
     summarize_avatar_mesh,
 )
-from animestudio_model import (
-    attach_mesh_geometry,
-    attach_texture_images,
-    build_hierarchy_document,
-    collect_material_textures,
-    find_container_root_game_object,
-    load_animestudio_objects,
-)
 from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
 from model_worker_service import ModelBundleInput, ModelWorkerService
+from ordinary_model_document_service import OrdinaryModelDocumentService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2778,6 +2771,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def model_worker_service(self) -> ModelWorkerService:
         return ModelWorkerService(UNITY_WORKER, self.write_file_slice)
 
+    def ordinary_model_document_service(self) -> OrdinaryModelDocumentService:
+        return OrdinaryModelDocumentService()
+
     def avatar_model_snapshot_cache_paths(
         self,
         record: dict,
@@ -2824,7 +2820,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cache_root, runs_root, run_path = self.model_snapshot_cache_paths(
             record, int(asset["asset_index"])
         )
-        model_builder_path = Path(build_hierarchy_document.__code__.co_filename)
+        document_service = self.ordinary_model_document_service()
         source_identity = {
             "recordId": int(record["id"]),
             "length": int(record["length"]),
@@ -2836,7 +2832,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "bundleName": str(asset["bundle_name"]),
             # 解析逻辑变化后自动废弃旧 ModelDocument；跨文件协议变化仍由
             # MODEL_SNAPSHOT_VERSION 显式控制。
-            "modelBuilderMtimeNs": model_builder_path.stat().st_mtime_ns,
+            "modelBuilderMtimeNs": document_service.builder_mtime_ns,
             "dependencies": [
                 {
                     "recordId": int(dependency["id"]),
@@ -2925,40 +2921,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "dependencyBundles": dependency_bundles,
             "missingDependencyBundles": missing_dependency_bundles,
         }
-        objects = load_animestudio_objects(object_root)
-        if not objects:
-            bare_snapshots = sum(
-                1
-                for asset_type in ("GameObject", "Transform")
-                for _ in (object_root / asset_type).glob("*.json")
-            )
-            if bare_snapshots:
-                raise RuntimeError(
-                    f"AnimeStudio exported {bare_snapshots} GameObject/Transform JSON files "
-                    "without required $animestudio identity metadata"
-                )
-            raise RuntimeError("AnimeStudio produced no GameObject/Transform JSON snapshots")
-        entry = find_container_root_game_object(objects, str(asset["path"]))
-        document = build_hierarchy_document(
-            objects,
-            entry,
+        assembly = document_service.assemble(
+            object_root,
             logical_path=str(asset["path"]),
             bundle=str(asset["bundle_name"]),
-        )
-        geometry = attach_mesh_geometry(
-            document,
-            objects,
             buffer_uri=(
                 f"/api/manifest-asset/model-buffer?recordId={int(record['id'])}"
                 f"&assetIndex={int(asset['asset_index'])}"
                 f"&run={quote(request_id)}"
             ),
         )
-        textures = collect_material_textures(document, objects)
-        image_uris = {}
         if progress is not None:
             progress({"stage": "textures", "completed": 3, "total": 4})
-        if textures:
+        if assembly.textures:
             texture_result = worker_service.export_textures(
                 staged_inputs,
                 cab_root / "cab-map.json",
@@ -2970,7 +2945,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 primary_input_id="manifest:primary",
                 selections=[
                     {"sourceFile": identity.source_file, "pathId": identity.path_id}
-                    for identity in textures
+                    for identity in assembly.textures
                 ],
                 cancel_event=cancel_event,
             )
@@ -2980,54 +2955,24 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     "workerResult": texture_result,
                 }
             )
-            texture_ids = {
-                (identity.source_file.casefold(), identity.path_id): identity
-                for identity in textures
-            }
-            for artifact in texture_result.get("artifacts", []):
-                identity = texture_ids.get(
-                    (str(artifact.get("sourceFile") or "").casefold(), int(artifact["pathId"]))
-                )
-                if identity is not None:
-                    image_uris[identity] = (
+            document_service.attach_exported_textures(
+                assembly,
+                texture_result,
+                lambda relative: (
                         f"/api/manifest-asset/model-texture?recordId={int(record['id'])}"
                         f"&assetIndex={int(asset['asset_index'])}"
                         f"&run={quote(request_id)}"
-                        f"&path={quote(str(artifact['relativePath']))}"
-                    )
-            attach_texture_images(document, textures, image_uris)
-            missing_textures = [
-                texture_id.document_id for texture_id in textures if texture_id not in image_uris
-            ]
-            if missing_textures:
-                document["diagnostics"].append(
-                    {
-                        "severity": "warning",
-                        "code": "MODEL_TEXTURES_MISSING",
-                        "message": "部分模型纹理未能导出为预览图片。",
-                        "details": {"textureIds": missing_textures},
-                    }
-                )
-        if missing_dependency_bundles:
-            document["diagnostics"].append(
-                {
-                    "severity": "warning",
-                    "code": "DEPENDENCY_BUNDLES_MISSING",
-                    "message": "部分跨 Bundle 依赖在当前 VFS 中不可用，模型层级可能不完整。",
-                    "details": {"bundles": missing_dependency_bundles},
-                }
+                        f"&path={quote(relative)}"
+                ),
             )
-        validation_errors = validate_model_document(document)
-        if validation_errors:
-            run_meta["validationErrors"] = validation_errors
-            raise RuntimeError("generated ModelDocument failed semantic validation")
+        document_service.finalize(assembly, missing_dependency_bundles)
         self.model_run_store().publish(
             cache_root,
             run_path,
             run_root,
-            document=document,
+            document=assembly.document,
             meta=run_meta,
-            geometry=geometry,
+            geometry=assembly.geometry,
             geometry_required=False,
             before_pointer=(
                 lambda: progress({"stage": "publish", "completed": 4, "total": 4})
@@ -3035,7 +2980,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 else None
             ),
         )
-        return document, run_meta
+        return assembly.document, run_meta
 
     def load_avatar_mesh_plan(
         self,
