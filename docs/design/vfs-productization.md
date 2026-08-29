@@ -752,3 +752,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   总步数、scope 与附加字段保持不变；run store 仍独占活动指针发布职责。合成回归固定时间和
   UUID 验证两类精确 ID、路径、步骤复制及进度载荷。Handler 中模型高层协调已显著收窄，但
   资源计划与各服务调用次序仍待形成独立应用服务，P4 总门禁保持未完成。
+- 普通 manifest 模型的缓存读取、session、输入暂存、CAB/对象/纹理步骤、文档组装、URL、metadata
+  和原子发布次序已整体移入 `ordinary_model_build_service.py`。`BrowserHandler` 的
+  `ensure_model_hierarchy` 仅保留原签名并转发输入，任务与同步调用方无需迁移。合成回归覆盖缓存
+  短路、四阶段进度、Worker 步骤顺序、最终文档校验和发布回调。下一阶段对称抽取 Avatar 高层
+  应用服务，P4 总门禁保持未完成。

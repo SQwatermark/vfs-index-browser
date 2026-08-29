@@ -127,6 +127,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `model_source_identity.py` | 普通/Avatar 模型完整来源、依赖、builder 与工具缓存身份 |
 | `model_build_session.py` | 模型单次 run 路径、请求身份、步骤、进度与元数据协调 |
 | `ordinary_model_document_service.py` | 普通模型层级、geometry、纹理回绑、诊断与语义校验 |
+| `ordinary_model_build_service.py` | 普通模型缓存、Worker、文档和发布的应用层协调 |
 | `avatar_model_document_service.py` | Avatar 资源解释、纹理名称回绑与静态 ModelDocument 组装 |
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
