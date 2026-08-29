@@ -718,3 +718,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `AnimeStudioAnimationClip/1.1.0` 文档验证已全部移入 `manifest_worker_service.py`。Handler
   只负责取得 AssetMap 后调用领域方法，原通用 Worker 导出兼容方法已无调用者并删除；回归
   证明 Worker 返回不同 PathID 时不会发布缓存指针并会清理未完成 run。
+- 普通模型与 Avatar 模型的缓存路径、活动/显式不可变 run 解析和缓存复验已移入
+  `model_run_store.py`。两条模型管线现在统一验证版本、完整 source identity、ModelDocument、
+  geometry 和声明过的 texture 目录；Avatar 仍保持 geometry 必需，普通模型仅在声明 buffer
+  时要求。合成回归覆盖路径逃逸、未完成 run、来源变化、缺失 geometry/texture 和无效文档。
+  Worker 构建、ModelDocument 组装与发布写入仍是下一阶段拆分边界，P4 总门禁保持未完成。

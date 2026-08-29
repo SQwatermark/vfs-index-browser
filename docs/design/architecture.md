@@ -91,6 +91,11 @@ worker 调用和领域校验。
 `Type + PathID + Name + Container` 多重集合完全一致；仅含无预览协议类型的 Bundle 也发布
 可验证空 run。Handler 只把服务异常映射为既有 HTTP `mapFailed`/`exportFailed` 响应。
 
+普通模型和 Avatar 模型共享 `model_run_store.py` 的发布读取边界。活动 `run.json` 只指向包含
+自身完成标记的直属不可变 run；缓存命中同时要求版本、完整 source identity、ModelDocument
+语义、geometry 和声明过的 texture 目录一致。普通模型仅在文档声明 buffer 时要求 geometry，
+Avatar 模型则始终要求 geometry。HTTP 按显式 run 读取旧资源也复用同一安全解析函数。
+
 ## 关键约束
 
 - `runtime_config.py` 是环境配置唯一入口。所有持久数据库和派生缓存默认归属同一 data root；

@@ -111,6 +111,7 @@ from animestudio_model import (
     load_animestudio_objects,
 )
 from model_document import validate_model_document
+from model_run_store import ModelRunStore, resolve_published_model_run
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -1043,35 +1044,6 @@ def safe_relative_path(root: Path, raw_path: str) -> Path | None:
     except ValueError:
         return None
     return candidate
-
-
-def resolve_published_model_run(cache_root: Path, requested_run: str = "") -> Path | None:
-    """Resolve one immutable model run without scanning unpublished directories."""
-
-    runs_root = cache_root / "runs"
-    run_name = requested_run.strip()
-    if not run_name:
-        meta_path = cache_root / "run.json"
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            run_name = str(meta.get("selectedRun") or "").strip()
-        except (OSError, json.JSONDecodeError, TypeError):
-            return None
-    selected = safe_relative_path(runs_root, run_name)
-    if (
-        not run_name
-        or selected is None
-        or selected.parent != runs_root.resolve()
-        or not selected.is_dir()
-    ):
-        return None
-    try:
-        completion = json.loads((selected / "run.json").read_text(encoding="utf-8"))
-        if str(completion.get("selectedRun") or "") != run_name:
-            return None
-    except (OSError, json.JSONDecodeError, TypeError):
-        return None
-    return selected
 
 
 def split_manifest_virtual_path(path: str) -> tuple[str, str] | None:
@@ -2798,8 +2770,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         os.replace(tmp, target)
 
     def model_snapshot_cache_paths(self, record: dict, asset_index: int) -> tuple[Path, Path, Path]:
-        root = INTERNAL_CACHE_DIR / str(record["id"]) / "models" / str(asset_index)
-        return root, root / "runs", root / "run.json"
+        return self.model_run_store().cache_paths(int(record["id"]), asset_index)
+
+    def model_run_store(self) -> ModelRunStore:
+        return ModelRunStore(INTERNAL_CACHE_DIR, validate_model_document)
 
     def avatar_model_snapshot_cache_paths(
         self,
@@ -2807,14 +2781,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         asset_index: int,
         lod: int,
     ) -> tuple[Path, Path, Path]:
-        root = (
-            INTERNAL_CACHE_DIR
-            / str(record["id"])
-            / "models"
-            / str(asset_index)
-            / f"avatar-lod-{lod}"
+        return self.model_run_store().cache_paths(
+            int(record["id"]),
+            asset_index,
+            lod=lod,
         )
-        return root, root / "runs", root / "run.json"
 
     def ensure_animation_clip_export(
         self,
@@ -2876,26 +2847,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
             "missingDependencyBundles": missing_dependency_bundles,
             "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
-        published_root = resolve_published_model_run(cache_root)
-        if published_root is not None and run_path.exists():
-            try:
-                run_meta = json.loads(run_path.read_text(encoding="utf-8"))
-                model_path = published_root / "model.json"
-                geometry_path = published_root / "geometry.bin"
-                texture_root = published_root / "textures"
-                document = json.loads(model_path.read_text(encoding="utf-8"))
-                if (
-                    run_meta.get("version") == MODEL_SNAPSHOT_VERSION
-                    and run_meta.get("source") == source_identity
-                    and (not document.get("buffers") or geometry_path.exists())
-                    and (not document.get("images") or texture_root.exists())
-                    and not validate_model_document(document)
-                ):
-                    if progress is not None:
-                        progress({"stage": "cache", "completed": 4, "total": 4})
-                    return document, run_meta
-            except (OSError, json.JSONDecodeError):
-                pass
+        cached = self.model_run_store().load_cached(
+            cache_root,
+            run_path,
+            version=MODEL_SNAPSHOT_VERSION,
+            source_identity=source_identity,
+            geometry_required=False,
+        )
+        if cached is not None:
+            document, run_meta, _model_path = cached
+            if progress is not None:
+                progress({"stage": "cache", "completed": 4, "total": 4})
+            return document, run_meta
 
         request_id = (
             f"model-{int(record['id'])}-{int(asset['asset_index'])}-"
@@ -3203,26 +3166,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
             },
             "toolArtifacts": UNITY_WORKER.artifact_identity(),
         }
-        published_root = resolve_published_model_run(cache_root)
-        if published_root is not None and run_path.is_file():
-            try:
-                run_meta = json.loads(run_path.read_text(encoding="utf-8"))
-                model_path = published_root / "model.json"
-                geometry_path = published_root / "geometry.bin"
-                texture_root = published_root / "textures"
-                document = json.loads(model_path.read_text(encoding="utf-8"))
-                if (
-                    run_meta.get("version") == AVATAR_MODEL_SNAPSHOT_VERSION
-                    and run_meta.get("source") == source_identity
-                    and geometry_path.is_file()
-                    and (not document.get("images") or texture_root.is_dir())
-                    and not validate_model_document(document)
-                ):
-                    if progress is not None:
-                        progress({"stage": "cache", "completed": 5, "total": 5})
-                    return document, run_meta, model_path
-            except (OSError, json.JSONDecodeError):
-                pass
+        cached = self.model_run_store().load_cached(
+            cache_root,
+            run_path,
+            version=AVATAR_MODEL_SNAPSHOT_VERSION,
+            source_identity=source_identity,
+            geometry_required=True,
+        )
+        if cached is not None:
+            document, run_meta, model_path = cached
+            if progress is not None:
+                progress({"stage": "cache", "completed": 5, "total": 5})
+            return document, run_meta, model_path
 
         request_id = (
             f"avatar-{int(bundle_record['id'])}-{int(asset['asset_index'])}-lod{lod}-"
