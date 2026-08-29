@@ -30,6 +30,10 @@
 `audio_dialog_store.py` 负责 SQLite 持久化与逻辑目录查询。索引使用以下三组核心表；
 后续 Wwise 关系图再单独扩展。
 
+运行时由 `audio_dialog_service.py` 消费该索引：统一实现逻辑目录分页、重复路径的
+`dialogKey` 消歧、预览 URL，以及唯一 matched 条目到 VFS PCK 和 WEM/WAV 缓存产物的解析。
+HTTP Handler 不直接查询 AudioDialog 表，也不自行选择多候选媒体。
+
 现有 PCK 解析器生成的 `audio_meta.json` 不需要重复解析：
 `media_entries_from_audio_package_meta()` 会校验元数据版本、条目数和必需字段，再转换为
 统一物理媒体记录。PCK 文件 ID 保留在每条记录中，供后续预览 API 回到原 VFS 文件。

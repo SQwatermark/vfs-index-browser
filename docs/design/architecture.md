@@ -74,6 +74,9 @@ LOD、可选动画和批量上限不再在三个 Handler 中重复解析。`task
 PCK 的 AKPK/BNK 结构只由 `audio_package.py` 解析；`audio_package_service.py` 负责按 VFS
 内容身份缓存媒体索引、提供 WEM/WAV 虚拟目录、解密并原子发布 WEM，再通过 vgmstream 适配器
 派生 WAV。Handler 不再维护第二套宽松二进制解析器或音频缓存路径规则。
+AudioDialog 的逻辑目录、分页、路径/`dialogKey` 精确选择、可播放状态、公开 URL 及 PCK 媒体
+产物协调统一位于 `audio_dialog_service.py`。服务保留 missing/ambiguous/collision 证据，不会为
+不可唯一播放的条目猜选物理媒体；Handler 仅映射 400/404/409/500 并流式发送选定产物。
 Wwise 索引的 Events/Banks/Media 虚拟目录、分页、行到虚拟文件的映射及预览文档由
 `wwise_catalog_service.py` 负责。该服务直接消费 `wwise_store.py` 的证据型查询，不解释或猜测
 语义名称；Handler 只保留 HTTP 错误映射。`wwise_media_service.py` 再把精确 Media 条目转换为

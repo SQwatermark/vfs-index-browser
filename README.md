@@ -141,6 +141,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `blender_export.py` | 可取消 Blender 子进程、缓存命中与原子 `.blend` 发布 |
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |
+| `audio_dialog_service.py` | AudioDialog 目录、条目选择、预览 URL 与媒体产物协调 |
 | `wwise_catalog_service.py` | Wwise 虚拟目录、分页、预览文档与媒体 URL 组装 |
 | `wwise_media_service.py` | Wwise Media 索引条目、VFS PCK 来源与 WEM/WAV 产物协调 |
 | `assetbundle_browser.py` | 已发布 AssetBundle 目录浏览与 AssetMap 元数据回绑 |

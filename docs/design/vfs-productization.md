@@ -827,3 +827,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   WEM/WAV 缓存产物协调已移入 `wwise_media_service.py`。领域结果明确携带产物、格式和下载模式，
   Handler 只保留错误映射、响应头与流式发送。合成回归覆盖完整 Bank 内媒体字段、大小写格式、
   下载模式、无效格式、缺失条目/来源和转换失败边界；下一阶段可对称收口 AudioDialog 媒体路径。
+- AudioDialog 的目录分页、条目查询、重复路径 `dialogKey` 消歧、可播放状态、预览 URL、物理媒体
+  映射、VFS PCK fallback 和 WEM/WAV 产物协调已统一移入 `audio_dialog_service.py`。missing、
+  ambiguous 与 collision 状态仍严格禁止隐式选取；Handler 只保留错误映射和文件响应。真实 SQLite
+  API 与服务回归覆盖分页、matched/missing、重复路径 409、Bank 内媒体字段和缺失 PCK 来源。

@@ -47,7 +47,9 @@ class AudioDialogApiTests(unittest.TestCase):
             )
 
         self.original_audio_db = server.AUDIO_DIALOG_DB
+        self.original_index_freshness_report = server.INDEX_FRESHNESS_REPORT
         server.AUDIO_DIALOG_DB = self.audio_db
+        server.INDEX_FRESHNESS_REPORT = {"status": "current"}
         self.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), QuietBrowserHandler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
@@ -58,6 +60,7 @@ class AudioDialogApiTests(unittest.TestCase):
         self.httpd.server_close()
         self.thread.join(timeout=5)
         server.AUDIO_DIALOG_DB = self.original_audio_db
+        server.INDEX_FRESHNESS_REPORT = self.original_index_freshness_report
         self.temp.cleanup()
 
     def get_json(self, path):
