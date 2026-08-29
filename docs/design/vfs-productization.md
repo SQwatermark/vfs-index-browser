@@ -723,4 +723,7 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   geometry 和声明过的 texture 目录；Avatar 仍保持 geometry 必需，普通模型仅在声明 buffer
   时要求。合成回归覆盖路径逃逸、未完成 run、来源变化、缺失 geometry/texture 和无效文档。
   模型产物和完成标记写入、活动指针原子切换也已由 store 统一，替换失败会清理临时指针并
-  保留旧指针。Worker 构建与 ModelDocument 组装仍是下一阶段拆分边界，P4 总门禁保持未完成。
+  保留旧指针。真实普通模型缓存 `132923/263486` 无需重建即可由新 store 命中，恢复 565 节点、
+  44 网格和 9,971,028 字节 geometry。现存 Avatar 缓存仍是没有 `selectedRun` 的旧格式，按既有
+  完成标记规则不视为可复用 run。Worker 构建与 ModelDocument 组装仍是下一阶段拆分边界，P4
+  总门禁保持未完成。
