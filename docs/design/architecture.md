@@ -85,6 +85,9 @@ worker 调用和领域校验。
 其中 manifest 资源的 Bundle 切片暂存、缓存身份和 Projectile、Cubemap、MonoBehaviour
 领域产物约束进一步由 `manifest_worker_service.py` 管理；AnimationClip 也复用它的通用导出
 入口。Handler 上保留的同名方法只是同步调用兼容层，不再包含 Worker 参数组装或文件派生逻辑。
+整 Bundle 的 AssetMap 输入身份、切片暂存、Worker 调用和 `AssetEntries` 契约则由
+`assetbundle_worker_service.py` 管理；Handler 只把服务异常映射为既有 HTTP `mapFailed`
+响应，动画定位与预览导出仍消费相同的返回结构。
 
 ## 关键约束
 

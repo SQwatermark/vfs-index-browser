@@ -36,6 +36,7 @@ from assetbundle_browser import (
     metadata_by_export_name,
     metadata_for_file,
 )
+from assetbundle_worker_service import ASSETBUNDLE_EXPORT_TYPES, AssetBundleWorkerService
 from audio_package_service import (
     AudioEntry,
     AudioPackageIndexService,
@@ -298,7 +299,6 @@ CHACHA_KEY = bytes.fromhex(
 )
 VFS_PROTO_VERSION = 3
 ASSETBUNDLE_META_VERSION = CACHE_VERSIONS.version("assetbundle-preview")
-ASSETBUNDLE_MAP_VERSION = CACHE_VERSIONS.version("assetbundle-map")
 MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("model-snapshot")
 AVATAR_MODEL_SNAPSHOT_VERSION = CACHE_VERSIONS.version("avatar-model-snapshot")
 ANIMATION_CLIP_EXPORT_VERSION = CACHE_VERSIONS.version("animation-clip-export")
@@ -349,14 +349,6 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".ogg", ".mov"}
 AUDIO_EXTENSIONS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 CONTAINER_EXTENSIONS = {".ab", ".pck", ".usm"}
-ASSETBUNDLE_EXPORT_TYPES = (
-    "Texture2D",
-    "Sprite",
-    "TextAsset",
-    "AudioClip",
-    "VideoClip",
-    "AnimationClip",
-)
 ASSETBUNDLE_WORKER_MEDIA_TYPES = (
     "Texture2D",
     "Sprite",
@@ -3578,10 +3570,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             cancel_event=cancel_event,
         )
 
-    def assetbundle_worker_map_paths(self, record: dict) -> tuple[Path, Path]:
-        root = INTERNAL_CACHE_DIR / str(record["id"]) / "asset-map"
-        return root / "runs", root / "meta.json"
-
     def ensure_assetbundle_map(
         self,
         record: dict,
@@ -3590,56 +3578,17 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: object | None = None,
     ) -> dict | None:
-        """通过 worker 建立单 Bundle AssetMap；不在此处混入 CABMap。"""
-
-        runs_root, meta_path = self.assetbundle_worker_map_paths(record)
-        source_label = str(record.get("logical_id") or f"record:{int(record['id'])}")
-        source_identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "exportTypes": list(ASSETBUNDLE_EXPORT_TYPES),
-            "sourceLabel": source_label,
-            "toolArtifacts": UNITY_WORKER.artifact_identity(),
-        }
-
-        def run_export(
-            run_root: Path,
-            export_root: Path,
-            request_id: str,
-            cancel: object | None,
-        ) -> dict:
-            source_path = run_root / "source.ab"
-            self.write_file_slice(record, chunk_path, source_path)
-            return UNITY_WORKER.build_asset_map(
-                input_path=source_path,
-                output_directory=export_root,
-                source_label=source_label,
-                included_types=ASSETBUNDLE_EXPORT_TYPES,
-                request_id=request_id,
-                cancel_event=cancel,
-            )
-
         try:
-            export_root, artifact_paths, worker_meta = WORKER_RUNS.ensure(
-                runs_root=runs_root,
-                meta_path=meta_path,
-                request_prefix=f"asset-map-{int(record['id'])}",
-                version=ASSETBUNDLE_MAP_VERSION,
-                source_identity=source_identity,
-                invoke=run_export,
+            return AssetBundleWorkerService(
+                INTERNAL_CACHE_DIR,
+                UNITY_WORKER,
+                self.write_file_slice,
+                WORKER_RUNS,
+            ).ensure_map(
+                record,
+                chunk_path,
                 cancel_event=cancel_event,
             )
-            if len(artifact_paths) != 1:
-                raise RuntimeError(
-                    f"expected one AssetMap artifact, found {len(artifact_paths)}"
-                )
-            asset_map = json.loads(artifact_paths[0].read_text(encoding="utf-8-sig"))
-            asset_entries = asset_map.get("AssetEntries")
-            if not isinstance(asset_entries, list):
-                raise RuntimeError("worker AssetMap is missing AssetEntries")
         except (UnityWorkerError, OSError, json.JSONDecodeError, RuntimeError) as error:
             if emit_errors:
                 self.send_json(
@@ -3650,15 +3599,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
                     },
                     status=500,
                 )
-            return None
-
-        return {
-            **worker_meta,
-            "mapReturncode": 0,
-            "exportTypes": ASSETBUNDLE_EXPORT_TYPES,
-            "assetEntries": asset_entries,
-            "assetMapFile": artifact_paths[0].relative_to(export_root).as_posix(),
-        }
+        return None
 
     def ensure_assetbundle_export(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> tuple[Path, dict] | None:
         map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=emit_errors)

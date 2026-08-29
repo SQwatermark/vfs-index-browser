@@ -127,6 +127,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `audio_export.py` | vgmstream WEM→WAV 转换与原子缓存发布 |
 | `audio_package_service.py` | PCK 媒体索引、WEM 提取与 WAV 派生缓存服务 |
 | `assetbundle_browser.py` | 已发布 AssetBundle 目录浏览与 AssetMap 元数据回绑 |
+| `assetbundle_worker_service.py` | AssetBundle Worker 输入、AssetMap 契约与原子缓存编排 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `usm.py` | CRI USM 视频处理 |
