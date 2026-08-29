@@ -17,7 +17,7 @@ DEFAULT_STREAM_CHUNK_SIZE = 1024 * 1024
 class RawFileResponse:
     content_type: str
     content_length: int
-    content_disposition: str
+    content_disposition: str | None
     _path: Path | None = None
     _offset: int = 0
     _data: bytes | None = None
@@ -82,18 +82,43 @@ class RawFileService:
             _chunk_size=self._chunk_size,
         )
 
-    def prepare_path(self, target: Path, *, download: bool) -> RawFileResponse:
-        with target.open("rb") as source:
-            sniff = source.read(32)
+    def prepare_path(
+        self,
+        target: Path,
+        *,
+        download: bool | None,
+        download_name: str | None = None,
+        content_type: str | None = None,
+        encode_filename: bool = True,
+    ) -> RawFileResponse:
+        sniff = None
+        if content_type is None:
+            with target.open("rb") as source:
+                sniff = source.read(32)
         return RawFileResponse(
-            guess_content_type(target.name, sniff),
+            content_type or guess_content_type(target.name, sniff),
             target.stat().st_size,
-            self._disposition(target.name, download),
+            (
+                self._disposition(
+                    download_name or target.name,
+                    download,
+                    encode_filename=encode_filename,
+                )
+                if download is not None
+                else None
+            ),
             _path=target,
             _chunk_size=self._chunk_size,
         )
 
     @staticmethod
-    def _disposition(file_name: str, download: bool) -> str:
+    def _disposition(
+        file_name: str,
+        download: bool,
+        *,
+        encode_filename: bool = True,
+    ) -> str:
         mode = "attachment" if download else "inline"
-        return f"{mode}; filename*=UTF-8''{quote(file_name)}"
+        if encode_filename:
+            return f"{mode}; filename*=UTF-8''{quote(file_name)}"
+        return f"{mode}; filename={file_name}"

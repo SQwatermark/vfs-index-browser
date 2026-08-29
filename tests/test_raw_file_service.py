@@ -55,6 +55,37 @@ class RawFileServiceTests(unittest.TestCase):
         self.assertTrue(all(len(chunk) <= 4 for chunk in chunks))
         self.assertEqual(target.read_bytes(), b"".join(chunks))
 
+    def test_path_response_accepts_transport_metadata_overrides(self):
+        target = self.root / "opaque.bin"
+        target.write_bytes(b"data")
+
+        response = RawFileService().prepare_path(
+            target,
+            download=True,
+            download_name="模型 文件.glb",
+            content_type="model/gltf-binary",
+        )
+        no_disposition = RawFileService().prepare_path(
+            target,
+            download=None,
+            content_type="application/octet-stream",
+        )
+        legacy_name = RawFileService().prepare_path(
+            target,
+            download=False,
+            download_name="123.wem",
+            content_type="audio/x-wem",
+            encode_filename=False,
+        )
+
+        self.assertEqual("model/gltf-binary", response.content_type)
+        self.assertEqual(
+            "attachment; filename*=UTF-8''%E6%A8%A1%E5%9E%8B%20%E6%96%87%E4%BB%B6.glb",
+            response.content_disposition,
+        )
+        self.assertIsNone(no_disposition.content_disposition)
+        self.assertEqual("inline; filename=123.wem", legacy_name.content_disposition)
+
 
 if __name__ == "__main__":
     unittest.main()

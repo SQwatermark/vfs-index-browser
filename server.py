@@ -979,14 +979,28 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def send_error_json(self, status: int, message: str) -> None:
         self.send_json({"error": message}, status=status)
 
-    def send_raw_file(self, response: RawFileResponse) -> None:
+    def send_raw_file(
+        self,
+        response: RawFileResponse,
+        *,
+        extra_headers: dict[str, str] | None = None,
+        ignore_disconnect: bool = False,
+    ) -> None:
         self.send_response(200)
         self.send_header("Content-Type", response.content_type)
         self.send_header("Content-Length", str(response.content_length))
-        self.send_header("Content-Disposition", response.content_disposition)
+        if response.content_disposition is not None:
+            self.send_header("Content-Disposition", response.content_disposition)
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         for data in response.chunks():
-            self.wfile.write(data)
+            try:
+                self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                if ignore_disconnect:
+                    return
+                raise
 
     def require_current_index(self) -> bool:
         if INDEX_FRESHNESS_REPORT.get("status") == "current":
@@ -1393,24 +1407,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except TaskNotFoundError:
             self.send_error_json(404, "task artifact not found")
             return
-        self.send_response(200)
-        self.send_header("Content-Type", artifact.content_type)
-        self.send_header("Content-Length", str(artifact.path.stat().st_size))
-        self.send_header(
-            "Content-Disposition",
-            f"attachment; filename*=UTF-8''{quote(artifact.name)}",
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                artifact.path,
+                download=True,
+                download_name=artifact.name,
+                content_type=artifact.content_type,
+            ),
+            extra_headers={"Cache-Control": "private, max-age=3600"},
+            ignore_disconnect=True,
         )
-        self.send_header("Cache-Control", "private, max-age=3600")
-        self.end_headers()
-        with artifact.path.open("rb") as source:
-            while data := source.read(STREAM_CHUNK_SIZE):
-                try:
-                    self.wfile.write(data)
-                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                    # Downloads can be cancelled after headers have been accepted.  The
-                    # artifact remains valid; ending this request quietly avoids a noisy
-                    # socketserver traceback for an ordinary client-side cancellation.
-                    return
 
     def handle_akedb_compatible(self, request_path: str) -> None:
         """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""
@@ -1950,22 +1956,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except sqlite3.DatabaseError as error:
             self.send_error_json(500, f"AudioDialog index error: {error}")
             return
-        disposition = "attachment" if artifact.download else "inline"
-        self.send_response(200)
-        self.send_header("Content-Type", guess_content_type(artifact.target.name))
-        self.send_header("Content-Length", str(artifact.target.stat().st_size))
         download_name = (
             Path(artifact.logical_path).with_suffix(f".{artifact.mode}").name
             or artifact.target.name
         )
-        self.send_header(
-            "Content-Disposition",
-            f"{disposition}; filename*=UTF-8''{quote(download_name)}",
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                artifact.target,
+                download=artifact.download,
+                download_name=download_name,
+                content_type=guess_content_type(artifact.target.name),
+            )
         )
-        self.end_headers()
-        with artifact.target.open("rb") as file:
-            while data := file.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
 
     def handle_wwise_list(self, query: dict[str, list[str]]) -> None:
         try:
@@ -2013,18 +2015,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except (sqlite3.DatabaseError, RuntimeError) as error:
             self.send_error_json(500, f"Wwise index error: {error}")
             return
-        disposition = "attachment" if artifact.download else "inline"
-        self.send_response(200)
-        self.send_header("Content-Type", guess_content_type(artifact.target.name))
-        self.send_header("Content-Length", str(artifact.target.stat().st_size))
-        self.send_header(
-            "Content-Disposition",
-            f"{disposition}; filename={artifact.entry.wem_id}.{artifact.mode}",
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                artifact.target,
+                download=artifact.download,
+                download_name=f"{artifact.entry.wem_id}.{artifact.mode}",
+                content_type=guess_content_type(artifact.target.name),
+                encode_filename=False,
+            )
         )
-        self.end_headers()
-        with artifact.target.open("rb") as file:
-            while data := file.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
 
     def handle_file(self, query: dict[str, list[str]]) -> None:
         try:
@@ -3428,17 +3427,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
 
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        disposition = "attachment" if download else "inline"
         name = f"{Path(str(asset['path'])).stem}.glb"
-        self.send_response(200)
-        self.send_header("Content-Type", "model/gltf-binary")
-        self.send_header("Content-Length", str(glb_path.stat().st_size))
-        self.send_header("Content-Disposition", f"{disposition}; filename*=UTF-8''{quote(name)}")
-        self.send_header("Cache-Control", "private, max-age=3600")
-        self.end_headers()
-        with glb_path.open("rb") as source:
-            while data := source.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                glb_path,
+                download=download,
+                download_name=name,
+                content_type="model/gltf-binary",
+            ),
+            extra_headers={"Cache-Control": "private, max-age=3600"},
+        )
 
     def ensure_model_blend_file(
         self,
@@ -3529,19 +3527,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
         suffix = f"-animations-{len(animation_assets)}" if animation_assets else ""
         name = f"{Path(str(asset['path'])).stem}{suffix}.blend"
-        self.send_response(200)
-        self.send_header("Content-Type", "application/x-blender")
-        self.send_header("Content-Length", str(blend_path.stat().st_size))
-        self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(name)}")
-        self.send_header(
-            "X-Endfield-Skipped-Animation-Count",
-            str(len(animation_issues)),
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                blend_path,
+                download=True,
+                download_name=name,
+                content_type="application/x-blender",
+            ),
+            extra_headers={
+                "X-Endfield-Skipped-Animation-Count": str(len(animation_issues)),
+                "Cache-Control": "private, max-age=3600",
+            },
         )
-        self.send_header("Cache-Control", "private, max-age=3600")
-        self.end_headers()
-        with blend_path.open("rb") as source:
-            while data := source.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
 
     def handle_manifest_asset_model_animation(
         self,
@@ -3601,14 +3598,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if target is None:
             self.send_error_json(404, "model geometry buffer not found")
             return
-        self.send_response(200)
-        self.send_header("Content-Type", "application/octet-stream")
-        self.send_header("Content-Length", str(target.stat().st_size))
-        self.send_header("Cache-Control", "private, max-age=3600")
-        self.end_headers()
-        with target.open("rb") as source:
-            while data := source.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                target,
+                download=None,
+                content_type="application/octet-stream",
+            ),
+            extra_headers={"Cache-Control": "private, max-age=3600"},
+        )
 
     def handle_manifest_asset_model_texture(self, query: dict[str, list[str]]) -> None:
         try:
@@ -3626,14 +3623,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if target is None:
             self.send_error_json(404, "model texture not found")
             return
-        self.send_response(200)
-        self.send_header("Content-Type", "image/png")
-        self.send_header("Content-Length", str(target.stat().st_size))
-        self.send_header("Cache-Control", "private, max-age=3600")
-        self.end_headers()
-        with target.open("rb") as source:
-            while data := source.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                target,
+                download=None,
+                content_type="image/png",
+            ),
+            extra_headers={"Cache-Control": "private, max-age=3600"},
+        )
 
     def handle_manifest_asset_raw(self, query: dict[str, list[str]]) -> None:
         resolved_source = self.resolve_manifest_asset_source(query)
@@ -3656,20 +3653,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             _, target, _, _ = resolved
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        disposition = "attachment" if download else "inline"
-        with target.open("rb") as file:
-            sniff = file.read(32)
-        self.send_response(200)
-        self.send_header("Content-Type", guess_content_type(target.name, sniff))
-        self.send_header("Content-Length", str(target.stat().st_size))
-        self.send_header(
-            "Content-Disposition",
-            f"{disposition}; filename*=UTF-8''{quote(target.name)}",
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(target, download=download)
         )
-        self.end_headers()
-        with target.open("rb") as file:
-            while data := file.read(STREAM_CHUNK_SIZE):
-                self.wfile.write(data)
 
     def handle_internal_list(self, query: dict[str, list[str]]) -> None:
         optional_tools = optional_tool_registry()

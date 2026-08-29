@@ -924,3 +924,8 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   输出，并对伪 JSON/文本 MIME 降级。Handler 只发送状态/响应头并迭代数据块。真实重启验证
   `RootConfig.lua` 仍为 44 字节 UTF-8 文本，中文 PCK 的 `1060201.wem` 仍为 17,843 字节
   `audio/x-wem`；两者 inline/attachment 文件名均保持一致。
+- 本地派生产物的手写分块循环也已统一到 `raw_file_service.py`：覆盖任务 artifact、AudioDialog、
+  Wwise、Manifest 普通/Cubemap raw、GLB、Blend、模型 geometry 和 texture。响应描述显式支持 MIME、
+  下载名、无 Content-Disposition、历史未编码 filename，以及 Cache-Control/动画跳过数等额外头；
+  Handler 中不再存在重复的 `STREAM_CHUNK_SIZE` 文件循环。真实 Wwise ordinal 40 的 WEM/WAV
+  重启后仍为 8,299/81,174 字节，且 `filename=4125696.wem/.wav` 历史响应头保持不变。
