@@ -1,3 +1,5 @@
+import hashlib
+import json
 import sqlite3
 import tempfile
 import unittest
@@ -66,6 +68,54 @@ class IndexFreshnessTests(unittest.TestCase):
 
             self.assertEqual("unverified", report["status"])
             self.assertEqual("blc_content_identity_not_recorded", report["reason"])
+
+    def test_reports_current_only_when_every_blc_identity_matches(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            chunk = root / "existing.chk"
+            chunk.write_bytes(b"chunk")
+            blc = root / "VFS" / "A" / "A.blc"
+            blc.parent.mkdir(parents=True)
+            blc.write_bytes(b"metadata")
+            database = self.build_database(
+                root,
+                [("StreamingAssets", "A", "existing.chk", str(chunk), 1)],
+            )
+            summary = {
+                "sources": [
+                    {
+                        "source": "StreamingAssets",
+                        "sourceRoot": str(root),
+                        "blcIdentities": [
+                            {
+                                "blockHash": "A",
+                                "relativePath": "VFS/A/A.blc",
+                                "length": blc.stat().st_size,
+                                "sha256": hashlib.sha256(blc.read_bytes()).hexdigest(),
+                            }
+                        ],
+                    }
+                ]
+            }
+            with closing(sqlite3.connect(database)) as conn:
+                conn.execute(
+                    "INSERT INTO meta VALUES ('summary', ?)",
+                    (json.dumps(summary),),
+                )
+                conn.commit()
+
+            report = inspect_index_freshness(database)
+
+            self.assertEqual("current", report["status"])
+            self.assertEqual(1, report["checkedBlcCount"])
+            self.assertEqual(0, report["changedBlcCount"])
+
+            blc.write_bytes(b"changed")
+            changed = inspect_index_freshness(database)
+            self.assertEqual("stale", changed["status"])
+            self.assertEqual("blc_content_identity_changed", changed["reason"])
+            self.assertEqual(1, changed["changedBlcCount"])
+            self.assertNotIn(str(root), str(changed["examples"]))
 
     def test_reports_missing_or_invalid_database_without_raising(self):
         with tempfile.TemporaryDirectory() as directory:

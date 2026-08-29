@@ -234,7 +234,8 @@ worker 采用“一次请求一个子进程”。取消不能只是修改 UI 状
 
 ### 后续优化：VFS 主索引新鲜度与启动重建
 
-这是一项 P4 产品化任务，**当前尚未实现**。2026-08-25 的梨子诺资源排查已经证明，现有
+这是一项 P4 产品化任务。启动检测、仓库内生成、候选验证和原子切换已实现；陈旧状态下各类
+资源查询的统一错误门禁仍待收口。2026-08-25 的梨子诺资源排查已经证明，旧
 SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启动且旧记录仍标记
 `chunk_exists=1`，但实际资源闭包已经过期。调用方因此可能得到错误的“资源不存在”，而不
 是可诊断的“索引陈旧”。启动流程后续必须满足：
@@ -631,3 +632,11 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `tools/index_endfield_vfs.py`，不再把固定盘符脚本作为隐式生产依赖。合成 fixture 覆盖 BLC
   ChaCha20 解密、CRC、code version 4、chunk/file 元数据及 JSONL 逻辑身份；下一步在其上增加
   `.blc` 内容身份并接入新 run 构建、验证和原子 SQLite 切换。
+- 生成器现会记录每个 `.blc` 的相对路径、长度与 SHA-256；只有全部匹配才报告 `current`。
+  `index_rebuild.py` 在活动库同目录创建临时 run，生成 JSONL、构建候选 SQLite、执行
+  `PRAGMA integrity_check`、验证非空记录与 BLC 身份后才以 `os.replace` 原子切换。任何阶段失败
+  都清理 run、保留旧库并报告 `indexRebuild.status=failed`。真实首次启动从当前游戏数据恢复
+  904,536 条源记录和 455,538 条 effective 记录，验证 1,063 个可用 chunk 与 43 个 BLC 后恢复
+  `ready/current`；Persistent manifest 更新为 47,258,312 字节。后续重启不重建，manifest 预热
+  后庄方宜当前 PostModel `451359/99084` 的任务创建耗时约 48 ms。旧 asset index `263486` 已不再
+  指向模型，证明调用方不能跨 manifest 版本保存裸 asset index 而缺少 manifest 内容身份。

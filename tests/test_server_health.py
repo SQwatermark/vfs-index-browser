@@ -75,6 +75,24 @@ class ServerHealthTests(unittest.TestCase):
         self.assertEqual("degraded", document["status"])
         self.assertEqual("stale", document["indexFreshness"]["status"])
 
+    def test_health_is_degraded_when_manifest_prewarm_failed(self):
+        class ReadyWorker:
+            def diagnose(self, _required_capabilities):
+                return {"status": "ready"}
+
+        with (
+            patch.object(server, "UNITY_WORKER", ReadyWorker()),
+            patch.object(
+                server,
+                "MANIFEST_INDEX_REPORT",
+                {"status": "unavailable", "message": "invalid manifest"},
+            ),
+        ):
+            document = server.build_health_document()
+
+        self.assertEqual("degraded", document["status"])
+        self.assertEqual("unavailable", document["manifestIndex"]["status"])
+
     def test_handler_returns_uncached_health_document(self):
         handler = object.__new__(server.BrowserHandler)
         responses = []

@@ -20,6 +20,7 @@ Typical use:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import struct
@@ -235,6 +236,10 @@ def chacha20_apply(key: bytes, nonce12: bytes, counter: int, data: bytes) -> byt
 
 def decrypt_blc(path: Path) -> bytes:
     raw = path.read_bytes()
+    return decrypt_blc_bytes(raw)
+
+
+def decrypt_blc_bytes(raw: bytes) -> bytes:
     if len(raw) < BLOCK_HEAD_LEN:
         raise ValueError("blc file too short")
     return chacha20_apply(CHACHA_KEY, raw[:BLOCK_HEAD_LEN], 1, raw[BLOCK_HEAD_LEN:])
@@ -375,6 +380,7 @@ def index_source(
         "parseErrorCount": 0,
         "missingBlcCount": 0,
         "byteCount": 0,
+        "blcIdentities": [],
         "blocks": {},
     }
     if not vfs_root.exists():
@@ -396,7 +402,14 @@ def index_source(
             continue
 
         try:
-            block = parse_block_info(decrypt_blc(blc_path), verify_crc=not args.no_crc)
+            raw_blc = blc_path.read_bytes()
+            summary["blcIdentities"].append({
+                "blockHash": block_hash,
+                "relativePath": blc_path.relative_to(source_root).as_posix(),
+                "length": len(raw_blc),
+                "sha256": hashlib.sha256(raw_blc).hexdigest(),
+            })
+            block = parse_block_info(decrypt_blc_bytes(raw_blc), verify_crc=not args.no_crc)
         except Exception as exc:
             summary["parseErrorCount"] += 1
             writer.write(json.dumps({
@@ -533,11 +546,10 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     return args
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv or sys.argv[1:])
+def build_index(args: argparse.Namespace) -> dict[str, Any]:
     roots = source_roots(args)
     if not roots:
-        raise SystemExit("no existing source roots found")
+        raise ValueError("no existing source roots found")
 
     regexes = [re.compile(pattern, re.IGNORECASE) for pattern in args.file_regex]
     started = time.time()
@@ -588,7 +600,17 @@ def main(argv: list[str] | None = None) -> int:
         ],
     }
     args.summary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"output": str(args.output), "summary": str(args.summary), "totals": totals}, ensure_ascii=False, indent=2))
+    return payload
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    payload = build_index(args)
+    print(json.dumps({
+        "output": str(args.output),
+        "summary": str(args.summary),
+        "totals": payload["totals"],
+    }, ensure_ascii=False, indent=2))
     return 0
 
 

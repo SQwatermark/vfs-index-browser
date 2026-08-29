@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -14,6 +16,8 @@ def inspect_index_freshness(db_path: Path, *, example_limit: int = 5) -> dict:
             "reason": "index_database_missing",
             "checkedChunkCount": 0,
             "missingChunkCount": 0,
+            "checkedBlcCount": 0,
+            "changedBlcCount": 0,
             "examples": [],
         }
     try:
@@ -35,19 +39,19 @@ def inspect_index_freshness(db_path: Path, *, example_limit: int = 5) -> dict:
             "message": str(error),
             "checkedChunkCount": 0,
             "missingChunkCount": 0,
+            "checkedBlcCount": 0,
+            "changedBlcCount": 0,
             "examples": [],
         }
 
     missing = [row for row in rows if not Path(row[3]).is_file()]
     report = {
         "status": "stale" if missing else "unverified",
-        "reason": (
-            "expected_chunks_missing"
-            if missing
-            else "blc_content_identity_not_recorded"
-        ),
+        "reason": "expected_chunks_missing" if missing else "blc_content_identity_not_recorded",
         "checkedChunkCount": len(rows),
         "missingChunkCount": len(missing),
+        "checkedBlcCount": 0,
+        "changedBlcCount": 0,
         "examples": [
             {
                 "source": str(row[0]),
@@ -62,4 +66,49 @@ def inspect_index_freshness(db_path: Path, *, example_limit: int = 5) -> dict:
             report["builtAtEpoch"] = int(meta["builtAtEpoch"])
         except ValueError:
             pass
+    if missing:
+        return report
+
+    try:
+        summary = json.loads(meta.get("summary", "null"))
+        sources = summary["sources"]
+        identities = [
+            (source, identity)
+            for source in sources
+            for identity in source.get("blcIdentities", [])
+        ]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return report
+    if not identities:
+        return report
+
+    changed = []
+    for source, identity in identities:
+        try:
+            path = Path(source["sourceRoot"]) / str(identity["relativePath"])
+            expected_length = int(identity["length"])
+            expected_sha256 = str(identity["sha256"]).casefold()
+            matches = (
+                path.is_file()
+                and path.stat().st_size == expected_length
+                and hashlib.sha256(path.read_bytes()).hexdigest() == expected_sha256
+            )
+        except (KeyError, OSError, TypeError, ValueError):
+            matches = False
+        if not matches:
+            changed.append(
+                {
+                    "source": str(source.get("source") or "unknown"),
+                    "blockHash": str(identity.get("blockHash") or "unknown"),
+                }
+            )
+    report["checkedBlcCount"] = len(identities)
+    report["changedBlcCount"] = len(changed)
+    report["examples"] = changed[:example_limit]
+    if changed:
+        report["status"] = "stale"
+        report["reason"] = "blc_content_identity_changed"
+    else:
+        report["status"] = "current"
+        report["reason"] = "blc_content_identity_matches"
     return report

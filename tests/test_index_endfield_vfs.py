@@ -90,6 +90,12 @@ class EndfieldVfsIndexerTests(unittest.TestCase):
         records = [json.loads(line) for line in writer.getvalue().splitlines()]
         file_record = next(item for item in records if item["recordType"] == "file")
         self.assertEqual(1, summary["selectedFileCount"])
+        self.assertEqual("1CDDBF1F", summary["blcIdentities"][0]["blockHash"])
+        self.assertEqual(
+            "VFS/1CDDBF1F/1CDDBF1F.blc",
+            summary["blcIdentities"][0]["relativePath"],
+        )
+        self.assertEqual(64, len(summary["blcIdentities"][0]["sha256"]))
         self.assertEqual(
             "BundleManifest/Data/Bundles/Windows/manifest.hgmmap",
             file_record["logicalId"],

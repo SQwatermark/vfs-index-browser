@@ -56,6 +56,11 @@ from sparkbuffer import SparkBufferError, parse_sparkbuffer
 from usm import UsmError, convert_usm_to_mp4
 from manifest_index import ManifestIndex
 from index_freshness import inspect_index_freshness
+from index_rebuild import (
+    IndexRebuildError,
+    load_index_source_roots,
+    rebuild_index_atomically,
+)
 from manifest_asset_service import (
     ManifestAssetResolutionError,
     ManifestAssetService,
@@ -144,6 +149,8 @@ INDEX_FRESHNESS_REPORT = {
     "missingChunkCount": 0,
     "examples": [],
 }
+INDEX_REBUILD_REPORT = {"status": "notRun"}
+MANIFEST_INDEX_REPORT = {"status": "notRun"}
 
 
 @dataclass(frozen=True)
@@ -253,9 +260,12 @@ def build_health_document() -> dict:
             "ready"
             if worker["status"] == "ready"
             and index_status not in {"stale", "unavailable"}
+            and MANIFEST_INDEX_REPORT.get("status") != "unavailable"
             else "degraded"
         ),
         "indexFreshness": INDEX_FRESHNESS_REPORT,
+        "indexRebuild": INDEX_REBUILD_REPORT,
+        "manifestIndex": MANIFEST_INDEX_REPORT,
         "unityWorker": worker,
         "optionalTools": [
             executable_diagnostic("blender", BLENDER_EXE),
@@ -305,7 +315,7 @@ ASSETBUNDLE_META_VERSION = 4
 ASSETBUNDLE_MAP_VERSION = 1
 MONOBEHAVIOUR_DUMP_VERSION = 3
 MONOBEHAVIOUR_RAW_VERSION = 2
-PROJECTILE_COMPONENT_EXPORT_VERSION = 1
+PROJECTILE_COMPONENT_EXPORT_VERSION = 2
 CUBEMAP_EXPORT_VERSION = 2
 MODEL_SNAPSHOT_VERSION = 33
 AVATAR_MODEL_SNAPSHOT_VERSION = 5
@@ -6933,11 +6943,16 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--rebuild", action="store_true", help="Rebuild SQLite database before serving")
     parser.add_argument("--build-only", action="store_true", help="Rebuild SQLite database and exit")
+    parser.add_argument(
+        "--no-auto-rebuild",
+        action="store_true",
+        help="Report a stale VFS index without rebuilding it at startup",
+    )
     return parser.parse_args(list(argv))
 
 
 def main(argv: list[str] | None = None) -> int:
-    global INDEX_FRESHNESS_REPORT
+    global INDEX_FRESHNESS_REPORT, INDEX_REBUILD_REPORT, MANIFEST_INDEX_REPORT
 
     args = parse_args(argv or sys.argv[1:])
     if args.rebuild or not args.db.exists():
@@ -6949,6 +6964,43 @@ def main(argv: list[str] | None = None) -> int:
 
     BrowserHandler.db_path = args.db
     INDEX_FRESHNESS_REPORT = inspect_index_freshness(args.db)
+    INDEX_REBUILD_REPORT = {"status": "notNeeded"}
+    if (
+        not args.no_auto_rebuild
+        and INDEX_FRESHNESS_REPORT.get("status") in {"stale", "unverified"}
+    ):
+        print(
+            "VFS index is not verified against the current installation; "
+            "building a replacement before serving...",
+            flush=True,
+        )
+        try:
+            INDEX_REBUILD_REPORT = rebuild_index_atomically(
+                args.db,
+                load_index_source_roots(args.db),
+                build_database,
+            )
+            INDEX_FRESHNESS_REPORT = inspect_index_freshness(args.db)
+        except IndexRebuildError as error:
+            INDEX_REBUILD_REPORT = {
+                "status": "failed",
+                "message": str(error),
+            }
+            print(f"VFS index rebuild failed; preserving previous database: {error}")
+    manifest_service = object.__new__(BrowserHandler)
+    manifest_service.db_path = args.db
+    try:
+        manifest_summary = manifest_service.resolve_installed_manifest_index().summary()
+        MANIFEST_INDEX_REPORT = {
+            "status": "ready",
+            **manifest_summary,
+        }
+    except (OSError, sqlite3.Error, ValueError) as error:
+        MANIFEST_INDEX_REPORT = {
+            "status": "unavailable",
+            "message": str(error),
+        }
+        print(f"manifest index prewarm failed: {error}")
     server = ThreadingHTTPServer((args.host, args.port), BrowserHandler)
     print(f"VFS index browser: http://{args.host}:{args.port}")
     print(f"database: {args.db}")
