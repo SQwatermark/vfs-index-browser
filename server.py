@@ -149,15 +149,8 @@ from animestudio_animation import (
     attach_animation_clip,
     bind_animation_clip,
 )
-from skeletal_morph import (
-    bake_morph_animation,
-    is_dialog_morph_animation_path,
-    merge_morph_avatars,
-    morph_avatar_asset_names,
-    morph_clip_asset_path,
-    parse_morph_avatar,
-    parse_morph_clip,
-)
+from skeletal_morph import is_dialog_morph_animation_path
+from skeletal_morph_service import SkeletalMorphService
 from projectile_data import (
     ProjectileDecodeError,
     ProjectileNotFoundError,
@@ -2311,9 +2304,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.ensure_model_hierarchy,
             self.resolve_bundle_sources,
             is_dialog_morph_animation_path,
-            self.build_skeletal_morph_animation,
+            self.skeletal_morph_service().build,
             self.ensure_animation_clip_export,
             bind_animation_clip,
+        )
+
+    def skeletal_morph_service(self) -> SkeletalMorphService:
+        return SkeletalMorphService(
+            self.resolve_index_asset_bundle,
+            self.ensure_manifest_monobehaviour_raw,
         )
 
     def model_animation_catalog_service(self) -> ModelAnimationCatalogService:

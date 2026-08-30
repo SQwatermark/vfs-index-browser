@@ -108,10 +108,13 @@ public static class ProjectileComponentDecoder
                 "projectile_ability_system_not_unique",
                 $"Raw 中应有且仅有一个 AbilitySystemData，实际为 {abilitySystemEntries.Count} 个。");
         }
-        var entityBlackboard = ProjectileAbilitySystemBlackboardDecoder.Decode(
-            rawData,
-            abilitySystemEntries[0]);
-        if (entityBlackboard is not null)
+        // AbilitySystemDataPrefixDecoder 已按 1.4.4 的确定字段顺序走到 entityBlackboard。
+        // 旧扫描器会把同一 AbilitySystemData 内其他 DataPair 列表误认成候选，不能再用
+        // “唯一看起来像黑板的字节段”作为 Projectile 导出的身份依据。
+        var abilitySystem = AbilitySystemDataPrefixDecoder.Decode(rawData, abilitySystemEntries[0]);
+        var entityBlackboard = (IReadOnlyList<Dictionary<string, object?>>)
+            abilitySystem.Data["entityBlackboard"]!;
+        if (entityBlackboard.Count > 0)
         {
             component["entityBlackboard"] = entityBlackboard;
         }
