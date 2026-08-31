@@ -463,6 +463,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   文件，`release.json` 写入 `sourceTree: clean`；显式 `-AllowDirty` 仅供试构建，验收器默认
   拒绝且禁止其生成正式报告。输出/归档/报告路径也改为先区分绝对与相对路径，避免 PowerShell
   将文档中的盘符路径错误拼到当前目录。两条边界均有自动化契约测试，当前 Python 门禁 613 项。
+  提交 `890171d` 已在独立 clean checkout 中使用绝对输出路径重新发布，包内 `sourceTree` 为
+  `clean`；随包验收器核对 353 个不可变文件，在隔离环境连接真实 data root 后生成报告，
+  服务/索引/Manifest/11 项 worker 能力全绿，报告不含发布或数据绝对路径。
 - 发布验收器可用 `-ReportPath` 生成稳定的 `schemaVersion: 1` 机器验收报告。报告只在真实
   data root 服务验收成功后写出，包含发布提交/元数据哈希、文件数、OS/架构、隔离状态、
   worker 版本/能力数和索引/Manifest 结论，不记录用户名、发布绝对路径或 data root。本机
