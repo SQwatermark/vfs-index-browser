@@ -38,6 +38,7 @@ GET_WITH_INDEX = {
     "/api/manifest-asset/model-animation": ("handle_manifest_asset_model_animation", True),
     "/api/manifest-asset/model-animations": ("handle_manifest_asset_model_animations", True),
     "/api/tablecfg/json": ("handle_tablecfg_json", True),
+    "/api/memorypack/json": ("handle_memorypack_json", True),
     "/api/internal/list": ("handle_internal_list", True),
     "/api/internal/preview": ("handle_internal_preview", True),
     "/api/internal/raw": ("handle_internal_raw", True),

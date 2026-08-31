@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from file_preview_service import truncate_text
@@ -11,6 +12,12 @@ from memorypack_value_decoder import (
     DecodedMemoryPackValue,
     MemoryPackValueDecodeError,
 )
+
+
+@dataclass(frozen=True)
+class MemoryPackJsonExport:
+    data: bytes
+    meta: dict
 
 
 class MemoryPackPreviewService:
@@ -25,6 +32,17 @@ class MemoryPackPreviewService:
         record: dict,
         chunk_path: Path,
     ) -> tuple[str, bool, dict] | None:
+        exported = self.export(record, chunk_path)
+        if exported is None:
+            return None
+        text, truncated = truncate_text(exported.data.decode("utf-8"))
+        return text, truncated, exported.meta
+
+    def export(
+        self,
+        record: dict,
+        chunk_path: Path,
+    ) -> MemoryPackJsonExport | None:
         try:
             decoded = self._decode(record.get("logical_id"), record, chunk_path)
         except MemoryPackValueDecodeError as error:
@@ -46,11 +64,9 @@ class MemoryPackPreviewService:
             "complete": decoded.complete,
             "discoveredUnions": discovered_unions,
         }
-        text, truncated = truncate_text(
-            json.dumps(
-                {"__meta": meta, "value": decoded.value},
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
-        return text, truncated, meta
+        data = json.dumps(
+            {"__meta": meta, "value": decoded.value},
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
+        return MemoryPackJsonExport(data, meta)

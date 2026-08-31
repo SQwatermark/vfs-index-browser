@@ -32,6 +32,21 @@ class RequestRouterTests(unittest.TestCase):
         self.assertTrue(dispatch_get(Handler(), "/api/list", query))
         self.assertEqual(["gate", query], calls)
 
+    def test_memorypack_export_runs_after_index_gate(self):
+        calls = []
+
+        class Handler:
+            def require_current_index(self):
+                calls.append("gate")
+                return True
+
+            def handle_memorypack_json(self, query):
+                calls.append(query)
+
+        query = {"id": ["123"], "download": ["1"]}
+        self.assertTrue(dispatch_get(Handler(), "/api/memorypack/json", query))
+        self.assertEqual(["gate", query], calls)
+
     def test_static_path_is_not_consumed(self):
         self.assertFalse(dispatch_get(object(), "/index.html", {}))
 

@@ -65,6 +65,11 @@ class VfsFilePreviewServiceTests(unittest.TestCase):
 
         self.assertEqual("memorypack-json", result["encoding"])
         self.assertEqual(meta, result["memoryPack"])
+        self.assertEqual("/api/memorypack/json?id=1", result["convertedRawUrl"])
+        self.assertEqual(
+            "/api/memorypack/json?id=1&download=1",
+            result["convertedDownloadUrl"],
+        )
 
     def test_failed_memorypack_keeps_binary_probe_and_error(self):
         result = self.service(

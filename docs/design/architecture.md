@@ -237,7 +237,8 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 可选工具缺失只进入诊断，不影响服务存活状态。HTTP 层只附加 `no-store` 缓存策略。
 MemoryPack 的 schema 解码保持在 `memorypack_value_decoder.py`；解码值到文件预览所需 `__meta`、
 完整消费状态、稳定 union 诊断和截断 JSON 文本的转换由 `memorypack_preview_service.py` 负责。
-普通 VFS 预览只消费该契约，Handler 不解释 MemoryPack 领域结果。
+普通 VFS 预览和完整 `/api/memorypack/json` 打开/下载入口消费同一份 UTF-8 `__meta + value`
+序列化结果，Handler 不解释 MemoryPack 领域结果。
 
 - `runtime_config.py` 是环境配置唯一入口。所有持久数据库和派生缓存默认归属同一 data root；
   细粒度 override 只覆盖对应字段，不得恢复相邻仓库或固定用户目录探测。

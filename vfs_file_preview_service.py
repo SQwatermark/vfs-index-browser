@@ -150,6 +150,7 @@ class VfsFilePreviewService:
             error_message = str(error)
         if decoded is not None:
             text, decoded_truncated, meta = decoded
+            converted_url = f"/api/memorypack/json?id={record['id']}"
             return {
                 **base,
                 "kind": "text",
@@ -161,6 +162,8 @@ class VfsFilePreviewService:
                     f" 已消费 {meta['consumed']} / {meta['bytes']} bytes。"
                 ),
                 "memoryPack": meta,
+                "convertedRawUrl": converted_url,
+                "convertedDownloadUrl": f"{converted_url}&download=1",
             }
         probe = binary_json_probe(data, int(record["length"]))
         return {

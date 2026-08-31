@@ -640,7 +640,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         return MEMORYPACK_INPUTS.load()
 
     def decode_memorypack_json_preview(self, record: dict, chunk_path: Path) -> tuple[str, bool, dict] | None:
-        return MemoryPackPreviewService(self.memorypack_value_decoder().decode).build(
+        return self.memorypack_preview_service().build(
             record,
             chunk_path,
         )
@@ -1221,6 +1221,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             Decoder,
             decode_error_type,
         )
+
+    def memorypack_preview_service(self) -> MemoryPackPreviewService:
+        return MemoryPackPreviewService(self.memorypack_value_decoder().decode)
 
     def akedb_compatible_data_service(self) -> AkedbCompatibleDataService:
         return AkedbCompatibleDataService(
@@ -1851,6 +1854,33 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 content_type="application/json; charset=utf-8",
                 download=download,
                 download_name=f"{root_name}.json",
+            )
+        )
+
+    def handle_memorypack_json(self, query: dict[str, list[str]]) -> None:
+        file_id = self.file_id_from_query(query)
+        if file_id is None:
+            return
+        resolved = self.resolve_required_file_source(file_id)
+        if resolved is None:
+            return
+        _, record, chunk_path = resolved
+        try:
+            exported = self.memorypack_preview_service().export(record, chunk_path)
+        except RuntimeError as error:
+            self.send_error_json(422, f"MemoryPack decode failed: {error}")
+            return
+        if exported is None:
+            self.send_error_json(422, "MemoryPack schema is unavailable for this file")
+            return
+
+        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
+        self.send_raw_file(
+            RawFileService(STREAM_CHUNK_SIZE).prepare_bytes(
+                exported.data,
+                content_type="application/json; charset=utf-8",
+                download=download,
+                download_name=f"{Path(record['file_name']).stem}.json",
             )
         )
 

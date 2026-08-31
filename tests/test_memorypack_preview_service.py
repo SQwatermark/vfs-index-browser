@@ -42,6 +42,24 @@ class MemoryPackPreviewServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "schema mismatch"):
             MemoryPackPreviewService(fail).build({}, Path("chunk.chk"))
 
+    def test_export_uses_same_full_document_as_preview(self):
+        decoded = DecodedMemoryPackValue(
+            class_name="ExampleConfig",
+            value={"enabled": True},
+            byte_count=4,
+            consumed=4,
+            discovered_unions={},
+        )
+        service = MemoryPackPreviewService(lambda *_args: decoded)
+
+        exported = service.export({}, Path("chunk.chk"))
+        preview, truncated, meta = service.build({}, Path("chunk.chk"))
+
+        self.assertIsNotNone(exported)
+        self.assertFalse(truncated)
+        self.assertEqual(exported.data.decode("utf-8"), preview)
+        self.assertEqual(exported.meta, meta)
+
 
 if __name__ == "__main__":
     unittest.main()

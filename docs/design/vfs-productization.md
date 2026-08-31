@@ -1088,3 +1088,7 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   `__meta`、完整消费标志、union tag 字符串化与稳定排序、Unicode JSON 和正文截断，并将领域
   解码错误翻译为现有 binary JSON 回退所消费的错误。Handler 不再拼装 MemoryPack 预览；Python
   门禁增至 594 项。
+- MemoryPack 成功预览现提供 `/api/memorypack/json` 完整打开/下载入口；完整文档与 2 MiB 截断预览
+  共享同一份 UTF-8 `__meta + value` 序列化结果，缺少根 schema 或领域解码失败均返回可区分的 422，
+  不会把 binary JSON 原文冒充解码结果。路由、预览链接、响应正文和两类错误均有回归，Python
+  门禁增至 599 项。

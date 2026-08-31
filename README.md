@@ -248,6 +248,7 @@ GET /api/internal/list?id=123&path=assets&page=1&pageSize=100
 GET /api/internal/preview?id=123&path=Texture2D/example.png
 GET /api/internal/raw?id=123&path=Texture2D/example.png
 GET /api/tablecfg/json?id=123
+GET /api/memorypack/json?id=123&download=1
 GET /api/akedb-compatible/TableCfg-1.4.4@9433094-12/CharacterTable.json
 GET /api/akedb-compatible/SkillData/manifest.json
 GET /api/akedb-compatible/SkillData/chr_0004_pelica_attack1.json
