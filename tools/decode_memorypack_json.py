@@ -591,7 +591,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
 
 
 def read_vfs_payload(db_path: Path, file_id: int) -> VfsPayload:
-    from server import decrypt_vfs_file
+    from vfs_crypto import decrypt_vfs_file
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row

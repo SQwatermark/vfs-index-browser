@@ -126,6 +126,8 @@ AB、PCK 与 USM 的内部目录文档由 `internal_directory_service.py` 按容
 响应头和消费分块，不把 socket 或数据库交给服务。任务、AudioDialog/Wwise、Manifest 导出和模型
 派生产物也复用同一有界路径读取，同时显式保留各自 MIME、文件名格式、缓存头和诊断头。TableCfg
 等已生成内存字节可用同一描述分块发送；静态文件也走路径流，不再由 Handler 整体载入。
+VFS ChaCha20 原语及文件 nonce 规则独立位于 `vfs_crypto.py`；`vfs_file_reader.py` 与离线工具直接依赖
+该基础模块，不为解密一个切片而导入 HTTP 服务。`server.py` 仅重导出旧名称维持已有脚本兼容。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

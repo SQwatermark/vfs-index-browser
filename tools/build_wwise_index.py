@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from audio_package import parse_audio_package
-from server import decrypt_vfs_file
+from vfs_crypto import decrypt_vfs_file
 from wwise_store import create_wwise_schema, replace_wwise_package
 
 

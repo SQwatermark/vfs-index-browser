@@ -23,7 +23,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from server import decode_text, decrypt_vfs_file, looks_like_text
+from file_preview_service import decode_text, looks_like_text
+from vfs_crypto import decrypt_vfs_file
 
 
 DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"

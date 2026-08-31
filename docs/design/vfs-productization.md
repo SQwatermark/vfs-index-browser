@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- VFS ChaCha20 轮函数、流处理和文件 nonce 规则已迁到 `vfs_crypto.py`。8 个索引/格式诊断工具改为
+  直接依赖基础模块（文本探测也改从 `file_preview_service.py` 导入），不再为了读取一个加密切片
+  初始化完整 HTTP 服务、运行时配置与 worker。`server.py` 保留旧名称重导出以兼容现有调用者；
+  新增跨 64 字节块、计数器回绕、往返与输入长度测试，8 个真实 CLI `--help` 入口均可独立启动。
 - AssetBundle map/preview 两阶段的异常边界已抽到 `assetbundle_export_service.py`。Worker、缓存、
   JSON 与领域校验失败统一成为携带 `mapFailed`/`exportFailed` 身份的应用错误；Handler 兼容方法
   只负责 `emit_errors` 与 HTTP 500 映射，内部动画/Manifest 调用不再依赖会隐式发送响应的底层
