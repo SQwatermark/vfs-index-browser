@@ -1217,16 +1217,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         self.send_json(record)
 
-    def original_file_record(self, conn: sqlite3.Connection, file_id: int) -> dict | None:
-        record = LogicalFileSourceService(self.db_path, source_rank).find_record(
-            file_id,
-            connection=conn,
-        )
-        if record is None:
-            self.send_error_json(404, "file not found")
-            return None
-        return record
-
     def file_id_from_query(self, query: dict[str, list[str]]) -> int | None:
         try:
             return int(query.get("id", [""])[0])
@@ -1234,26 +1224,18 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(400, "invalid file id")
             return None
 
-    def resolve_file_record(self, conn: sqlite3.Connection, file_id: int) -> tuple[dict, dict, Path] | None:
-        original_dict = self.original_file_record(conn, file_id)
-        if original_dict is None:
+    def resolve_required_file_source(
+        self,
+        file_id: int,
+    ) -> tuple[dict, dict, Path] | None:
+        try:
+            return LogicalFileSourceService(
+                self.db_path,
+                source_rank,
+            ).resolve_file_id_required(file_id)
+        except LogicalFileSourceError as error:
+            self.send_error_json(error.status, str(error))
             return None
-        resolved = self.resolve_file_record_quiet(conn, original_dict)
-        if resolved is not None:
-            record, chunk_path = resolved
-            return original_dict, record, chunk_path
-
-        self.send_error_json(
-            404,
-            "chunk not found; this record likely requires a source fallback that is unavailable on this host",
-        )
-        return None
-
-    def resolve_file_record_quiet(self, conn: sqlite3.Connection, original_dict: dict) -> tuple[dict, Path] | None:
-        return LogicalFileSourceService(self.db_path, source_rank).resolve_record(
-            original_dict,
-            connection=conn,
-        )
 
     def read_file_slice(self, record: dict, chunk_path: Path, limit: int | None = None) -> bytes:
         return VfsFileReader(decrypt_vfs_file).read(record, chunk_path, limit)
@@ -1877,8 +1859,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def resolve_tablecfg_file(self, file_id: int) -> tuple[dict, dict, Path, str] | None:
         try:
-            with self.connect() as conn:
-                resolved = self.tablecfg_service().resolve(conn, file_id)
+            resolved = self.tablecfg_service().resolve_file_id(file_id)
         except TableCfgResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None
@@ -1905,11 +1886,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if file_id is None:
             return
 
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return
-            original, record, chunk_path = resolved
+        resolved = self.resolve_required_file_source(file_id)
+        if resolved is None:
+            return
+        original, record, chunk_path = resolved
 
         document = VfsFilePreviewService(
             self.read_file_slice,
@@ -1948,11 +1928,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if file_id is None:
             return
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return
-            original, record, chunk_path = resolved
+        resolved = self.resolve_required_file_source(file_id)
+        if resolved is None:
+            return
+        original, record, chunk_path = resolved
 
         response = RawFileService(STREAM_CHUNK_SIZE).prepare_vfs(
             original,
@@ -2401,11 +2380,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if file_id is None:
             return
         path = query.get("path", [""])[0]
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return
-            original, record, chunk_path = resolved
+        resolved = self.resolve_required_file_source(file_id)
+        if resolved is None:
+            return
+        original, record, chunk_path = resolved
 
         service = InternalDirectoryService(
             self.ensure_assetbundle_export,

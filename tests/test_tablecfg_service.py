@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from tablecfg_service import TableCfgResolutionError, TableCfgService
+from logical_file_source_service import LogicalFileSourceError
 
 
 class TableCfgServiceTests(unittest.TestCase):
@@ -57,6 +58,30 @@ class TableCfgServiceTests(unittest.TestCase):
         self.sources.resolve_record.return_value = None
         with self.assertRaises(TableCfgResolutionError) as raised:
             self.service.resolve(self.connection, 7)
+        self.assertEqual(404, raised.exception.status)
+
+    def test_resolves_required_file_id_without_caller_connection(self):
+        original = {"id": 7}
+        record = {"id": 8, "file_name": "Data/TableCfg/Sample.bytes"}
+        chunk = Path("chunk.bin")
+        self.sources.resolve_file_id_required.return_value = (
+            original,
+            record,
+            chunk,
+        )
+
+        resolved = self.service.resolve_file_id(7)
+
+        self.assertEqual(original, resolved.original)
+        self.assertEqual(record, resolved.record)
+        self.assertEqual("Sample", resolved.table_name)
+
+        self.sources.resolve_file_id_required.side_effect = LogicalFileSourceError(
+            404,
+            "file not found",
+        )
+        with self.assertRaisesRegex(TableCfgResolutionError, "file not found") as raised:
+            self.service.resolve_file_id(99)
         self.assertEqual(404, raised.exception.status)
 
 

@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from logical_file_source_service import LogicalFileSourceError
+
 
 class TableCfgResolutionError(RuntimeError):
     def __init__(self, status: int, message: str) -> None:
@@ -52,6 +54,20 @@ class TableCfgService:
                 "that is unavailable on this host",
             )
         record, chunk_path = resolved
+        table_name = self._table_name(str(record["file_name"]))
+        if table_name is None:
+            raise TableCfgResolutionError(
+                400, "TableCfg JSON expected a Data/TableCfg/*.bytes record"
+            )
+        return ResolvedTableCfg(original, record, chunk_path, table_name)
+
+    def resolve_file_id(self, file_id: int) -> ResolvedTableCfg:
+        try:
+            original, record, chunk_path = self._sources.resolve_file_id_required(
+                file_id
+            )
+        except LogicalFileSourceError as error:
+            raise TableCfgResolutionError(error.status, str(error)) from error
         table_name = self._table_name(str(record["file_name"]))
         if table_name is None:
             raise TableCfgResolutionError(

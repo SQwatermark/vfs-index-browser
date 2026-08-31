@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- 普通 VFS preview/raw、TableCfg JSON 与内部目录现统一消费严格 file-ID 来源结果。TableCfg 新入口
+  不要求 Handler 提供 SQLite connection，并保留来源错误状态；请求层旧的 original/resolve/quiet
+  三套记录辅助方法已删除。真实领域仍分别拥有预览、SparkBuffer、容器和 raw 响应逻辑，没有
+  强行合并异构结果。Python discovery 更新为 `581/581`，`server.py` 降至 2547 行。
 - AB/PCK/USM 内部文件的 file ID、原记录、同逻辑来源 fallback 和容器内目标解析已形成单一高层入口。
   `LogicalFileSourceService.resolve_file_id_required` 明确区分 ID 不存在与 chunk/fallback 不可读，
   `InternalFileResolverService.resolve_file_id` 再消费已解析来源；Handler 不再为内部 preview/raw
