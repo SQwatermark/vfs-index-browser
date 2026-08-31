@@ -33,6 +33,10 @@ from assetbundle_worker_service import (
     ASSETBUNDLE_EXPORT_TYPES,
     AssetBundleWorkerService,
 )
+from assetbundle_export_service import (
+    AssetBundleExportError,
+    AssetBundleExportService,
+)
 from audio_package_service import (
     AudioEntry,
     AudioPackageIndexService,
@@ -1975,6 +1979,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
             WORKER_RUNS,
         )
 
+    def assetbundle_export_service(self) -> AssetBundleExportService:
+        return AssetBundleExportService(self.assetbundle_worker_service())
+
     def manifest_asset_file_service(self) -> ManifestAssetFileService:
         return ManifestAssetFileService(
             self.ensure_assetbundle_export,
@@ -2050,43 +2057,34 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: object | None = None,
     ) -> dict | None:
         try:
-            return self.assetbundle_worker_service().ensure_map(
+            return self.assetbundle_export_service().ensure_map(
                 record,
                 chunk_path,
                 cancel_event=cancel_event,
             )
-        except (UnityWorkerError, OSError, json.JSONDecodeError, RuntimeError) as error:
+        except AssetBundleExportError as error:
             if emit_errors:
-                self.send_json(
-                    {
-                        "kind": "assetBundle",
-                        "status": "mapFailed",
-                        "message": str(error),
-                    },
-                    status=500,
-                )
+                self.send_json(error.document(), status=500)
         return None
 
-    def ensure_assetbundle_export(self, record: dict, chunk_path: Path, emit_errors: bool = True) -> tuple[Path, dict] | None:
+    def ensure_assetbundle_export(
+        self,
+        record: dict,
+        chunk_path: Path,
+        emit_errors: bool = True,
+    ) -> tuple[Path, dict] | None:
         map_meta = self.ensure_assetbundle_map(record, chunk_path, emit_errors=emit_errors)
         if map_meta is None:
             return None
         try:
-            return self.assetbundle_worker_service().ensure_preview_export(
+            return self.assetbundle_export_service().ensure_preview(
                 record,
                 chunk_path,
                 map_meta,
             )
-        except (UnityWorkerError, OSError, RuntimeError) as error:
+        except AssetBundleExportError as error:
             if emit_errors:
-                self.send_json(
-                    {
-                        "kind": "assetBundle",
-                        "status": "exportFailed",
-                        "message": str(error),
-                    },
-                    status=500,
-                )
+                self.send_json(error.document(), status=500)
         return None
 
     def ensure_audio_package_index(self, record: dict, chunk_path: Path) -> dict:

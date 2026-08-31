@@ -165,6 +165,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `wwise_media_service.py` | Wwise Media 索引条目、VFS PCK 来源与 WEM/WAV 产物协调 |
 | `assetbundle_browser.py` | 已发布 AssetBundle 目录浏览与 AssetMap 元数据回绑 |
 | `assetbundle_worker_service.py` | AssetMap、预览媒体、空 run 与 AssetBundle Worker 缓存编排 |
+| `assetbundle_export_service.py` | AssetMap/预览导出的应用错误边界与稳定失败文档 |
 | `projectile_data.py` | projectileId 精确路径规则与 ProjectileComponentData JSON 选择 |
 | `sparkbuffer.py` | TableCfg/SparkBuffer 解码 |
 | `usm.py` | CRI USM 视频处理 |

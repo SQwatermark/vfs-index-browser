@@ -141,7 +141,9 @@ worker 调用和领域校验。
 整 Bundle 的 AssetMap 与媒体预览输入身份、切片暂存、Worker 调用和 `AssetEntries` 契约由
 `assetbundle_worker_service.py` 管理。服务要求每项已导出或明确跳过的媒体都与 AssetMap 的
 `Type + PathID + Name + Container` 多重集合完全一致；仅含无预览协议类型的 Bundle 也发布
-可验证空 run。Handler 只把服务异常映射为既有 HTTP `mapFailed`/`exportFailed` 响应。
+可验证空 run。`assetbundle_export_service.py` 再把 map 与 preview 两阶段的 worker、缓存和协议
+异常归一成无 HTTP 副作用的应用错误；Handler 只决定是否映射为既有
+`mapFailed`/`exportFailed` 响应，内部调用可以安静失败而不会提前写 socket。
 
 普通模型和 Avatar 模型共享 `model_run_store.py` 的发布读取边界。活动 `run.json` 只指向包含
 自身完成标记的直属不可变 run；缓存命中同时要求版本、完整 source identity、ModelDocument

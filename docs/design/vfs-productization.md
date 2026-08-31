@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- AssetBundle map/preview 两阶段的异常边界已抽到 `assetbundle_export_service.py`。Worker、缓存、
+  JSON 与领域校验失败统一成为携带 `mapFailed`/`exportFailed` 身份的应用错误；Handler 兼容方法
+  只负责 `emit_errors` 与 HTTP 500 映射，内部动画/Manifest 调用不再依赖会隐式发送响应的底层
+  协调器。合成回归覆盖参数与取消信号透传、两阶段结果不变及失败文档分类。
 - 恢复服务拆分后 `ModelBlendService` 的测试桩签名，基础/动画 GLB provider 的取消与进度参数重新
   进入测试契约；相关 11 项测试通过。
 - 新增 `Vfs.AnimeStudio.PInvoke` 包装工程。它只编译 vendor 中唯一的 `DllLoader.cs`，产品目标框架
