@@ -1081,3 +1081,6 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   路径派生的 GLB 下载名、Blend artifact 下载名、private/max-age 缓存头与跳过动画数诊断头，
   Handler 只把领域产物交给统一 raw sender。合成回归覆盖两类文件的响应头与分块正文，Python
   门禁增至 592 项。
+- `/api/health` 的公开文档已抽到 `health_service.py`：Unity worker 必需能力、主索引、Manifest 与
+  二级音频门禁共同决定 ready/degraded，可选工具和缓存版本只形成诊断；Handler 继续只返回
+  `no-store` JSON。既有健康回归覆盖全部降级分支和可选工具不阻塞语义。

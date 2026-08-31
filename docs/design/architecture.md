@@ -232,6 +232,10 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 
 ## 关键约束
 
+公开健康文档由 `health_service.py` 根据注入的 Unity worker、可选工具、缓存版本和启动审计报告
+构建。核心 worker 未就绪，或主索引、Manifest、二级音频任一硬门禁不可用时状态为 degraded；
+可选工具缺失只进入诊断，不影响服务存活状态。HTTP 层只附加 `no-store` 缓存策略。
+
 - `runtime_config.py` 是环境配置唯一入口。所有持久数据库和派生缓存默认归属同一 data root；
   细粒度 override 只覆盖对应字段，不得恢复相邻仓库或固定用户目录探测。
 - `tool_registry.py` 是可选外部工具能力的唯一判断入口。HTTP 展示、缓存身份和实际适配器执行

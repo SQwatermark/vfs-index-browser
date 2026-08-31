@@ -182,6 +182,7 @@ from model_single_animation_service import ModelSingleAnimationService
 from model_animation_catalog_service import ModelAnimationCatalogService
 from model_sync_request import ModelSyncRequest
 from model_file_response_service import ModelFileResponseService
+from health_service import HealthService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -337,40 +338,17 @@ def application_startup_service() -> ApplicationStartupService:
 def build_health_document() -> dict:
     """汇总运行时能力；可选工具缺失不影响核心服务存活状态。"""
 
-    worker = UNITY_WORKER.diagnose([
-        "decodeProjectileComponent",
-        "exportMonoBehaviourRaw",
-        "exportMonoBehaviourTypeTreeDump",
-        "buildAssetMap",
-        "buildCabMap",
-        "exportObjectSnapshots",
-        "exportIdentifiedTextures",
-        "exportCubemapFaces",
-        "exportBundlePreviewMedia",
-        "exportAnimationClipJson",
-    ])
-    index_status = INDEX_FRESHNESS_REPORT.get("status")
-    secondary_audio_status = SECONDARY_AUDIO_INDEX_REPORT.get("status")
-    return {
-        "apiVersion": 1,
-        "status": (
-            "ready"
-            if worker["status"] == "ready"
-            and index_status not in {"stale", "unavailable"}
-            and MANIFEST_INDEX_REPORT.get("status") != "unavailable"
-            and secondary_audio_status not in {"stale", "unavailable"}
-            else "degraded"
-        ),
-        "indexFreshness": INDEX_FRESHNESS_REPORT,
-        "indexRebuild": INDEX_REBUILD_REPORT,
-        "manifestIndex": MANIFEST_INDEX_REPORT,
-        "secondaryAudioIndexes": SECONDARY_AUDIO_INDEX_REPORT,
-        "secondaryAudioRebuild": SECONDARY_AUDIO_REBUILD_REPORT,
-        "unityWorker": worker,
-        "optionalTools": optional_tool_registry().diagnostics(),
-        "cacheVersions": CACHE_VERSIONS.diagnostics(),
-        "legacyTools": [],
-    }
+    return HealthService(
+        UNITY_WORKER.diagnose,
+        optional_tool_registry().diagnostics,
+        CACHE_VERSIONS.diagnostics,
+    ).build(
+        index_freshness=INDEX_FRESHNESS_REPORT,
+        index_rebuild=INDEX_REBUILD_REPORT,
+        manifest_index=MANIFEST_INDEX_REPORT,
+        secondary_audio_indexes=SECONDARY_AUDIO_INDEX_REPORT,
+        secondary_audio_rebuild=SECONDARY_AUDIO_REBUILD_REPORT,
+    )
 
 
 def unity_worker_is_unavailable(error: UnityWorkerError) -> bool:
