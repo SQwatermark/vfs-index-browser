@@ -35,7 +35,8 @@ onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查和 worker 握
 联网，后续会复用 `unity-worker/.deps/` 中校验通过的缓存；产品运行时不会联网。只有 Git
 跟踪的 `public/`、`schemas/` 与许可证会进入包，工作树中的研究样本和临时文件不会被复制。
 指定 `-ArchivePath` 时还会生成包含顶层产品目录的 ZIP 和相邻 `.sha256` 文件；归档目标同样
-必须不存在，发布过程不会覆盖历史归档。
+必须不存在，发布过程不会覆盖历史归档。构建 checkout、输出目录、安装目录和报告路径均支持
+空格与 Unicode 字符。
 
 正式发布要求整个 Git 工作树干净，`release.json` 会记录 `sourceTree: clean`。存在已修改或
 未跟踪文件时命令会停止，避免用某个 HEAD 冒充实际打包源码。`-AllowDirty` 只允许本地试构建，

@@ -53,6 +53,11 @@ class ReleasePackagingContractTests(unittest.TestCase):
         self.assertIn("VCRUNTIME", self.acl_build_source)
         self.assertIn("MSVCP", self.acl_build_source)
 
+    def test_acl_bridge_preserves_unicode_paths_in_its_command_file(self):
+        self.assertIn("chcp 65001", self.acl_build_source)
+        self.assertIn("UTF8Encoding", self.acl_build_source)
+        self.assertNotIn("-Encoding ASCII", self.acl_build_source)
+
 
 if __name__ == "__main__":
     unittest.main()

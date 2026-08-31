@@ -459,6 +459,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- Unicode 路径发布审计发现 ACL 构建临时批处理原以 ASCII 写入，会把 checkout 中的中文替换为
+  `?` 并导致 MSVC 找不到源码。构建器现以无 BOM UTF-8 写入并在首行切换代码页 65001，保留
+  空格与 Unicode 路径；回归门禁禁止恢复 ASCII 命令文件。完整 Unicode clean checkout 发布与
+  中文安装/报告路径验收将在同一提交的干净构建中复核。
 - 发布候选的 PE 依赖审计确认：冻结 Python 的 `VCRUNTIME140.dll`、`VCRUNTIME140_1.dll` 和
   `ucrtbase.dll` 已随包，验收器现将三者列为必需文件；`acl_endfield.dll` 使用 `/MT` 且当前
   只导入 `KERNEL32.dll`，其构建脚本新增 `dumpbin /dependents` 门禁，发现动态 VC++/UCRT 依赖

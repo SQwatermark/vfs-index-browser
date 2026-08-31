@@ -59,13 +59,19 @@ $arguments = @(
 ) -join ' '
 $commandFile = Join-Path $env:TEMP "build-vfs-acl-endfield-$([guid]::NewGuid().ToString('N')).cmd"
 try {
-    Set-Content -LiteralPath $commandFile -Encoding ASCII -Value @(
+    $commandLines = @(
+        '@chcp 65001 >nul',
         "@call `"$vcvars`" >nul",
         "@pushd `"$intermediateRoot`"",
         "@cl $arguments",
         '@set BUILD_EXIT_CODE=%ERRORLEVEL%',
         '@popd',
         '@exit /b %BUILD_EXIT_CODE%'
+    )
+    [IO.File]::WriteAllLines(
+        $commandFile,
+        $commandLines,
+        (New-Object Text.UTF8Encoding($false))
     )
     & $env:COMSPEC /d /c $commandFile
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $output)) {

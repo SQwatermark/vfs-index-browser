@@ -15,7 +15,7 @@
 | Shader 解包与反编译 | 支线 | 在 AnimeStudio 中保存完整编译载荷，逐层识别 GPU 程序封装 |
 | 模型与动画 | 维护线 | 已具备网页预览和 Blender 导出；只处理阻塞性问题与低风险收口 |
 | 音频 | 维护线 | 对话逻辑路径已可浏览；继续保留索引能力，不抢占主线 |
-| VFS 产品化 | 当前执行主线 | P0-P4 已关闭；P5 的 Windows x64 自包含包已从无 `.deps`/原生产物的干净克隆一键构建，ZIP/SHA-256/解压/真实 data root 验收贯通，验收器随包且可生成脱敏报告，正式产物拒绝脏源码身份；发布与包内验收已在 Windows PowerShell 5.1 实测，Python VC++ 运行库随包且 ACL 桥拒绝动态 VC++ Runtime，GitHub Actions 也由 5.1 从干净 Windows runner 复跑；Python 616 项、.NET 37 项全绿，剩余另一台未安装运行时的机器验收和经用户确认归档独立 AnimeStudio |
+| VFS 产品化 | 当前执行主线 | P0-P4 已关闭；P5 的 Windows x64 自包含包已从无 `.deps`/原生产物的干净克隆一键构建，ZIP/SHA-256/解压/真实 data root 验收贯通，验收器随包且可生成脱敏报告，正式产物拒绝脏源码身份；发布与包内验收已在 Windows PowerShell 5.1 实测，Python VC++ 运行库随包且 ACL 桥拒绝动态 VC++ Runtime，GitHub Actions 也由 5.1 从干净 Windows runner 复跑；Python 617 项、.NET 37 项全绿，剩余另一台未安装运行时的机器验收和经用户确认归档独立 AnimeStudio |
 | VFS 与配置解码 | 基础设施 | 为研究与上层消费者提供稳定定位、解码和可部署接口 |
 
 ## 已稳定的基础能力
