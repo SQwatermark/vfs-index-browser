@@ -209,9 +209,12 @@ try {
         workerVersion = $Handshake.workerVersion
         files = $ReleaseFiles
     }
-    $ReleaseMetadata | ConvertTo-Json | Set-Content `
-        -LiteralPath (Join-Path $ReleaseRoot "release.json") `
-        -Encoding utf8
+    $ReleaseJson = ($ReleaseMetadata | ConvertTo-Json) + "`n"
+    [IO.File]::WriteAllText(
+        (Join-Path $ReleaseRoot "release.json"),
+        $ReleaseJson,
+        (New-Object Text.UTF8Encoding($false))
+    )
 
     $BuildArchivePath = $null
     $BuildChecksumPath = $null

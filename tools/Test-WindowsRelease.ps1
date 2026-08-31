@@ -348,9 +348,12 @@ if ($ResolvedReportPath) {
     }
     $ReportParent = Split-Path -Parent $ResolvedReportPath
     New-Item -ItemType Directory -Force -Path $ReportParent | Out-Null
-    $AcceptanceReport | ConvertTo-Json -Depth 5 | Set-Content `
-        -LiteralPath $ResolvedReportPath `
-        -Encoding utf8
+    $AcceptanceJson = ($AcceptanceReport | ConvertTo-Json -Depth 5) + "`n"
+    [IO.File]::WriteAllText(
+        $ResolvedReportPath,
+        $AcceptanceJson,
+        (New-Object Text.UTF8Encoding($false))
+    )
     $Result.acceptanceReport = $ResolvedReportPath
 }
 

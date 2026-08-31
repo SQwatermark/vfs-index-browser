@@ -115,7 +115,8 @@ PowerShell 7。验收器在 Windows PowerShell 5.1 下也会执行同一份逐�
 `release.json` 记录 Git 提交、Python/PyInstaller 版本、worker 协议与版本，以及全部不可变
 文件的相对路径、大小和 SHA-256。验收脚本会在 worker/服务执行前后各校验一次元数据与完整文件
 集合，拒绝缺失、被修改、额外出现或运行期间被污染的不可变文件；运行时可写的 `data/` 不进入
-该清单。服务日志默认输出结构化 JSON；可用
+该清单。`release.json` 和验收报告均使用无 BOM UTF-8，可直接交给严格 JSON 消费者。服务日志
+默认输出结构化 JSON；可用
 `VFS_BROWSER_LOG_FORMAT=text` 改为文本，或用
 `--log-level debug` 增加诊断。所有路径覆盖都通过 `runtime_config.py` 中列出的
 `VFS_BROWSER_*`、`BLENDER_EXE`、`VGMSTREAM_CLI`、`USM_CONVERT` 和 `FFMPEG` 环境变量提供，

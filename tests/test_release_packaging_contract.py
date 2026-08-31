@@ -47,6 +47,14 @@ class ReleasePackagingContractTests(unittest.TestCase):
         self.assertIn("UTF8Encoding", self.source)
         self.assertNotIn("-Encoding ascii", self.source)
 
+    def test_release_json_documents_are_utf8_without_bom(self):
+        self.assertIn("$ReleaseJson", self.source)
+        self.assertIn("UTF8Encoding", self.source)
+        self.assertNotIn("-Encoding utf8", self.source)
+        self.assertIn("$AcceptanceJson", self.validator_source)
+        self.assertIn("UTF8Encoding", self.validator_source)
+        self.assertNotIn("-Encoding utf8", self.validator_source)
+
     def test_python_runtime_libraries_are_required_release_files(self):
         self.assertIn('"_internal/VCRUNTIME140.dll"', self.validator_source)
         self.assertIn('"_internal/VCRUNTIME140_1.dll"', self.validator_source)
