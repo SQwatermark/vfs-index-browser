@@ -463,7 +463,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   `ucrtbase.dll` 已随包，验收器现将三者列为必需文件；`acl_endfield.dll` 使用 `/MT` 且当前
   只导入 `KERNEL32.dll`，其构建脚本新增 `dumpbin /dependents` 门禁，发现动态 VC++/UCRT 依赖
   即停止发布。自包含 worker 只导入 Windows 系统 DLL 与系统 UCRT API-set，不要求另装 VC++
-  Redistributable。产品运行边界明确收窄为 Windows 10/11 x64。
+  Redistributable。产品运行边界明确收窄为 Windows 10/11 x64。提交 `c82dfdd` 已从独立 clean
+  checkout 经过该门禁重新发布；包内 Windows PowerShell 5.1 验收器复核 353 个文件并连接真实
+  data root，服务、索引、Manifest 和 11 项 worker 能力全部通过。
 - 发布与随包验收脚本已移除仅由较新 .NET/PowerShell 提供的路径和运行时信息 API，并为
   Windows PowerShell 5.1 的网页探测启用基础解析。提交 `e635d93` 已由独立 clean checkout 在
   系统自带 Windows PowerShell `5.1.26100.9168` 下重新发布，再直接运行包内验收器；隔离运行时
