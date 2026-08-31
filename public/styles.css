@@ -436,6 +436,30 @@ tbody tr[data-file-key].selected {
   word-break: break-all;
 }
 
+.preview-format-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 7px;
+  border: 1px solid rgba(101, 200, 255, 0.38);
+  border-radius: 999px;
+  color: #9addff;
+  background: rgba(34, 129, 181, 0.13);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.preview-format-badge.sparkbuffer {
+  border-color: rgba(132, 214, 149, 0.38);
+  color: #a5e8b3;
+  background: rgba(55, 143, 74, 0.13);
+}
+
+.preview-format-detail {
+  align-self: center;
+}
+
 .file-name-row {
   display: flex;
   gap: 8px;

@@ -1092,3 +1092,6 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   共享同一份 UTF-8 `__meta + value` 序列化结果，缺少根 schema 或领域解码失败均返回可区分的 422，
   不会把 binary JSON 原文冒充解码结果。路由、预览链接、响应正文和两类错误均有回归，Python
   门禁增至 599 项。
+- 网页普通文件预览现为 `memorypack-json` 显示独立的 `MemoryPack → JSON` 徽标、根类型和
+  consumed/bytes 完整消费摘要；SparkBuffer 转换使用同一视觉语言但保持独立颜色。真实弭弗
+  SkillData 在原有预览面板宽度内自然换行，完整结果操作和正文空间未受影响。

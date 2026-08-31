@@ -1449,6 +1449,23 @@ function renderWwiseBankPreview(data) {
   `
 }
 
+function renderConvertedFormat(data) {
+  if (data.encoding === 'memorypack-json') {
+    const details = data.memoryPack || {}
+    const consumption = details.complete
+      ? `完整消费 ${formatInt(details.consumed)} / ${formatInt(details.bytes)} bytes`
+      : `已消费 ${formatInt(details.consumed)} / ${formatInt(details.bytes)} bytes`
+    return `
+      <span class="preview-format-badge memorypack">MemoryPack → JSON</span>
+      <span class="preview-format-detail">${escapeHtml(details.class || '未知根类型')} · ${consumption}</span>
+    `
+  }
+  if (data.encoding === 'sparkbuffer-json') {
+    return '<span class="preview-format-badge sparkbuffer">SparkBuffer → JSON</span>'
+  }
+  return ''
+}
+
 function renderPreview(data) {
   if (data.kind === 'audioDialog') {
     renderAudioDialogPreview(data)
@@ -1475,12 +1492,14 @@ function renderPreview(data) {
     ? `<div class="notice">当前记录的 chunk 不可用，已回落到 ${escapeHtml(resolved.source)}。</div>`
     : ''
   const assetDetails = renderAssetSummary(data.asset)
+  const convertedFormat = renderConvertedFormat(data)
   const meta = `
     <div class="preview-meta">
       <strong>${escapeHtml(file.source_logical_id)}</strong>
       <span>chunk: ${escapeHtml(resolved.chunk_file)}</span>
       <span>offset ${formatInt(resolved.offset)} · len ${formatInt(resolved.length)}</span>
       <span>${resolved.encrypted ? 'encrypted' : 'plain'} · ${resolved.chunk_exists ? 'chunk ok' : 'missing chunk'}</span>
+      ${convertedFormat}
     </div>
     ${fallback}
     ${assetDetails}

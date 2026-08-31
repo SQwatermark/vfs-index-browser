@@ -54,6 +54,7 @@
 - 解码成功时返回 `kind: "text"`、`encoding: "memorypack-json"`，预览区显示转换后的 JSON。
 - 解码成功文档同时提供 `/api/memorypack/json?id=...` 的完整打开和下载链接；它与截断预览
   共用同一份 `__meta + value` UTF-8 序列化结果。
+- 网页以 `MemoryPack → JSON` 徽标明确区分普通文本 JSON，并显示根类型及完整消费状态。
 - 解码失败或 schema/union map 不存在时，回退到原来的 binary JSON probe 和 hex 预览。
 
 ## 已验证样本
@@ -90,4 +91,3 @@
 1. 批量抽样 `SkillData` / `BuffData`，把新发现的 union tag 合并进 `memorypack-known-unions.json`。
 2. 将 enum 底层类型从 runtime `value__` 字段自动提取，减少 `TYPE_OVERRIDES`。
 3. 将泛型黑板类的 `TSerializeValue` 从继承链推导出来，减少 `MEMBER_TYPE_OVERRIDES`。
-4. 在 UI 上把 `memorypack-json` 与普通文本 JSON 区分展示，方便用户知道这是解码结果。
