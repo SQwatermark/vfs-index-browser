@@ -6,16 +6,33 @@ param(
     [string]$PythonExe = "python",
     [string]$DotnetExe = "dotnet",
     [string]$ArchivePath,
+    [switch]$AllowDirty,
     [switch]$SkipTests
 )
 
 $ErrorActionPreference = "Stop"
+
+function Resolve-RequestedPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if ([System.IO.Path]::IsPathFullyQualified($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+}
+
 $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $PythonCommand = (Get-Command $PythonExe -ErrorAction Stop).Source
 $DotnetCommand = (Get-Command $DotnetExe -ErrorAction Stop).Source
-$OutputPath = [System.IO.Path]::GetFullPath(
-    (Join-Path (Get-Location).Path $OutputDirectory)
-)
+$OutputPath = Resolve-RequestedPath $OutputDirectory
+$SourceStatus = @(& git -C $RepositoryRoot status --porcelain)
+if ($LASTEXITCODE -ne 0) {
+    throw "Cannot inspect repository status"
+}
+$SourceTree = if ($SourceStatus.Count -eq 0) { "clean" } else { "dirty" }
+if ($SourceTree -ne "clean" -and -not $AllowDirty) {
+    throw "Refusing to publish from a dirty worktree; use a clean checkout or -AllowDirty for local smoke builds"
+}
 
 if (Test-Path -LiteralPath $OutputPath) {
     throw "Output directory already exists: $OutputPath"
@@ -23,9 +40,7 @@ if (Test-Path -LiteralPath $OutputPath) {
 $ResolvedArchivePath = $null
 $ArchiveChecksumPath = $null
 if ($ArchivePath) {
-    $ResolvedArchivePath = [System.IO.Path]::GetFullPath(
-        (Join-Path (Get-Location).Path $ArchivePath)
-    )
+    $ResolvedArchivePath = Resolve-RequestedPath $ArchivePath
     $ArchiveChecksumPath = "$ResolvedArchivePath.sha256"
     foreach ($Path in @($ResolvedArchivePath, $ArchiveChecksumPath)) {
         if (Test-Path -LiteralPath $Path) {
@@ -128,6 +143,7 @@ try {
         "unity-worker/UPSTREAM.md",
         "tools/blender_import_model.py",
         "tools/blender_action_switcher.py",
+        "tools/Test-WindowsRelease.ps1",
         "character_lighting.py",
         "blender_materials.py",
         "blender_material_plan.py"
@@ -187,6 +203,7 @@ try {
         schemaVersion = 1
         product = "endfield-vfs-browser"
         gitCommit = $GitCommit
+        sourceTree = $SourceTree
         target = "win-x64"
         python = (& $PythonCommand --version 2>&1 | Out-String).Trim()
         pyInstaller = (& $PythonCommand -m PyInstaller --version | Out-String).Trim()

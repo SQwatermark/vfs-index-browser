@@ -5,6 +5,8 @@ param(
 
     [string]$DataRoot,
     [switch]$IsolatedRuntime,
+    [string]$ReportPath,
+    [switch]$AllowDirtyRelease,
     [ValidateRange(1, 65535)]
     [int]$Port = 18765,
     [ValidateRange(1, 120)]
@@ -12,7 +14,34 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Resolve-RequestedPath {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if ([System.IO.Path]::IsPathFullyQualified($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
+}
+
 $ReleaseRoot = (Resolve-Path $ReleaseDirectory).Path
+$ResolvedReportPath = $null
+if ($ReportPath) {
+    if (-not $DataRoot) {
+        throw "ReportPath requires DataRoot so the report represents a service acceptance run"
+    }
+    $ResolvedReportPath = Resolve-RequestedPath $ReportPath
+    if (Test-Path -LiteralPath $ResolvedReportPath) {
+        throw "Acceptance report already exists: $ResolvedReportPath"
+    }
+    $ReleasePrefixForReport = $ReleaseRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
+    if ($ResolvedReportPath.StartsWith(
+        $ReleasePrefixForReport,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        throw "Acceptance report must be written outside the immutable release directory"
+    }
+}
 $ServerExe = Join-Path $ReleaseRoot "endfield-vfs-browser.exe"
 $WorkerExe = Join-Path $ReleaseRoot "unity-worker\artifacts\Vfs.UnityWorker.exe"
 $ReleaseMetadataPath = Join-Path $ReleaseRoot "release.json"
@@ -91,6 +120,12 @@ if ($ReleaseMetadata.schemaVersion -ne 1 -or $ReleaseMetadata.target -ne "win-x6
 }
 if (-not $ReleaseMetadata.gitCommit -or -not $ReleaseMetadata.workerVersion) {
     throw "Release metadata is missing build identity"
+}
+if ($ReleaseMetadata.sourceTree -ne "clean" -and -not $AllowDirtyRelease) {
+    throw "Release was not built from a clean source tree"
+}
+if ($ReportPath -and $ReleaseMetadata.sourceTree -ne "clean") {
+    throw "A dirty-source release cannot produce an acceptance report"
 }
 if (@($ReleaseMetadata.files).Count -eq 0) {
     throw "Release metadata is missing the immutable file manifest"
@@ -263,6 +298,46 @@ if ($DataRoot) {
             }
         }
     }
+}
+
+if ($ResolvedReportPath) {
+    $WorkerRelativePath = [System.IO.Path]::GetRelativePath(
+        $ReleaseRoot,
+        $Result.workerCommand
+    ).Replace("\", "/")
+    $AcceptanceReport = [ordered]@{
+        schemaVersion = 1
+        outcome = "passed"
+        testedAtUtc = [DateTime]::UtcNow.ToString("o")
+        release = [ordered]@{
+            gitCommit = $ReleaseMetadata.gitCommit
+            metadataSha256 = (Get-FileHash -LiteralPath $ReleaseMetadataPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            verifiedFileCount = $ManifestPaths.Count
+        }
+        machine = [ordered]@{
+            operatingSystem = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+            architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+            powershell = $PSVersionTable.PSVersion.ToString()
+        }
+        runtimeIsolation = [bool]$IsolatedRuntime
+        service = [ordered]@{
+            status = $Result.service
+            indexFreshness = $Result.indexFreshness
+            manifestIndex = $Result.manifestIndex
+            workerPath = $WorkerRelativePath
+            workerProtocol = $Handshake.protocol.version
+            workerVersion = $Handshake.workerVersion
+            workerCapabilityCount = @($Handshake.capabilities).Count
+            missingWorkerCapabilityCount = 0
+            legacyToolCount = 0
+        }
+    }
+    $ReportParent = Split-Path -Parent $ResolvedReportPath
+    New-Item -ItemType Directory -Force -Path $ReportParent | Out-Null
+    $AcceptanceReport | ConvertTo-Json -Depth 5 | Set-Content `
+        -LiteralPath $ResolvedReportPath `
+        -Encoding utf8
+    $Result.acceptanceReport = $ResolvedReportPath
 }
 
 $Result | ConvertTo-Json

@@ -27,6 +27,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("-IsolatedRuntime", self.source)
         self.assertIn("endfield-vfs-browser-win-x64.zip.sha256", self.source)
         self.assertNotIn("-SkipTests", self.source)
+        self.assertNotIn("-AllowDirty", self.source)
 
 
 if __name__ == "__main__":

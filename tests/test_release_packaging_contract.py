@@ -1,0 +1,36 @@
+import unittest
+from pathlib import Path
+
+
+PUBLISH_SCRIPT = (
+    Path(__file__).resolve().parents[1] / "tools" / "Publish-Windows.ps1"
+)
+VALIDATE_SCRIPT = PUBLISH_SCRIPT.with_name("Test-WindowsRelease.ps1")
+
+
+class ReleasePackagingContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = PUBLISH_SCRIPT.read_text(encoding="utf-8")
+        cls.validator_source = VALIDATE_SCRIPT.read_text(encoding="utf-8")
+
+    def test_acceptance_tool_is_shipped_inside_the_release(self):
+        self.assertIn('"tools/Test-WindowsRelease.ps1"', self.source)
+
+    def test_operator_facing_deployment_documents_are_shipped(self):
+        self.assertIn('"docs/deployment/windows-release.md"', self.source)
+        self.assertIn('"docs/deployment/animestudio-archive.md"', self.source)
+
+    def test_formal_release_refuses_an_implicitly_dirty_source_tree(self):
+        self.assertIn("status --porcelain", self.source)
+        self.assertIn('sourceTree = $SourceTree', self.source)
+        self.assertIn("-not $AllowDirty", self.source)
+        self.assertIn('sourceTree -ne "clean"', self.validator_source)
+
+    def test_absolute_output_paths_are_not_joined_to_the_current_directory(self):
+        self.assertIn("IsPathFullyQualified", self.source)
+        self.assertIn("IsPathFullyQualified", self.validator_source)
+
+
+if __name__ == "__main__":
+    unittest.main()

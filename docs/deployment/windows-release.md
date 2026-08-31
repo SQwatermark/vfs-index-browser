@@ -32,6 +32,11 @@ onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查和 worker 握
 跟踪的 `public/`、`schemas/` 与许可证会进入包，工作树中的研究样本和临时文件不会被复制。
 指定 `-ArchivePath` 时还会生成包含顶层产品目录的 ZIP 和相邻 `.sha256` 文件；归档目标同样
 必须不存在，发布过程不会覆盖历史归档。
+
+正式发布要求整个 Git 工作树干净，`release.json` 会记录 `sourceTree: clean`。存在已修改或
+未跟踪文件时命令会停止，避免用某个 HEAD 冒充实际打包源码。`-AllowDirty` 只允许本地试构建，
+产物明确标记为 dirty；验收器默认拒绝它，且即使使用 `-AllowDirtyRelease` 做开发诊断，也不能
+生成正式验收报告。
 `-SkipTests` 只供已经执行过同一提交门禁的本地迭代，不用于正式发布。
 
 构建后可先做不依赖游戏数据的结构与 worker 验收：
@@ -59,19 +64,26 @@ $env:VFS_BROWSER_DATA_ROOT = "E:\EndfieldVfsData"
 `endfield-vfs-index.jsonl.tgz` 构建；启动时也会验证主索引与当前游戏数据，发现过期后原子
 重建。若只想诊断而不修复，可加 `--no-auto-rebuild`。
 
-在新机器上应使用验收脚本绑定实际 data root。脚本在隐藏窗口中启动服务，验证主页、索引、
-Manifest、包内 worker、能力集合和旧工具状态，然后停止进程并恢复原环境变量：
+验收脚本随发布包放在 `tools/`，新机器不需要 VFS 源码 checkout。进入解压后的产品目录，再
+绑定实际 data root；脚本会在隐藏窗口中启动服务，验证主页、索引、Manifest、包内 worker、
+能力集合和旧工具状态，然后停止进程并恢复原环境变量：
 
 ```powershell
+Set-Location E:/Apps/endfield-vfs-browser
 ./tools/Test-WindowsRelease.ps1 `
-  -ReleaseDirectory E:/Apps/endfield-vfs-browser `
+  -ReleaseDirectory . `
   -DataRoot E:/EndfieldVfsData `
-  -IsolatedRuntime
+  -IsolatedRuntime `
+  -ReportPath E:/VfsAcceptance/endfield-vfs-browser.json
 ```
 
 `-IsolatedRuntime` 会在 worker 握手和服务子进程启动期间清除 Python、dotnet、旧 worker 与
 可选工具覆盖，并把 `PATH` 限制为 Windows 系统目录；检查结束后恢复调用进程原环境。该模式
 用于排除发布包意外借用开发机运行时，但仍不能替代另一台物理或虚拟 Windows 机器验收。
+`-ReportPath` 只在指定 data root 的完整服务验收中可用，拒绝覆盖旧报告，也拒绝把报告写入
+不可变发布目录。报告不记录用户名、发布绝对路径或 data root；它保存发布提交与元数据哈希、
+操作系统/架构、隔离状态、文件数、worker 版本/能力数以及索引和 Manifest 结论。完成另一台
+机器验收后，应将这份报告作为 P5 门禁证据保存。
 
 部署到其他机器时必须连同下列目录保留：
 
