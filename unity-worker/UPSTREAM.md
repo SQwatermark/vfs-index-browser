@@ -12,6 +12,11 @@
 更新本文件中的精确提交，核对许可证和依赖变化，并执行 worker 契约测试与真实样本等价
 测试。
 
+2026-09-01 使用 `tools/Test-AnimeStudioSnapshot.ps1` 复核：独立定制仓库工作树干净、HEAD
+仍为上述权威提交；VFS 跟踪快照的 260 个来源文件全部存在，归一化文本换行后仅有
+`PATCHES.md` 记录的 `AssetMap.cs` 与 `Classes/GameObject.cs` 两项差异。独立仓库可在用户
+确认后归档，但归档本身不是自动化构建步骤。
+
 ## VFS 研究分支定制代码
 
 Projectile managed-reference 聚焦解码器不在上述权威提交中。它属于此前的 VFS 研究成果，

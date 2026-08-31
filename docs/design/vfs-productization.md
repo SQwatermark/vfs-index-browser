@@ -464,6 +464,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   `7372e5c2e0ea92531ddead4127f99c9ef24b28f3a686de9919077c6f5d483b3b`；重新解压后 351 个
   不可变文件完整性复核通过，连接真实 data root 后服务、索引、Manifest 和包内 worker
   继续全部 `ready`。这证明目录发布、归档、传输校验与解压验收是同一条可重复链路。
+- 新增独立 AnimeStudio 归档前审计。脚本从 `UPSTREAM.md` 读取权威提交，要求外部仓库 HEAD
+  精确一致且工作树干净，再逐个核对 VFS vendor 快照；文本只归一化 CRLF/LF，二进制严格
+  比较。本机 260 个来源文件全部存在，差异精确等于 `PATCHES.md` 记录的 `AssetMap.cs` 与
+  `Classes/GameObject.cs`。归档准备证据完备，实际归档仍等待用户确认。
 
 ### 2026-08-31
 

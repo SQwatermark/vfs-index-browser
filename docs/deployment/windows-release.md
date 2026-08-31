@@ -99,3 +99,13 @@ Manifest、包内 worker、能力集合和旧工具状态，然后停止进程�
 
 独立 AnimeStudio 仓库不是安装或升级依赖。若未来新增 Unity 能力，应先扩展 VFS 自有协议、
 测试和包内 worker，再发布完整新目录，不能恢复对旧 CLI 的运行时回退。
+
+归档独立 AnimeStudio 仓库前，可从 VFS checkout 复核最终同步点和内嵌快照：
+
+```powershell
+./tools/Test-AnimeStudioSnapshot.ps1 -AnimeStudioPath D:/Projects/AnimeStudio
+```
+
+该检查要求外部仓库 HEAD 与 `unity-worker/UPSTREAM.md` 一致、工作树干净，并逐个比较 VFS
+跟踪的 vendor 文件。文本只归一化 CRLF/LF；其余字节严格比较。允许的差异只能是
+`PATCHES.md` 已记录的两个源码补丁。
