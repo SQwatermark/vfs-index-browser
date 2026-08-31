@@ -118,6 +118,7 @@ function Assert-ReleaseFile {
 ) | ForEach-Object { Assert-ReleaseFile $_ | Out-Null }
 
 $ReleaseMetadata = Get-Content -LiteralPath $ReleaseMetadataPath -Raw | ConvertFrom-Json
+$ReleaseMetadataHash = (Get-FileHash -LiteralPath $ReleaseMetadataPath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($ReleaseMetadata.schemaVersion -ne 1 -or $ReleaseMetadata.target -ne "win-x64") {
     throw "Unsupported release metadata"
 }
@@ -144,30 +145,40 @@ foreach ($File in $ReleaseMetadata.files) {
     }
     $ManifestFiles[$File.path] = $File
 }
-$ActualFiles = @(
-    Get-ChildItem -LiteralPath $ReleaseRoot -File -Recurse |
-        ForEach-Object {
-            $_.FullName.Substring($ReleasePrefix.Length).Replace("\", "/")
-        } |
-        Where-Object { $_ -ne "release.json" -and -not $_.StartsWith("data/") } |
-        Sort-Object
-)
 $ManifestPaths = @($ManifestFiles.Keys | Sort-Object)
-$FileSetDifference = @(Compare-Object $ManifestPaths $ActualFiles)
-if ($FileSetDifference.Count -ne 0) {
-    throw "Release file set does not match release.json: $($FileSetDifference | ConvertTo-Json -Compress)"
-}
-foreach ($RelativePath in $ManifestPaths) {
-    $File = Get-Item -LiteralPath (Join-Path $ReleaseRoot $RelativePath)
-    $Expected = $ManifestFiles[$RelativePath]
-    if ($File.Length -ne $Expected.size) {
-        throw "Release file size mismatch: $RelativePath"
+
+function Assert-ImmutableRelease {
+    $CurrentMetadataHash = (Get-FileHash -LiteralPath $ReleaseMetadataPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($CurrentMetadataHash -ne $ReleaseMetadataHash) {
+        throw "Release metadata changed during validation"
     }
-    $ActualHash = (Get-FileHash -LiteralPath $File.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($ActualHash -ne $Expected.sha256) {
-        throw "Release file hash mismatch: $RelativePath"
+
+    $ActualFiles = @(
+        Get-ChildItem -LiteralPath $ReleaseRoot -File -Recurse |
+            ForEach-Object {
+                $_.FullName.Substring($ReleasePrefix.Length).Replace("\", "/")
+            } |
+            Where-Object { $_ -ne "release.json" -and -not $_.StartsWith("data/") } |
+            Sort-Object
+    )
+    $FileSetDifference = @(Compare-Object $ManifestPaths $ActualFiles)
+    if ($FileSetDifference.Count -ne 0) {
+        throw "Release file set does not match release.json: $($FileSetDifference | ConvertTo-Json -Compress)"
+    }
+    foreach ($RelativePath in $ManifestPaths) {
+        $File = Get-Item -LiteralPath (Join-Path $ReleaseRoot $RelativePath)
+        $Expected = $ManifestFiles[$RelativePath]
+        if ($File.Length -ne $Expected.size) {
+            throw "Release file size mismatch: $RelativePath"
+        }
+        $ActualHash = (Get-FileHash -LiteralPath $File.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($ActualHash -ne $Expected.sha256) {
+            throw "Release file hash mismatch: $RelativePath"
+        }
     }
 }
+
+Assert-ImmutableRelease
 
 $HandshakeIsolation = $null
 if ($IsolatedRuntime) {
@@ -302,6 +313,9 @@ if ($DataRoot) {
     }
 }
 
+Assert-ImmutableRelease
+$Result.postRunIntegrity = "verified"
+
 if ($ResolvedReportPath) {
     $WorkerRelativePath = $Result.workerCommand.Substring($ReleasePrefix.Length).Replace("\", "/")
     $AcceptanceReport = [ordered]@{
@@ -310,8 +324,9 @@ if ($ResolvedReportPath) {
         testedAtUtc = [DateTime]::UtcNow.ToString("o")
         release = [ordered]@{
             gitCommit = $ReleaseMetadata.gitCommit
-            metadataSha256 = (Get-FileHash -LiteralPath $ReleaseMetadataPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            metadataSha256 = $ReleaseMetadataHash
             verifiedFileCount = $ManifestPaths.Count
+            postRunIntegrity = $Result.postRunIntegrity
         }
         machine = [ordered]@{
             operatingSystem = [Environment]::OSVersion.VersionString

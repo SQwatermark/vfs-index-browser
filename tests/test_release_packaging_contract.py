@@ -52,6 +52,13 @@ class ReleasePackagingContractTests(unittest.TestCase):
         self.assertIn('"_internal/VCRUNTIME140_1.dll"', self.validator_source)
         self.assertIn('"_internal/ucrtbase.dll"', self.validator_source)
 
+    def test_release_integrity_is_checked_before_and_after_execution(self):
+        self.assertGreaterEqual(
+            self.validator_source.count("Assert-ImmutableRelease"), 3
+        )
+        self.assertIn('postRunIntegrity = "verified"', self.validator_source)
+        self.assertIn("Release metadata changed during validation", self.validator_source)
+
     def test_acl_bridge_rejects_dynamic_cpp_runtime_dependencies(self):
         self.assertIn("'/MT'", self.acl_build_source)
         self.assertIn("/dependents", self.acl_build_source)

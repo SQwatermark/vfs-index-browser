@@ -459,6 +459,11 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- 随包验收器的不可变边界从“启动前校验”收紧为 worker/服务运行前后双重校验：第二轮再次检查
+  `release.json` 自身哈希、完整文件集合、大小和逐文件 SHA-256，运行期间新增、删除或改写包内
+  文件都会让验收失败；成功报告明确记录 `postRunIntegrity: verified`。`data/` 继续是唯一排除于
+  不可变清单的运行时写入边界。真实 data root 正向验收通过；故障注入在服务 `ready` 后改写临时
+  发布副本的 `README.md`，第二轮以文件大小不匹配拒绝验收，证明运行期污染门禁实际生效。
 - Windows PowerShell 5.1 的 Unicode 归档实测继续发现 `.sha256` 原以 ASCII 写入，哈希正确但
   中文 ZIP 文件名退化为问号。发布器现以无 BOM UTF-8 写入标准双空格格式，契约测试禁止恢复
   ASCII。提交 `51b94f7` 已从 Unicode clean checkout 重新生成中文 ZIP；校验文件无 BOM、文件名
