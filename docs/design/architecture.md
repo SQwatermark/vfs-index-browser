@@ -68,7 +68,9 @@ Handler 只保留环境门禁、错误码与 202 响应。manifest 资源解析�
 兼容方法。保留的同步模型、GLB、动画候选和 Blender 入口也通过统一适配方法调用同一模型
 校验；批量动画同步入口使用服务的去重、排序和解析结果。`manifest_asset_requests.py` 集中解析
 同步 query 中的 manifest/asset 身份与逗号或重复形式的动画集合，HTTP 适配方法不再各自解释
-这些字符串。外部进程也不由 Handler 直接启动：Unity worker、Blender 模型导出、vgmstream
+这些字符串。`manifest_request_resolver_service.py` 再统一单资源、模型、可选动画与批量动画的
+Manifest 服务调用，并把 query 400 与资源服务状态归一为无 HTTP 副作用的应用错误；无动画参数
+仍在构造 Manifest 服务前短路为空列表。外部进程也不由 Handler 直接启动：Unity worker、Blender 模型导出、vgmstream
 音频转换和 USM 转码分别通过独立适配器执行并负责超时、失败清理与原子产物发布。
 `usm_video_service.py` 还拥有 USM 虚拟目录和 MP4 缓存身份：身份同时包含 VFS 文件摘要、
 偏移/长度和转码工具文件信息，相同长度的游戏热更或工具升级不能误命中旧视频。

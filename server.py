@@ -144,11 +144,9 @@ from manifest_asset_service import (
     ManifestAssetService,
     is_model_entry_path,
 )
-from manifest_asset_requests import (
-    ManifestAssetRequestError,
-    parse_animation_asset_indexes,
-    parse_manifest_asset_reference,
-    parse_manifest_id,
+from manifest_request_resolver_service import (
+    ManifestRequestResolutionError,
+    ManifestRequestResolverService,
 )
 from manifest_worker_service import CUBEMAP_FACE_NAMES, ManifestWorkerService
 from avatar_mesh_snapshot import (
@@ -1723,17 +1721,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         query: dict[str, list[str]],
     ) -> tuple[ManifestIndex, dict, dict, Path] | None:
         try:
-            reference = parse_manifest_asset_reference(query)
-        except ManifestAssetRequestError as error:
-            self.send_error_json(400, str(error))
-            return None
-
-        try:
-            return self.manifest_asset_service().resolve(
-                reference.manifest_id,
-                reference.asset_index,
-            )
-        except ManifestAssetResolutionError as error:
+            return self.manifest_request_resolver_service().resolve_asset(query)
+        except ManifestRequestResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None
 
@@ -1745,17 +1734,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if not values:
             return None
         try:
-            reference = parse_manifest_asset_reference(
-                query,
-                asset_parameter="animationAssetIndex",
+            return self.manifest_request_resolver_service().resolve_optional_animation(
+                query
             )
-            return self.manifest_asset_service().resolve(
-                reference.manifest_id,
-                reference.asset_index,
-            )
-        except ManifestAssetRequestError as error:
-            self.send_error_json(400, str(error))
-        except ManifestAssetResolutionError as error:
+        except ManifestRequestResolutionError as error:
             self.send_error_json(error.status, str(error))
         return None
 
@@ -1764,17 +1746,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
         query: dict[str, list[str]],
     ) -> tuple[ManifestIndex, dict, dict, Path] | None:
         try:
-            reference = parse_manifest_asset_reference(query)
-        except ManifestAssetRequestError as error:
-            self.send_error_json(400, str(error))
-            return None
-
-        try:
-            return self.manifest_asset_service().resolve_model(
-                reference.manifest_id,
-                reference.asset_index,
-            )
-        except ManifestAssetResolutionError as error:
+            return self.manifest_request_resolver_service().resolve_model(query)
+        except ManifestRequestResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None
 
@@ -1782,25 +1755,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self,
         query: dict[str, list[str]],
     ) -> list[tuple[ManifestIndex, dict, dict, Path]] | None:
+        if not query.get("animationAssetIndex"):
+            return []
         try:
-            indexes = parse_animation_asset_indexes(
+            return self.manifest_request_resolver_service().resolve_animations(
                 query,
                 maximum=MAX_BLEND_ANIMATION_COUNT,
             )
-            if not indexes:
-                return []
-            manifest_id = parse_manifest_id(query)
-        except ManifestAssetRequestError as error:
-            self.send_error_json(400, str(error))
-            return None
-        try:
-            return self.manifest_asset_service().resolve_many(
-                manifest_id,
-                indexes,
-            )
-        except ManifestAssetResolutionError as error:
+        except ManifestRequestResolutionError as error:
             self.send_error_json(error.status, str(error))
             return None
+
+    def manifest_request_resolver_service(self) -> ManifestRequestResolverService:
+        return ManifestRequestResolverService(self.manifest_asset_service())
 
     def resolve_manifest_asset_file(
         self,

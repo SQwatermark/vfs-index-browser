@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- 单 Manifest 资源、模型、可选动画和批量动画的 query 解析与领域调用已统一到
+  `manifest_request_resolver_service.py`。请求语法错误稳定为 400，资源解析状态原样保留；Handler
+  四个兼容入口只映射错误。无动画参数继续在服务构造前返回空列表，保持基础模型路径零额外
+  数据库访问。Python discovery 更新为 `586/586`，`server.py` 降至 2514 行。
 - 普通 VFS preview/raw、TableCfg JSON 与内部目录现统一消费严格 file-ID 来源结果。TableCfg 新入口
   不要求 Handler 提供 SQLite connection，并保留来源错误状态；请求层旧的 original/resolve/quiet
   三套记录辅助方法已删除。真实领域仍分别拥有预览、SparkBuffer、容器和 raw 响应逻辑，没有

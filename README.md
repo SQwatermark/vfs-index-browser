@@ -125,6 +125,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `model_task_submission_service.py` | 模型任务 DTO、Manifest 资源解析与后台提交协调 |
 | `manifest_index.py` | HGM manifest 解析、派生 SQLite 缓存和逻辑目录查询 |
 | `manifest_asset_requests.py` | manifest 资源身份与批量动画 query 的严格解析 |
+| `manifest_request_resolver_service.py` | Manifest query、资源/模型/动画解析与应用错误归一 |
 | `manifest_asset_service.py` | manifest/asset 身份到本地可读 AssetBundle 的解析 |
 | `manifest_worker_service.py` | manifest 资源的 Worker 输入暂存、领域导出与缓存编排 |
 | `model_run_store.py` | 普通/Avatar 模型不可变 run 定位、缓存完整性与文档复验 |
