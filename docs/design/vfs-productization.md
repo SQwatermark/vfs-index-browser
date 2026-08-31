@@ -260,7 +260,8 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 
 ### P5：发布与弃用
 
-- [ ] 构建 Windows 自包含发布包并在干净环境验证。
+- [x] 构建 Windows 自包含发布包并从干净 checkout 验证。
+- [ ] 在另一台未安装 Python/.NET/AnimeStudio 的 Windows x64 机器上仅凭发布包和游戏数据验证。
 - [x] 完成安装、升级、故障诊断、开发和发布文档。
 - [x] 验证没有固定盘符、相邻源码仓库或用户目录依赖。
 - [ ] 归档独立 AnimeStudio 仓库，并在 VFS 中记录最后同步点。
@@ -295,7 +296,7 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 启动收成单条验收命令；它还要求服务最终使用的 worker 位于发布根目录下。生产模块的开发机
 盘符/用户目录禁入和旧 CLI 禁入已有自动化边界，发布目录文本审计也未发现外部 AnimeStudio
 绝对路径。P5 的剩余门禁是从干净 checkout/另一台机器复跑，并在用户确认后归档独立
-AnimeStudio 仓库；当前本机成功不能替代新机器验收。
+AnimeStudio 仓库；当前本机的干净 checkout 成功仍不能替代新机器验收。
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
@@ -373,6 +374,10 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 - `tools/Test-WindowsRelease.ps1` 可在无 data root 时验证产品文件、版本清单和 worker 握手，
   也可绑定指定 data root 隐藏启动服务并验证主页、索引、Manifest、能力集合和包内 worker
   路径；验收完成后会停止进程、恢复环境变量并清理本次临时日志；
+- 已从提交 `1c4ebf0` 建立不含主工作树未跟踪文件、`.deps`、原生 DLL、bin 或 obj 的本地干净
+  克隆，只执行一条 `Publish-Windows.ps1` 即自动下载并校验 ACL/RTM、构建原生桥、通过
+  Python 607 项与 .NET 37 项门禁并生成发布目录。随后用主工作树外部 data root 验收，服务
+  `ready`、索引 `current`、Manifest `ready`，worker 命令严格位于该发布目录；
 
 - worker `0.14.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
   聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理、Cubemap 六面和固定
@@ -460,6 +465,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 - 新增 `Test-WindowsRelease.ps1`，将发布文件、`release.json`、worker 握手和可选的真实 data
   root 启动检查统一为一条命令；真实启动还验证 worker 路径没有逃出发布根目录。生产根模块的
   开发机盘符/用户目录禁入已加入架构测试，P5 的机器路径依赖审计门禁关闭。
+- 发布入口现会自行恢复经过提交与 SHA-256 锁定的 ACL/RTM 源码并构建 Endfield ACL 原生桥；
+  `Initialize.ps1` 接受显式 dotnet 路径，不再要求调用者改系统 PATH。提交 `1c4ebf0` 的全新
+  本地克隆在没有 `.deps`、ACL DLL、bin/obj 的情况下由单条发布命令成功构建，并通过真实
+  data root 启动验收；干净 checkout 门禁关闭，仍保留另一台机器验收。
 - 同步模型、Avatar plan、GLB、Blend 与单动画路由的 LOD、下载和预检查参数已统一到
   `model_sync_request.py`。解析严格保持既有布尔集合和 ValueError 分类；Blend 下载 URL 去除
   `prepare` 时保留重复动画参数。27 项模型路由回归及 Python discovery `590/590` 通过。
