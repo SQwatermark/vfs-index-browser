@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- AB/PCK/USM 内部文件的 file ID、原记录、同逻辑来源 fallback 和容器内目标解析已形成单一高层入口。
+  `LogicalFileSourceService.resolve_file_id_required` 明确区分 ID 不存在与 chunk/fallback 不可读，
+  `InternalFileResolverService.resolve_file_id` 再消费已解析来源；Handler 不再为内部 preview/raw
+  打开 SQLite。跨来源与容器参数透传均有回归，Python discovery 更新为 `580/580`。
 - 主索引初审与可选原子重建、二级音频启动、Manifest 预热及五类健康报告合成已迁到
   `application_startup_service.py`。`main()` 不再伪造一个未初始化的 `BrowserHandler` 获取 Manifest，
   而是用 Manifest 服务、VFS reader 和进程级索引缓存直接预热；当前、重建、禁用自动修复及三类

@@ -125,7 +125,7 @@ from internal_file_resolver_service import (
     InternalFileResolutionError,
     InternalFileResolverService,
 )
-from logical_file_source_service import LogicalFileSourceService
+from logical_file_source_service import LogicalFileSourceError, LogicalFileSourceService
 from bundle_source_service import BundleSourceService
 from raw_file_service import RawFileResponse, RawFileService
 from request_router import dispatch_get, dispatch_post
@@ -1851,28 +1851,29 @@ class BrowserHandler(BaseHTTPRequestHandler):
         file_id = self.file_id_from_query(query)
         if file_id is None:
             return None
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return None
-            _, record, chunk_path = resolved
         try:
-            return InternalFileResolverService(
-                self.ensure_assetbundle_export,
-                self.ensure_audio_entry_file,
-                lambda item, source, path: usm_video_service().ensure_video(
-                    item,
-                    path,
-                    lambda: self.read_file_slice(item, source),
-                ),
-            ).resolve(
-                record,
-                chunk_path,
+            return self.internal_file_resolver_service().resolve_file_id(
+                file_id,
                 query,
             )
-        except InternalFileResolutionError as error:
+        except (LogicalFileSourceError, InternalFileResolutionError) as error:
             self.send_error_json(error.status, str(error))
             return None
+
+    def internal_file_resolver_service(self) -> InternalFileResolverService:
+        return InternalFileResolverService(
+            self.ensure_assetbundle_export,
+            self.ensure_audio_entry_file,
+            lambda item, source, path: usm_video_service().ensure_video(
+                item,
+                path,
+                lambda: self.read_file_slice(item, source),
+            ),
+            LogicalFileSourceService(
+                self.db_path,
+                source_rank,
+            ).resolve_file_id_required,
+        )
 
     def resolve_tablecfg_file(self, file_id: int) -> tuple[dict, dict, Path, str] | None:
         try:

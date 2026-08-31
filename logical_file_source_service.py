@@ -8,6 +8,12 @@ from pathlib import Path
 from typing import Callable
 
 
+class LogicalFileSourceError(RuntimeError):
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class LogicalFileSourceService:
     def __init__(
         self,
@@ -86,11 +92,31 @@ class LogicalFileSourceService:
     def resolve_file_id(self, file_id: int) -> tuple[dict, Path] | None:
         """在同一数据库视图中按 ID 读取记录并解析可读来源。"""
 
+        try:
+            _, record, chunk_path = self.resolve_file_id_required(file_id)
+            return record, chunk_path
+        except LogicalFileSourceError:
+            return None
+
+    def resolve_file_id_required(
+        self,
+        file_id: int,
+    ) -> tuple[dict, dict, Path]:
+        """解析 ID 并保留“记录缺失”和“来源不可读”两类诊断。"""
+
         with closing(self._connect()) as connection:
             original = self._find_record(connection, file_id)
             if original is None:
-                return None
-            return self.resolve_record(original, connection=connection)
+                raise LogicalFileSourceError(404, "file not found")
+            resolved = self.resolve_record(original, connection=connection)
+            if resolved is None:
+                raise LogicalFileSourceError(
+                    404,
+                    "chunk not found; this record likely requires a source fallback "
+                    "that is unavailable on this host",
+                )
+            record, chunk_path = resolved
+            return original, record, chunk_path
 
     @staticmethod
     def _find_record(

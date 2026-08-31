@@ -4,7 +4,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from logical_file_source_service import LogicalFileSourceService
+from logical_file_source_service import LogicalFileSourceError, LogicalFileSourceService
 
 
 class LogicalFileSourceServiceTests(unittest.TestCase):
@@ -149,6 +149,27 @@ class LogicalFileSourceServiceTests(unittest.TestCase):
         self.assertEqual(2, resolved[0]["id"])
         self.assertEqual(fallback, resolved[1])
         self.assertIsNone(self.service.resolve_file_id(99))
+
+    def test_required_file_id_preserves_original_and_diagnostic_boundaries(self):
+        fallback = self.root / "fallback.chk"
+        fallback.write_bytes(b"fallback")
+        self.insert([
+            (1, "StreamingAssets", "data.bin", str(self.root / "missing"), 1),
+            (2, "Persistent", "data.bin", str(fallback), 1),
+            (3, "Persistent", "lost.bin", str(self.root / "lost"), 0),
+        ])
+
+        original, record, path = self.service.resolve_file_id_required(1)
+
+        self.assertEqual(1, original["id"])
+        self.assertEqual(2, record["id"])
+        self.assertEqual(fallback, path)
+        with self.assertRaisesRegex(LogicalFileSourceError, "file not found") as missing:
+            self.service.resolve_file_id_required(99)
+        with self.assertRaisesRegex(LogicalFileSourceError, "chunk not found") as unreadable:
+            self.service.resolve_file_id_required(3)
+        self.assertEqual(404, missing.exception.status)
+        self.assertEqual(404, unreadable.exception.status)
 
 
 if __name__ == "__main__":

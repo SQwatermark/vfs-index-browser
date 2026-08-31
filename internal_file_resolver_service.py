@@ -37,10 +37,22 @@ class InternalFileResolverService:
         ensure_assetbundle: Callable[[dict, Path], tuple[Path, dict] | None],
         ensure_audio: Callable[[dict, Path, str], tuple[Path, Any]],
         ensure_usm: Callable[[dict, Path, str], Path],
+        resolve_file_source: Callable[[int], tuple[dict, dict, Path]] | None = None,
     ) -> None:
         self._ensure_assetbundle = ensure_assetbundle
         self._ensure_audio = ensure_audio
         self._ensure_usm = ensure_usm
+        self._resolve_file_source = resolve_file_source
+
+    def resolve_file_id(
+        self,
+        file_id: int,
+        query: Mapping[str, Sequence[str]],
+    ) -> InternalFileResolution | None:
+        if self._resolve_file_source is None:
+            raise RuntimeError("VFS file source resolver is not configured")
+        _, record, chunk_path = self._resolve_file_source(file_id)
+        return self.resolve(record, chunk_path, query)
 
     def resolve(
         self,
