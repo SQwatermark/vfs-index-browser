@@ -461,8 +461,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 - Windows PowerShell 5.1 发布的 `release.json` 与验收报告此前均带 UTF-8 BOM，PowerShell 可读但
   Python 以严格 `encoding='utf-8'` 加载会报 `Unexpected UTF-8 BOM`。两处现统一使用无 BOM
-  UTF-8，并由契约测试禁止恢复 `Set-Content -Encoding utf8`；修复提交将通过干净发布、包内验收
-  和 Python 严格 JSON 加载复核。
+  UTF-8，并由契约测试禁止恢复 `Set-Content -Encoding utf8`。提交 `6b30eea` 已从 Unicode clean
+  checkout 重新发布；包内 Windows PowerShell 5.1 验收全绿，Python 直接以严格 UTF-8 成功解析
+  `release.json` 与含 `postRunIntegrity: verified` 的验收报告，并确认两者均无 BOM。
 - 随包验收器的不可变边界从“启动前校验”收紧为 worker/服务运行前后双重校验：第二轮再次检查
   `release.json` 自身哈希、完整文件集合、大小和逐文件 SHA-256，运行期间新增、删除或改写包内
   文件都会让验收失败；成功报告明确记录 `postRunIntegrity: verified`。`data/` 继续是唯一排除于
