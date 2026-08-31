@@ -15,6 +15,10 @@ TH32CS_SNAPMODULE = 0x00000008
 TH32CS_SNAPMODULE32 = 0x00000010
 PROCESS_QUERY_INFORMATION = 0x0400
 PROCESS_VM_READ = 0x0010
+TOKEN_ADJUST_PRIVILEGES = 0x0020
+TOKEN_QUERY = 0x0008
+SE_PRIVILEGE_ENABLED = 0x00000002
+ERROR_NOT_ALL_ASSIGNED = 1300
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
 
@@ -48,9 +52,24 @@ class MODULEENTRY32W(ctypes.Structure):
     ]
 
 
+class LUID(ctypes.Structure):
+    _fields_ = [("LowPart", wintypes.DWORD), ("HighPart", wintypes.LONG)]
+
+
+class LUID_AND_ATTRIBUTES(ctypes.Structure):
+    _fields_ = [("Luid", LUID), ("Attributes", wintypes.DWORD)]
+
+
+class TOKEN_PRIVILEGES(ctypes.Structure):
+    _fields_ = [
+        ("PrivilegeCount", wintypes.DWORD),
+        ("Privileges", LUID_AND_ATTRIBUTES * 1),
+    ]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("process", help="Process executable name, for example Arknights.exe")
+    parser.add_argument("process", help="Process executable name, for example Endfield.exe")
     parser.add_argument("module", help="Module name, for example GameAssembly.dll")
     parser.add_argument("rva", type=lambda value: int(value, 0))
     parser.add_argument("--bytes", type=int, default=1024, dest="byte_count")
@@ -61,6 +80,8 @@ def parse_args() -> argparse.Namespace:
 
 def configure_kernel32():
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.argtypes = []
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
     kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
     kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
     kernel32.Process32FirstW.argtypes = [
@@ -96,6 +117,58 @@ def configure_kernel32():
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
     return kernel32
+
+
+def enable_debug_privilege(kernel32) -> None:
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    advapi32.OpenProcessToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.LookupPrivilegeValueW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(LUID),
+    ]
+    advapi32.LookupPrivilegeValueW.restype = wintypes.BOOL
+    advapi32.AdjustTokenPrivileges.argtypes = [
+        wintypes.HANDLE,
+        wintypes.BOOL,
+        ctypes.POINTER(TOKEN_PRIVILEGES),
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.LPVOID,
+    ]
+    advapi32.AdjustTokenPrivileges.restype = wintypes.BOOL
+
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(
+        kernel32.GetCurrentProcess(),
+        TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY,
+        ctypes.byref(token),
+    ):
+        raise ctypes.WinError(ctypes.get_last_error(), "OpenProcessToken")
+    try:
+        luid = LUID()
+        if not advapi32.LookupPrivilegeValueW(
+            None, "SeDebugPrivilege", ctypes.byref(luid)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error(), "LookupPrivilegeValueW")
+        privileges = TOKEN_PRIVILEGES()
+        privileges.PrivilegeCount = 1
+        privileges.Privileges[0].Luid = luid
+        privileges.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED
+        ctypes.set_last_error(0)
+        if not advapi32.AdjustTokenPrivileges(
+            token, False, ctypes.byref(privileges), 0, None, None
+        ):
+            raise ctypes.WinError(ctypes.get_last_error(), "AdjustTokenPrivileges")
+        if ctypes.get_last_error() == ERROR_NOT_ALL_ASSIGNED:
+            raise PermissionError("SeDebugPrivilege is not present in this process token")
+    finally:
+        kernel32.CloseHandle(token)
 
 
 def checked_handle(handle: int, operation: str) -> int:
@@ -195,6 +268,7 @@ def main() -> None:
         raise SystemExit("this tool requires Windows")
     args = parse_args()
     kernel32 = configure_kernel32()
+    enable_debug_privilege(kernel32)
     process_id = find_process_id(kernel32, args.process)
     module_base, module_size = find_module(kernel32, process_id, args.module)
     if args.rva < 0 or args.rva + args.byte_count > module_size:

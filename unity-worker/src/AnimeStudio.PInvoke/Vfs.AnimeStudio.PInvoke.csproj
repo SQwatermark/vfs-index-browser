@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>AnimeStudio.PInvoke</AssemblyName>
+    <RootNamespace>AnimeStudio.PInvoke</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- 上游源码保持唯一；VFS 包装工程只负责限定产品使用的目标框架。 -->
+    <Compile Include="..\..\vendor\animestudio\AnimeStudio.PInvoke\*.cs"
+             Link="Upstream\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

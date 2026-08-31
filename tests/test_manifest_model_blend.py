@@ -51,7 +51,8 @@ class ManifestModelBlendTests(unittest.TestCase):
         handler.resolve_manifest_model_source = resolve_model
         lods = []
 
-        def ensure_model(resolved, *, lod=0):
+        def ensure_model(resolved, *, lod=0, cancel_event=None):
+            self.assertIsNone(cancel_event)
             lods.append(lod)
             return resolved[1], model_document, glb
 
@@ -183,7 +184,7 @@ class ManifestModelBlendTests(unittest.TestCase):
             self.root / "animation.chk",
         )
         handler.resolve_animation_sources = lambda _query: [animation_resolved]
-        handler.ensure_animated_model_glb = lambda _model, animations, *, lod, skip_incompatible: server.AnimatedModelBundle(
+        handler.ensure_animated_model_glb = lambda _model, animations, *, lod, skip_incompatible, cancel_event=None, progress=None: server.AnimatedModelBundle(
             {"asset_index": 7, "path": "assets/model.prefab"},
             [animation[1] for animation in animations],
             model_root / "model-document.json",
@@ -223,7 +224,15 @@ class ManifestModelBlendTests(unittest.TestCase):
 
         skip_modes = []
 
-        def ensure_animations(_model, selected, *, lod, skip_incompatible):
+        def ensure_animations(
+            _model,
+            selected,
+            *,
+            lod,
+            skip_incompatible,
+            cancel_event=None,
+            progress=None,
+        ):
             captured.extend(int(item[1]["asset_index"]) for item in selected)
             skip_modes.append(skip_incompatible)
             return server.AnimatedModelBundle(

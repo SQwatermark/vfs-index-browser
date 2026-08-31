@@ -60,7 +60,8 @@ MEMBER_TYPE_OVERRIDES = {
     ("Beyond.Blackboard.BlackboardInt", "value"): "System.Int32",
     ("Beyond.Blackboard.BlackboardString", "value"): "System.String",
     ("Beyond.Gameplay.Core.BlackboardImpactValue", "value"): "System.Int32",
-    ("Beyond.Gameplay.Core.BlackboardSuperArmorValue", "value"): "System.Single",
+    # 反编译泛型实参和三份本地技能文件的完整消费均确认该值为 Int32。
+    ("Beyond.Gameplay.Core.BlackboardSuperArmorValue", "value"): "System.Int32",
     ("Beyond.Gameplay.Core.Conditions.BlackboardBuffId", "value"): "System.String",
     (
         "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContext.Data",
@@ -90,6 +91,7 @@ RAW_GAMEPLAY_TAG_FIELDS = {
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "slot"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "timeDilationPriority"),
     ("Beyond.Gameplay.Core.UltimateTimeAction.Data", "timeDilationPriority"),
+    ("Beyond.Gameplay.AI.EnemyCheckAIMarker.EnemyCheckAIMarkerInfo", "marker"),
 }
 
 RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
@@ -100,6 +102,17 @@ RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
 }
 
 UNMANAGED_STRUCT_LAYOUTS = {
+    "Beyond.Gameplay.AI.EnemyCheckAIMarker.EnemyCheckAIMarkerInfo": {
+        "size": 8,
+        "fields": [
+            {"name": "invert", "type": "System.Boolean", "offset": 0},
+            {
+                "name": "marker",
+                "type": "Beyond.Gameplay.Core.GameplayTag",
+                "offset": 4,
+            },
+        ],
+    },
     "Beyond.Gameplay.Core.DispelConfig": {
         "size": 8,
         "fields": [

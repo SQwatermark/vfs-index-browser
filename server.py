@@ -27,15 +27,11 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
 from assetbundle_browser import (
-    find_exported_file,
     list_export_directory,
-    metadata_by_export_name,
-    metadata_for_file,
 )
 from assetbundle_worker_service import (
     ASSETBUNDLE_EXPORT_TYPES,
     AssetBundleWorkerService,
-    manifest_asset_entries,
 )
 from audio_package_service import (
     AudioEntry,
@@ -50,9 +46,18 @@ from ability_entity_data import (
     AbilityEntityUnavailableError,
     list_ability_entity_ids,
     normalize_ability_entity_id,
-    parse_ability_entity_template,
-    select_ability_entity_asset,
 )
+from ability_entity_service import AbilityEntityService
+from akedb_compatible_route import (
+    AkedbCompatibleRouteError,
+    resolve_akedb_compatible_route,
+)
+from akedb_compatible_data_service import (
+    AkedbCompatibleDataError,
+    AkedbCompatibleDataService,
+)
+from memorypack_value_decoder import MemoryPackValueDecodeError, MemoryPackValueDecoder
+from memorypack_schema_service import MemoryPackSchemaService
 from audio_dialog_service import (
     AudioDialogConflictError,
     AudioDialogMediaBuildError,
@@ -63,9 +68,9 @@ from wwise_store import get_wwise_media
 from wwise_catalog_service import WwiseCatalogService
 from wwise_media_service import WwiseMediaBuildError, WwiseMediaService
 from sparkbuffer import SparkBufferError, parse_sparkbuffer
-from usm import UsmError
 from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
+from manifest_index_service import ManifestIndexService
 from index_freshness import inspect_index_freshness
 from secondary_audio_startup import ensure_secondary_audio_indexes
 from vfs_directory_service import (
@@ -73,8 +78,17 @@ from vfs_directory_service import (
     VfsDirectoryService,
     split_manifest_virtual_path,
 )
-from manifest_virtual_directory_service import ManifestVirtualDirectoryService
+from manifest_virtual_directory_service import (
+    ManifestVirtualDirectoryError,
+    ManifestVirtualDirectoryService,
+)
 from manifest_asset_preview_service import ManifestAssetPreviewService
+from manifest_asset_file_service import (
+    ManifestAssetCubemap,
+    ManifestAssetFile,
+    ManifestAssetFileError,
+    ManifestAssetFileService,
+)
 from vfs_search_service import VfsSearchService
 from file_preview_service import (
     AUDIO_EXTENSIONS,
@@ -87,10 +101,28 @@ from file_preview_service import (
     truncate_text,
 )
 from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_file
-from internal_directory_service import InternalDirectoryService
+from vfs_file_materializer import VfsFileMaterializer
+from vfs_file_reader import VfsFileReader
+from tablecfg_service import TableCfgResolutionError, TableCfgService
+from internal_directory_service import (
+    InternalDirectoryError,
+    InternalDirectoryService,
+    build_internal_tool_metadata,
+)
 from internal_file_preview_service import InternalFilePreviewService
+from internal_file_resolver_service import (
+    InternalFileResolution,
+    InternalFileResolutionError,
+    InternalFileResolverService,
+)
+from logical_file_source_service import LogicalFileSourceService
+from bundle_source_service import BundleSourceService
 from raw_file_service import RawFileResponse, RawFileService
-from avatar_resource_plan_service import AvatarResourcePlanService
+from request_router import dispatch_get, dispatch_post
+from avatar_resource_plan_service import (
+    AvatarResourcePlanError,
+    AvatarResourcePlanService,
+)
 from model_task_submission_service import ModelTaskSubmissionService
 from index_rebuild import (
     IndexRebuildError,
@@ -109,18 +141,15 @@ from manifest_asset_requests import (
     parse_manifest_id,
 )
 from manifest_worker_service import CUBEMAP_FACE_NAMES, ManifestWorkerService
-from npc_avatar_resources import build_avatar_mesh_resource_plan
 from avatar_mesh_snapshot import (
     selected_container_paths,
 )
 from avatar_model_document_service import AvatarModelDocumentService
 from avatar_model_build_service import AvatarModelBuildService
 from npc_avatar_model import build_static_avatar_mesh_document
-from string_path_hash import StringPathHashIndex
+from string_path_hash_file_service import StringPathHashFileService
 from npc_avatar_config import (
-    attach_resolved_paths,
     is_avatar_mesh_asset_path,
-    parse_avatar_mesh,
 )
 from model_document import validate_model_document
 from model_run_store import ModelRunStore, resolve_published_model_run
@@ -128,6 +157,7 @@ from model_worker_service import ModelWorkerService
 from ordinary_model_document_service import OrdinaryModelDocumentService
 from ordinary_model_build_service import OrdinaryModelBuildService
 from model_glb_service import ModelGlbService
+from manifest_model_glb_service import ManifestModelGlbService
 from model_animation_service import (
     AnimatedModelBundle,
     AnimationExportIssue,
@@ -155,11 +185,10 @@ from projectile_data import (
     ProjectileDecodeError,
     ProjectileNotFoundError,
     ProjectileUnavailableError,
-    load_projectile_export,
     list_projectile_ids,
     normalize_projectile_id,
-    select_projectile_asset,
 )
+from projectile_service import ProjectileService
 from unity_worker import UnityWorkerClient, UnityWorkerError
 from task_registry import BackgroundTaskRegistry, TaskNotFoundError
 from task_service import TaskApplicationService
@@ -194,6 +223,7 @@ MANIFEST_INDEX_REPORT = {"status": "notRun"}
 SECONDARY_AUDIO_INDEX_REPORT = {"status": "notRun"}
 SECONDARY_AUDIO_REBUILD_REPORT = {"status": "notRun"}
 WORKER_RUNS = WorkerRunService()
+STRING_PATH_HASH_LOCK = threading.Lock()
 
 
 DEFAULT_INDEX = RUNTIME_CONFIG.default_index
@@ -202,6 +232,7 @@ AUDIO_DIALOG_DB = RUNTIME_CONFIG.audio_dialog_database
 WWISE_DB = RUNTIME_CONFIG.wwise_database
 PUBLIC_DIR = RUNTIME_CONFIG.public_dir
 INTERNAL_CACHE_DIR = RUNTIME_CONFIG.internal_cache
+MANIFEST_INDEXES = ManifestIndexService(INTERNAL_CACHE_DIR / "manifests")
 TASKS = BackgroundTaskRegistry(lambda: INTERNAL_CACHE_DIR / "tasks")
 TASK_API = TaskApplicationService(TASKS)
 SHADER_ARCHIVE_ROOT = RUNTIME_CONFIG.shader_archive_root
@@ -848,18 +879,6 @@ def row_to_dict(row: sqlite3.Row) -> dict:
     return {key: row[key] for key in row.keys()}
 
 
-def is_safe_akedb_name(value: str) -> bool:
-    return re.fullmatch(r"[A-Za-z0-9_]+", value) is not None
-
-
-def is_safe_akedb_json_file(value: str) -> bool:
-    return re.fullmatch(r"[A-Za-z0-9_.-]+\.json", value) is not None
-
-
-def is_akedb_collection(value: str) -> bool:
-    return value in {"SkillData", "BuffData"}
-
-
 def default_model_animation_query(path: str) -> str:
     stem = Path(path.split("##", 1)[0]).stem.casefold()
     for pattern in (
@@ -895,6 +914,14 @@ def load_memorypack_union_map(path: Path) -> dict[str, dict[int, str]]:
     return {base_type: {int(tag): derived_type for tag, derived_type in entries.items()} for base_type, entries in raw.items()}
 
 
+MEMORYPACK_INPUTS = MemoryPackSchemaService(
+    MEMORYPACK_SCHEMA,
+    MEMORYPACK_UNION_MAP,
+    SchemaIndex,
+    load_memorypack_union_map,
+)
+
+
 def internal_preview_kind(path: Path) -> str:
     suffix = file_suffix(path.name)
     if suffix in IMAGE_EXTENSIONS:
@@ -908,26 +935,8 @@ def internal_preview_kind(path: Path) -> str:
     return "binary"
 
 
-def safe_relative_path(root: Path, raw_path: str) -> Path | None:
-    normalized = unquote(raw_path).replace("\\", "/").strip("/")
-    if not normalized:
-        return root
-    candidate = (root / normalized).resolve()
-    try:
-        candidate.relative_to(root.resolve())
-    except ValueError:
-        return None
-    return candidate
-
-
 class BrowserHandler(BaseHTTPRequestHandler):
     db_path: Path
-    manifest_indexes: dict[tuple[int, int, str], ManifestIndex] = {}
-    manifest_index_lock = threading.Lock()
-    shared_resource_lock = threading.Lock()
-    memorypack_schema: SchemaIndex | None = None
-    memorypack_union_map: dict[str, dict[int, str]] | None = None
-    memorypack_load_error: str | None = None
 
     def log_message(self, fmt: str, *args) -> None:
         LOGGER.info(
@@ -1067,11 +1076,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return get_wwise_media(conn, pck_file_id, ordinal)
 
     def resolve_vfs_file_source(self, file_id: int) -> tuple[dict, Path] | None:
-        with closing(self.connect()) as conn:
-            row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
-            if row is None:
-                return None
-            return self.resolve_file_record_quiet(conn, row_to_dict(row))
+        return LogicalFileSourceService(self.db_path, source_rank).resolve_file_id(file_id)
 
     def wwise_media_service(self) -> WwiseMediaService:
         return WwiseMediaService(
@@ -1086,168 +1091,41 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return self.resolve_logical_file_source(logical_path)
         return self.resolve_vfs_file_source(int(media["pck_file_id"]))
 
-    @classmethod
-    def load_memorypack_decoder_inputs(cls) -> tuple[SchemaIndex, dict[str, dict[int, str]]]:
-        if cls.memorypack_load_error:
-            raise RuntimeError(cls.memorypack_load_error)
-        if Decoder is None or MemoryPackReader is None or SchemaIndex is None:
-            cls.memorypack_load_error = "MemoryPack decoder module is unavailable"
-            raise RuntimeError(cls.memorypack_load_error)
-        try:
-            if cls.memorypack_schema is None:
-                cls.memorypack_schema = SchemaIndex.load(MEMORYPACK_SCHEMA)
-            if cls.memorypack_union_map is None:
-                cls.memorypack_union_map = load_memorypack_union_map(MEMORYPACK_UNION_MAP)
-        except (OSError, json.JSONDecodeError, ValueError) as error:
-            cls.memorypack_load_error = str(error)
-            raise RuntimeError(cls.memorypack_load_error) from error
-        return cls.memorypack_schema, cls.memorypack_union_map
+    @staticmethod
+    def load_memorypack_decoder_inputs() -> tuple[object, dict]:
+        return MEMORYPACK_INPUTS.load()
 
     def decode_memorypack_json_preview(self, record: dict, chunk_path: Path) -> tuple[str, bool, dict] | None:
-        class_name = infer_class(record.get("logical_id"))
-        if not class_name:
-            return None
-        schema, union_map = self.load_memorypack_decoder_inputs()
-        data = self.read_file_slice(record, chunk_path)
-        reader = MemoryPackReader(data)
-        decoder = Decoder(schema, union_map=union_map)
         try:
-            value = decoder.decode(reader, class_name)
-        except DecodeError as error:
-            raise RuntimeError(f"{error.message} at 0x{error.offset:x} ({error.path})") from error
+            decoded = self.memorypack_value_decoder().decode(
+                record.get("logical_id"), record, chunk_path
+            )
+        except MemoryPackValueDecodeError as error:
+            raise RuntimeError(str(error)) from error
+        if decoded is None:
+            return None
         meta = {
-            "class": class_name,
-            "bytes": len(data),
-            "consumed": reader.tell(),
-            "complete": reader.tell() == len(data),
+            "class": decoded.class_name,
+            "bytes": decoded.byte_count,
+            "consumed": decoded.consumed,
+            "complete": decoded.complete,
             "discoveredUnions": {
                 base_type: {str(tag): derived_type for tag, derived_type in sorted(entries.items())}
-                for base_type, entries in sorted(decoder.discovered_unions.items())
+                for base_type, entries in sorted(decoded.discovered_unions.items())
             },
         }
-        text, truncated = truncate_text(json.dumps({"__meta": meta, "value": value}, ensure_ascii=False, indent=2))
+        text, truncated = truncate_text(json.dumps({"__meta": meta, "value": decoded.value}, ensure_ascii=False, indent=2))
         return text, truncated, meta
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path == "/api/health":
-            self.handle_health()
-            return
-        if parsed.path == "/api/task":
-            self.handle_task_status(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/task-artifact":
-            self.handle_task_artifact(parse_qs(parsed.query))
-            return
-        if parsed.path.startswith("/api/") and not self.require_current_index():
-            return
-        if parsed.path.startswith("/api/akedb-compatible/"):
-            self.handle_akedb_compatible(parsed.path)
-            return
-        if parsed.path == "/api/manifest":
-            self.handle_manifest()
-            return
-        if parsed.path == "/api/list":
-            self.handle_list(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/search":
-            self.handle_search(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-assets/by-name":
-            self.handle_manifest_assets_by_name(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/projectile":
-            self.handle_projectile(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/audio-dialog/list":
-            self.handle_audio_dialog_list(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/audio-dialog/entry":
-            self.handle_audio_dialog_entry(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/audio-dialog/preview":
-            self.handle_audio_dialog_preview(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/audio-dialog/raw":
-            self.handle_audio_dialog_raw(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/wwise/list":
-            self.handle_wwise_list(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/wwise/preview":
-            self.handle_wwise_preview(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/wwise/raw":
-            self.handle_wwise_raw(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/file":
-            self.handle_file(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/preview":
-            self.handle_preview(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/raw":
-            self.handle_raw(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/preview":
-            self.handle_manifest_asset_preview(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/raw":
-            self.handle_manifest_asset_raw(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/avatar-plan":
-            self.handle_manifest_asset_avatar_plan(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model":
-            self.handle_manifest_asset_model(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model-buffer":
-            self.handle_manifest_asset_model_buffer(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model-texture":
-            self.handle_manifest_asset_model_texture(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model-glb":
-            self.handle_manifest_asset_model_glb(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model-blend":
-            self.handle_manifest_asset_model_blend(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model-animation":
-            self.handle_manifest_asset_model_animation(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/manifest-asset/model-animations":
-            self.handle_manifest_asset_model_animations(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/tablecfg/json":
-            self.handle_tablecfg_json(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/internal/list":
-            self.handle_internal_list(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/internal/preview":
-            self.handle_internal_preview(parse_qs(parsed.query))
-            return
-        if parsed.path == "/api/internal/raw":
-            self.handle_internal_raw(parse_qs(parsed.query))
+        if dispatch_get(self, parsed.path, parse_qs(parsed.query)):
             return
         self.serve_static(parsed.path)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        if parsed.path.startswith("/api/") and not self.require_current_index():
-            return
-        if parsed.path == "/api/tasks/projectile":
-            self.handle_start_projectile_task()
-            return
-        if parsed.path == "/api/tasks/model":
-            self.handle_start_model_task()
-            return
-        if parsed.path == "/api/tasks/model-blend":
-            self.handle_start_model_blend_task()
-            return
-        if parsed.path == "/api/tasks/model-animation":
-            self.handle_start_model_animation_task()
+        if dispatch_post(self, parsed.path):
             return
         self.send_error_json(404, "API route not found")
 
@@ -1372,125 +1250,39 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_akedb_compatible(self, request_path: str) -> None:
         """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""
-
-        prefix = "/api/akedb-compatible/"
-        logical_path = unquote(request_path[len(prefix) :]).strip("/")
-        parts = logical_path.split("/") if logical_path else []
-        if len(parts) == 2 and re.fullmatch(r"TableCfg-[A-Za-z0-9@._-]+", parts[0]):
-            table_name = parts[1].removesuffix(".json")
-            if not parts[1].endswith(".json") or not is_safe_akedb_name(table_name):
-                self.send_error_json(400, "invalid TableCfg resource name")
-                return
-            self.handle_akedb_compatible_table(table_name)
+        try:
+            route = resolve_akedb_compatible_route(request_path)
+        except AkedbCompatibleRouteError as error:
+            self.send_error_json(error.status, str(error))
             return
-        if len(parts) == 2 and parts[1] == "manifest.json" and is_akedb_collection(parts[0]):
-            self.handle_akedb_compatible_collection_manifest(parts[0])
-            return
-        if len(parts) == 2 and parts[1].endswith(".json") and is_akedb_collection(parts[0]):
-            file_name = parts[1]
-            if not is_safe_akedb_json_file(file_name):
-                self.send_error_json(400, "invalid collection resource name")
-                return
-            self.handle_akedb_compatible_collection_file(parts[0], file_name)
-            return
-        if len(parts) == 2 and parts[0] == "ProjectileData":
-            if parts[1] == "manifest.json":
-                self.handle_akedb_compatible_projectile_manifest()
-                return
-            if parts[1].endswith(".json"):
-                projectile_id = parts[1].removesuffix(".json")
-                try:
-                    projectile_id = normalize_projectile_id(projectile_id)
-                except ValueError as error:
-                    self.send_error_json(400, str(error))
-                    return
-                self.handle_akedb_compatible_projectile_file(projectile_id)
-                return
-        if len(parts) == 2 and parts[0] == "AbilityEntityData":
-            if parts[1] == "manifest.json":
-                self.handle_akedb_compatible_ability_entity_manifest()
-                return
-            if parts[1].endswith(".json"):
-                entity_id = parts[1].removesuffix(".json")
-                try:
-                    entity_id = normalize_ability_entity_id(entity_id)
-                except ValueError as error:
-                    self.send_error_json(400, str(error))
-                    return
-                self.handle_akedb_compatible_ability_entity_file(entity_id)
-                return
-        self.send_error_json(404, "AKEDB-compatible resource not found")
+        getattr(self, route.handler_name)(*route.arguments)
 
     def handle_akedb_compatible_table(self, table_name: str) -> None:
-        logical_id = f"Table/Data/TableCfg/{table_name}.bytes"
-        resolved = self.resolve_logical_file_source(logical_id)
-        if resolved is None:
-            self.send_error_json(404, f"local VFS resource is unavailable: {logical_id}")
-            return
-        record, chunk_path = resolved
         try:
-            parsed, _ = self.parse_tablecfg_file(record, chunk_path)
-        except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
-            self.send_error_json(422, f"SparkBuffer parse failed: {error}")
+            value = self.akedb_compatible_data_service().table(table_name)
+        except AkedbCompatibleDataError as error:
+            self.send_error_json(error.status, str(error))
             return
         self.send_json(
-            parsed["data"],
+            value,
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
     def handle_akedb_compatible_collection_manifest(self, collection: str) -> None:
-        logical_parent = f"JsonData/Data/Json/{collection}"
-        with closing(self.connect()) as conn:
-            rows = conn.execute(
-                """
-                SELECT name FROM entries
-                WHERE scope = 'effective' AND type = 'file' AND parent = ?
-                ORDER BY name
-                """,
-                (logical_parent,),
-            ).fetchall()
-        files = sorted(
-            {
-                str(row["name"])
-                for row in rows
-                if is_safe_akedb_json_file(str(row["name"]))
-            }
-        )
-        self.send_json(
-            [
-                {
-                    "contentFile": f"/api/akedb-compatible/{collection}/{file_name}",
-                }
-                for file_name in files
-            ],
-            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
-        )
+        try:
+            value = self.akedb_compatible_data_service().collection_manifest(collection)
+        except AkedbCompatibleDataError as error:
+            self.send_error_json(error.status, str(error))
+            return
+        self.send_json(value, extra_headers={"X-Endaxis-Source": "vfs-index-browser"})
 
     def handle_akedb_compatible_collection_file(self, collection: str, file_name: str) -> None:
-        logical_id = f"JsonData/Data/Json/{collection}/{file_name}"
-        resolved = self.resolve_logical_file_source(logical_id)
-        if resolved is None:
-            self.send_error_json(404, f"local VFS resource is unavailable: {logical_id}")
-            return
-        record, chunk_path = resolved
-        class_name = infer_class(logical_id)
-        if not class_name:
-            self.send_error_json(422, f"MemoryPack class is unknown: {logical_id}")
-            return
         try:
-            schema, union_map = self.load_memorypack_decoder_inputs()
-            data = self.read_file_slice(record, chunk_path)
-            reader = MemoryPackReader(data)
-            decoder = Decoder(schema, union_map=union_map)
-            value = decoder.decode(reader, class_name)
-        except (DecodeError, RuntimeError, ValueError) as error:
-            self.send_error_json(422, f"MemoryPack decode failed: {error}")
-            return
-        if reader.tell() != len(data):
-            self.send_error_json(
-                422,
-                f"MemoryPack decode was incomplete: consumed {reader.tell()} / {len(data)} bytes",
+            value = self.akedb_compatible_data_service().collection_file(
+                collection, file_name
             )
+        except AkedbCompatibleDataError as error:
+            self.send_error_json(error.status, str(error))
             return
         self.send_json(
             value,
@@ -1499,12 +1291,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def resolve_installed_manifest_index(self) -> ManifestIndex:
         """打开当前安装版本的精确 Unity manifest 索引。"""
-
-        resolved = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
-        if resolved is None:
-            raise FileNotFoundError(f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}")
-        record, chunk_path = resolved
-        return self.manifest_index(record, chunk_path)
+        index, _, _ = self.manifest_asset_service().resolve_installed(
+            MANIFEST_LOGICAL_ID
+        )
+        return index
 
     def handle_manifest_assets_by_name(self, query: dict[str, list[str]]) -> None:
         """Return exact manifest asset candidates for one referenced resource filename.
@@ -1514,40 +1304,16 @@ class BrowserHandler(BaseHTTPRequestHandler):
         with their source-domain evidence instead of silently accepting an arbitrary icon.
         """
 
-        name = query.get("name", [""])[0].strip()
-        if not name or "/" in name or "\\" in name:
-            self.send_error_json(400, "name must be one exact manifest asset filename")
-            return
-        resolved = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
-        if resolved is None:
-            self.send_error_json(503, f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}")
-            return
-        record, chunk_path = resolved
         try:
-            candidates = self.manifest_index(record, chunk_path).assets_by_name(name)
-        except (OSError, sqlite3.Error, ValueError) as error:
-            self.send_error_json(503, str(error))
+            document = self.manifest_asset_service().candidates_by_name(
+                MANIFEST_LOGICAL_ID,
+                query.get("name", [""])[0],
+            )
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
             return
-        manifest_id = int(record["id"])
         self.send_json(
-            {
-                "name": name,
-                "manifestId": manifest_id,
-                "candidates": [
-                    {
-                        **candidate,
-                        "previewUrl": (
-                            "/api/manifest-asset/preview?"
-                            f"manifestId={manifest_id}&assetIndex={candidate['assetIndex']}"
-                        ),
-                        "rawUrl": (
-                            "/api/manifest-asset/raw?"
-                            f"manifestId={manifest_id}&assetIndex={candidate['assetIndex']}"
-                        ),
-                    }
-                    for candidate in candidates
-                ],
-            },
+            document,
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
@@ -1587,50 +1353,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         )
 
     def build_ability_entity_document(self, entity_id: str) -> dict:
-        """从精确 Unity asset 导出并解析能力实体模板的已证实前缀。"""
-
-        resolved_manifest = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
-        if resolved_manifest is None:
-            raise AbilityEntityUnavailableError(
-                f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}"
-            )
-        manifest_record, manifest_chunk = resolved_manifest
-        try:
-            index = self.manifest_index(manifest_record, manifest_chunk)
-            indexed_asset = select_ability_entity_asset(index, entity_id)
-            asset, bundle_record, bundle_chunk = self.resolve_index_asset_bundle(
-                index,
-                int(indexed_asset["assetIndex"]),
-            )
-            raw_path, export_meta = self.ensure_manifest_monobehaviour_raw(
-                bundle_record,
-                bundle_chunk,
-                asset,
-            )
-            template = parse_ability_entity_template(raw_path.read_bytes(), entity_id)
-        except AbilityEntityNotFoundError:
-            raise
-        except AbilityEntityDecodeError:
-            raise
-        except UnityWorkerError as error:
-            if unity_worker_is_unavailable(error):
-                raise AbilityEntityUnavailableError(str(error)) from error
-            raise AbilityEntityDecodeError(f"Unity worker {error.code}: {error}") from error
-        except (FileNotFoundError, OSError, sqlite3.Error, subprocess.SubprocessError) as error:
-            raise AbilityEntityUnavailableError(str(error)) from error
-        except (RuntimeError, ValueError) as error:
-            raise AbilityEntityDecodeError(str(error)) from error
-        return {
-            "apiVersion": 1,
-            "abilityEntityId": entity_id,
-            "source": {
-                "assetPath": asset["path"],
-                "assetIndex": int(asset["asset_index"]),
-                "bundleName": asset["bundle_name"],
-                "rawExport": export_meta.get("exportedFile"),
-            },
-            "abilityEntityTemplateData": template,
-        }
+        return AbilityEntityService(
+            self.resolve_logical_file_source,
+            self.manifest_index,
+            self.resolve_index_asset_bundle,
+            self.ensure_manifest_monobehaviour_raw,
+            unity_worker_is_unavailable,
+            manifest_logical_id=MANIFEST_LOGICAL_ID,
+        ).build(entity_id)
 
     def handle_akedb_compatible_ability_entity_manifest(self) -> None:
         try:
@@ -1669,16 +1399,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
 
     def handle_manifest(self) -> None:
         with self.connect() as conn:
-            meta = {row["key"]: json.loads(row["value"]) for row in conn.execute("SELECT key, value FROM meta")}
-            scopes = []
-            for scope in ["effective", "Persistent", "StreamingAssets", "all"]:
-                row = conn.execute(
-                    "SELECT * FROM directories WHERE scope = ? AND path = ''",
-                    (scope,),
-                ).fetchone()
-                if row:
-                    scopes.append(row_to_dict(row))
-            self.send_json({"meta": meta, "scopes": scopes})
+            document = VfsDirectoryService(lambda *_args: 0).overview(conn)
+        self.send_json(document)
 
     def handle_list(self, query: dict[str, list[str]]) -> None:
         scope = query.get("scope", ["effective"])[0]
@@ -1690,24 +1412,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.handle_manifest_virtual_list(scope, *virtual_path, page, page_size)
             return
 
-        def manifest_asset_count(conn: sqlite3.Connection, file_id: int) -> int:
-            manifest_record = self.original_file_record(conn, file_id)
-            resolved_manifest = (
-                self.resolve_file_record_quiet(conn, manifest_record)
-                if manifest_record is not None
-                else None
-            )
-            if resolved_manifest is None:
-                return 0
-            record, chunk = resolved_manifest
-            try:
-                return self.manifest_index(record, chunk).summary()["assetCount"]
-            except (ValueError, OSError, sqlite3.Error):
-                return 0
+        manifest_assets = self.manifest_asset_service()
 
         with self.connect() as conn:
             try:
-                document = VfsDirectoryService(manifest_asset_count).list_directory(
+                document = VfsDirectoryService(manifest_assets.asset_count).list_directory(
                     conn,
                     scope,
                     path,
@@ -1727,34 +1436,22 @@ class BrowserHandler(BaseHTTPRequestHandler):
         page: int,
         page_size: int,
     ) -> None:
-        with self.connect() as conn:
-            row = conn.execute(
-                """
-                SELECT e.file_id FROM entries e
-                WHERE e.scope = ? AND e.parent = ? AND e.type = 'file'
-                  AND e.name = 'manifest.hgmmap'
-                LIMIT 1
-                """,
-                (scope, base_path),
-            ).fetchone()
-            if row is None:
-                self.send_error_json(404, "manifest.hgmmap not found")
-                return
-            resolved = self.resolve_file_record(conn, int(row["file_id"]))
-            if resolved is None:
-                return
-            original, record, chunk_path = resolved
-
         try:
-            document = ManifestVirtualDirectoryService().list_directory(
-                self.manifest_index(record, chunk_path),
-                scope=scope,
-                base_path=base_path,
-                inner_path=inner_path,
-                manifest_id=int(original["id"]),
-                page=page,
-                page_size=page_size,
-            )
+            with self.connect() as conn:
+                document = ManifestVirtualDirectoryService(
+                    LogicalFileSourceService(self.db_path, source_rank),
+                    self.manifest_index,
+                ).list_from_vfs(
+                    conn,
+                    scope=scope,
+                    base_path=base_path,
+                    inner_path=inner_path,
+                    page=page,
+                    page_size=page_size,
+                )
+        except ManifestVirtualDirectoryError as error:
+            self.send_error_json(error.status, str(error))
+            return
         except (ValueError, OSError, sqlite3.Error, FileNotFoundError) as error:
             self.send_error_json(400, str(error))
             return
@@ -1774,95 +1471,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
         *,
         cancel_event: object | None = None,
     ) -> dict:
-        """Resolve and decode one projectile through the local manifest/VFS chain."""
-
-        resolved_manifest = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
-        if resolved_manifest is None:
-            raise ProjectileUnavailableError(
-                f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}"
-            )
-        manifest_record, manifest_chunk = resolved_manifest
-        try:
-            index = self.manifest_index(manifest_record, manifest_chunk)
-            indexed_asset = select_projectile_asset(index, projectile_id)
-            asset, bundle_record, bundle_chunk = self.resolve_index_asset_bundle(
-                index,
-                int(indexed_asset["assetIndex"]),
-            )
-        except ProjectileNotFoundError:
-            raise
-        except FileNotFoundError as error:
-            raise ProjectileUnavailableError(str(error)) from error
-        except (OSError, sqlite3.Error, ValueError) as error:
-            raise ProjectileUnavailableError(f"cannot query the local manifest: {error}") from error
-
-        try:
-            ensured = self.ensure_manifest_projectile_component(
-                bundle_record,
-                bundle_chunk,
-                asset,
-                projectile_id,
-                cancel_event=cancel_event,
-            )
-        except UnityWorkerError as error:
-            if unity_worker_is_unavailable(error):
-                raise ProjectileUnavailableError(str(error)) from error
-            raise ProjectileDecodeError(f"Unity worker {error.code}: {error}") from error
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired) as error:
-            raise ProjectileUnavailableError(str(error)) from error
-        if ensured is None:
-            raise ProjectileDecodeError(
-                "Unity worker did not export the projectile component"
-            )
-
-        export_root, export_meta = ensured
-        exported_files = [str(value) for value in export_meta.get("exportedFiles", [])]
-        parsed = load_projectile_export(
-            export_root,
-            exported_files,
-            projectile_id,
-        )
-        component = parsed["component"]
-        if component.get("$unparsed"):
-            decode_status = "unparsed"
-        elif component.get("$partial"):
-            decode_status = "partial"
-        else:
-            decode_status = "decoded"
-
-        return {
-            "apiVersion": PROJECTILE_API_VERSION,
-            "projectileId": projectile_id,
-            "source": {
-                "manifest": {
-                    "recordId": int(manifest_record["id"]),
-                    "source": manifest_record["source"],
-                    "logicalId": manifest_record["logical_id"],
-                },
-                "asset": {
-                    "assetIndex": int(asset["asset_index"]),
-                    "path": asset["path"],
-                    "pathHash": asset["path_hash"],
-                    "size": int(asset["size"]),
-                    "bundleIndex": int(asset["bundle_index"]),
-                    "bundleName": asset["bundle_name"],
-                },
-                "bundle": {
-                    "recordId": int(bundle_record["id"]),
-                    "source": bundle_record["source"],
-                    "logicalId": bundle_record["logical_id"],
-                },
-                "exportedFile": parsed["exportedFile"],
-                "componentPointer": parsed["componentPointer"],
-            },
-            "decode": {
-                "status": decode_status,
-                "idMatchesRequest": parsed["idMatchesRequest"],
-                "layout": component.get("layout"),
-            },
-            "projectileComponentData": component,
-            "unityObject": parsed["unityObject"],
-        }
+        return ProjectileService(
+            self.resolve_logical_file_source,
+            self.manifest_index,
+            self.resolve_index_asset_bundle,
+            self.ensure_manifest_projectile_component,
+            unity_worker_is_unavailable,
+            manifest_logical_id=MANIFEST_LOGICAL_ID,
+            api_version=PROJECTILE_API_VERSION,
+        ).build(projectile_id, cancel_event=cancel_event)
 
     def handle_projectile(self, query: dict[str, list[str]]) -> None:
         raw_projectile_id = query.get("projectileId", [""])[0]
@@ -2028,19 +1645,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except ValueError:
             self.send_error_json(400, "invalid file id")
             return
-        with self.connect() as conn:
-            row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
-            if row is None:
-                self.send_error_json(404, "file not found")
-                return
-            self.send_json(row_to_dict(row))
+        record = LogicalFileSourceService(self.db_path, source_rank).find_record(file_id)
+        if record is None:
+            self.send_error_json(404, "file not found")
+            return
+        self.send_json(record)
 
     def original_file_record(self, conn: sqlite3.Connection, file_id: int) -> dict | None:
-        row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
-        if row is None:
+        record = LogicalFileSourceService(self.db_path, source_rank).find_record(
+            file_id,
+            connection=conn,
+        )
+        if record is None:
             self.send_error_json(404, "file not found")
             return None
-        return row_to_dict(row)
+        return record
 
     def file_id_from_query(self, query: dict[str, list[str]]) -> int | None:
         try:
@@ -2065,179 +1684,70 @@ class BrowserHandler(BaseHTTPRequestHandler):
         return None
 
     def resolve_file_record_quiet(self, conn: sqlite3.Connection, original_dict: dict) -> tuple[dict, Path] | None:
-        original_path = Path(original_dict["chunk_path"])
-        if original_path.exists():
-            return original_dict, original_path
-        candidates = [
-            row_to_dict(row)
-            for row in conn.execute(
-                """
-                SELECT * FROM files
-                WHERE logical_id = ?
-                """,
-                (original_dict["logical_id"],),
-            )
-        ]
-        candidates.sort(key=lambda row: source_rank(row["source"], bool(row["chunk_exists"])))
-        for candidate in candidates:
-            candidate_path = Path(candidate["chunk_path"])
-            if candidate_path.exists():
-                return candidate, candidate_path
-        return None
+        return LogicalFileSourceService(self.db_path, source_rank).resolve_record(
+            original_dict,
+            connection=conn,
+        )
 
     def read_file_slice(self, record: dict, chunk_path: Path, limit: int | None = None) -> bytes:
-        length = int(record["length"])
-        if limit is not None:
-            length = min(length, limit)
-        with chunk_path.open("rb") as file:
-            file.seek(int(record["offset"]))
-            data = file.read(length)
-        if record.get("encrypted"):
-            data = decrypt_vfs_file(data, int(record["iv_seed"]))
-        return data
+        return VfsFileReader(decrypt_vfs_file).read(record, chunk_path, limit)
 
     def manifest_index(self, record: dict, chunk_path: Path) -> ManifestIndex:
-        key = (
-            int(record["id"]),
-            int(record["length"]),
-            str(record.get("file_data_md5") or ""),
+        return MANIFEST_INDEXES.ensure(
+            record,
+            lambda: self.read_file_slice(record, chunk_path),
         )
-        with self.manifest_index_lock:
-            cached = self.manifest_indexes.get(key)
-            if cached is not None:
-                return cached
-            content_md5 = str(record.get("file_data_md5") or "").casefold()
-            source_identity = (
-                f"vfs-md5:{content_md5}:length:{int(record['length'])}"
-                if content_md5
-                else None
-            )
-            index = ManifestIndex.ensure_for_source(
-                lambda: self.read_file_slice(record, chunk_path),
-                INTERNAL_CACHE_DIR / "manifests",
-                source_identity,
-            )
-            self.manifest_indexes[key] = index
-            return index
 
     def manifest_asset_service(self) -> ManifestAssetService:
         return ManifestAssetService(self.db_path, self.manifest_index, source_rank)
 
+    def memorypack_value_decoder(self) -> MemoryPackValueDecoder:
+        decode_error_type = DecodeError if isinstance(DecodeError, type) else None
+        return MemoryPackValueDecoder(
+            infer_class,
+            self.load_memorypack_decoder_inputs,
+            self.read_file_slice,
+            MemoryPackReader,
+            Decoder,
+            decode_error_type,
+        )
+
+    def akedb_compatible_data_service(self) -> AkedbCompatibleDataService:
+        return AkedbCompatibleDataService(
+            self.db_path,
+            self.resolve_logical_file_source,
+            self.parse_tablecfg_file,
+            self.memorypack_value_decoder(),
+        )
+
     def read_file_range(self, record: dict, chunk_path: Path, relative_offset: int, length: int) -> bytes:
-        file_length = int(record["length"])
-        if relative_offset < 0 or length < 0 or relative_offset + length > file_length:
-            raise ValueError("file range is outside the VFS record")
-        if record.get("encrypted"):
-            return self.read_file_slice(record, chunk_path)[relative_offset : relative_offset + length]
-        with chunk_path.open("rb") as file:
-            file.seek(int(record["offset"]) + relative_offset)
-            return file.read(length)
+        return VfsFileReader(decrypt_vfs_file).read_range(
+            record,
+            chunk_path,
+            relative_offset,
+            length,
+        )
 
     def resolve_logical_file_source(self, logical_id: str) -> tuple[dict, Path] | None:
         """Resolve one local VFS logical file, preferring its effective entry."""
-
-        with closing(self.connect()) as conn:
-            effective_ids = {
-                int(row[0])
-                for row in conn.execute(
-                    """
-                    SELECT file_id FROM entries
-                    WHERE scope = 'effective' AND type = 'file' AND path = ?
-                      AND file_id IS NOT NULL
-                    """,
-                    (logical_id,),
-                )
-            }
-            candidates = [
-                row_to_dict(row)
-                for row in conn.execute(
-                    "SELECT * FROM files WHERE logical_id = ?",
-                    (logical_id,),
-                )
-            ]
-        candidates.sort(
-            key=lambda row: (
-                0 if int(row["id"]) in effective_ids else 1,
-                *source_rank(row["source"], bool(row["chunk_exists"])),
-            )
-        )
-        for candidate in candidates:
-            chunk_path = Path(candidate["chunk_path"])
-            if chunk_path.is_file():
-                return candidate, chunk_path
-        return None
+        return LogicalFileSourceService(self.db_path, source_rank).resolve(logical_id)
 
     def ensure_string_path_hash_file(self) -> tuple[Path, dict]:
         """Materialize the effective runtime path table into the shared cache."""
-
-        resolved = self.resolve_logical_file_source(STRING_PATH_HASH_LOGICAL_ID)
-        if resolved is None:
-            raise FileNotFoundError(
-                f"local VFS file is unavailable: {STRING_PATH_HASH_LOGICAL_ID}"
-            )
-        record, chunk_path = resolved
-        root = INTERNAL_CACHE_DIR / "shared" / "string-path-hash"
-        target = root / "StringPathHash.bin"
-        meta_path = root / "meta.json"
-        identity = {
-            "recordId": int(record["id"]),
-            "length": int(record["length"]),
-            "offset": int(record["offset"]),
-            "chunkPath": str(record["chunk_path"]),
-            "chunkMtimeNs": chunk_path.stat().st_mtime_ns,
-            "fileDataMd5": str(record.get("file_data_md5") or ""),
-        }
-
-        cache_version = CACHE_VERSIONS.version("string-path-hash")
-        with self.shared_resource_lock:
-            if target.is_file() and meta_path.is_file():
-                try:
-                    meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                    if (
-                        meta.get("version") == cache_version
-                        and meta.get("source") == identity
-                        and target.stat().st_size == int(record["length"])
-                    ):
-                        return target, meta
-                except (OSError, json.JSONDecodeError):
-                    pass
-            root.mkdir(parents=True, exist_ok=True)
-            target.unlink(missing_ok=True)
-            self.write_file_slice(record, chunk_path, target)
-            meta = {
-                "version": cache_version,
-                "source": identity,
-                "builtAtEpoch": int(time.time()),
-            }
-            meta_path.write_text(
-                json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
-        return target, meta
+        return StringPathHashFileService(
+            self.resolve_logical_file_source,
+            self.write_file_slice,
+            STRING_PATH_HASH_LOCK,
+            INTERNAL_CACHE_DIR,
+            logical_id=STRING_PATH_HASH_LOGICAL_ID,
+            cache_version=CACHE_VERSIONS.version("string-path-hash"),
+        ).ensure()
 
     def write_file_slice(self, record: dict, chunk_path: Path, target: Path) -> None:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        expected_size = int(record["length"])
-        if target.exists() and target.stat().st_size == expected_size:
-            return
-
-        tmp = target.with_suffix(target.suffix + ".tmp")
-        if record.get("encrypted"):
-            tmp.write_bytes(self.read_file_slice(record, chunk_path))
-        else:
-            with chunk_path.open("rb") as source, tmp.open("wb") as output:
-                source.seek(int(record["offset"]))
-                remaining = expected_size
-                while remaining > 0:
-                    data = source.read(min(STREAM_CHUNK_SIZE, remaining))
-                    if not data:
-                        break
-                    output.write(data)
-                    remaining -= len(data)
-        os.replace(tmp, target)
-
-    def model_snapshot_cache_paths(self, record: dict, asset_index: int) -> tuple[Path, Path, Path]:
-        return self.model_run_store().cache_paths(int(record["id"]), asset_index)
+        VfsFileMaterializer(
+            self.read_file_slice,
+            stream_chunk_size=STREAM_CHUNK_SIZE,
+        ).write(record, chunk_path, target)
 
     def model_run_store(self) -> ModelRunStore:
         return ModelRunStore(INTERNAL_CACHE_DIR, validate_model_document)
@@ -2262,12 +1772,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         return AvatarModelDocumentService()
 
     def avatar_model_build_service(self) -> AvatarModelBuildService:
+        avatar_plan_service = self.avatar_resource_plan_service()
         return AvatarModelBuildService(
             self.model_run_store(),
             self.model_worker_service(),
             self.avatar_model_document_service(),
-            self.load_avatar_mesh_plan,
-            self.avatar_mesh_bundle_closure,
+            avatar_plan_service.load,
+            avatar_plan_service.bundle_closure,
             self.resolve_bundle_sources,
             selected_container_paths,
             UNITY_WORKER.artifact_identity,
@@ -2288,6 +1799,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
             exporter_path=Path(build_glb.__code__.co_filename),
             shader_archive_root=SHADER_ARCHIVE_ROOT,
             character_shader_path=Path(CHARACTER_NPR_PATH),
+        )
+
+    def manifest_model_glb_service(self) -> ManifestModelGlbService:
+        return ManifestModelGlbService(
+            self.ensure_avatar_mesh_model,
+            self.ensure_model_hierarchy,
+            self.resolve_bundle_sources,
+            self.model_run_store(),
+            self.model_glb_service(),
+        )
+
+    def avatar_resource_plan_service(self) -> AvatarResourcePlanService:
+        return AvatarResourcePlanService(
+            self.ensure_manifest_monobehaviour_dump,
+            self.ensure_string_path_hash_file,
         )
 
     def model_animation_service(self) -> ModelAnimationService:
@@ -2412,55 +1938,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             progress=progress,
         )
 
-    def load_avatar_mesh_plan(
-        self,
-        index: ManifestIndex,
-        asset: dict,
-        bundle_record: dict,
-        bundle_chunk: Path,
-        lod: int,
-        *,
-        cancel_event: object | None = None,
-    ) -> tuple[dict, dict, dict]:
-        cancel_options = (
-            {"cancel_event": cancel_event} if cancel_event is not None else {}
-        )
-        exported = self.ensure_manifest_monobehaviour_dump(
-            bundle_record,
-            bundle_chunk,
-            asset,
-            **cancel_options,
-        )
-        if exported is None:
-            raise RuntimeError("AnimeStudio produced no AvatarMesh TypeTree dump")
-        dump_path, dump_meta = exported
-        avatar_mesh = parse_avatar_mesh(
-            dump_path.read_text(encoding="utf-8", errors="replace")
-        )
-        path_hash_file, path_hash_meta = self.ensure_string_path_hash_file()
-        attach_resolved_paths(avatar_mesh, StringPathHashIndex(path_hash_file))
-        plan = build_avatar_mesh_resource_plan(index, avatar_mesh, lod=lod)
-        return avatar_mesh, plan, {
-            "dump": dump_meta,
-            "stringPathHash": path_hash_meta,
-        }
-
-    def avatar_mesh_bundle_closure(
-        self,
-        index: ManifestIndex,
-        plan: dict,
-    ) -> list[dict]:
-        bundles: dict[int, dict] = {}
-        for direct in plan.get("bundles", []):
-            bundle_index = int(direct["bundleIndex"])
-            bundles[bundle_index] = {
-                "bundleIndex": bundle_index,
-                "name": str(direct["bundleName"]),
-            }
-            for dependency in index.bundle_dependencies(bundle_index):
-                bundles[int(dependency["bundleIndex"])] = dependency
-        return [bundles[key] for key in sorted(bundles)]
-
     def ensure_avatar_mesh_model(
         self,
         index: ManifestIndex,
@@ -2488,6 +1965,21 @@ class BrowserHandler(BaseHTTPRequestHandler):
             UNITY_WORKER,
             self.write_file_slice,
             WORKER_RUNS,
+        )
+
+    def assetbundle_worker_service(self) -> AssetBundleWorkerService:
+        return AssetBundleWorkerService(
+            INTERNAL_CACHE_DIR,
+            UNITY_WORKER,
+            self.write_file_slice,
+            WORKER_RUNS,
+        )
+
+    def manifest_asset_file_service(self) -> ManifestAssetFileService:
+        return ManifestAssetFileService(
+            self.ensure_assetbundle_export,
+            self.ensure_manifest_monobehaviour_dump,
+            self.ensure_manifest_cubemap_export,
         )
 
     def ensure_manifest_projectile_component(
@@ -2558,12 +2050,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         cancel_event: object | None = None,
     ) -> dict | None:
         try:
-            return AssetBundleWorkerService(
-                INTERNAL_CACHE_DIR,
-                UNITY_WORKER,
-                self.write_file_slice,
-                WORKER_RUNS,
-            ).ensure_map(
+            return self.assetbundle_worker_service().ensure_map(
                 record,
                 chunk_path,
                 cancel_event=cancel_event,
@@ -2585,12 +2072,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if map_meta is None:
             return None
         try:
-            return AssetBundleWorkerService(
-                INTERNAL_CACHE_DIR,
-                UNITY_WORKER,
-                self.write_file_slice,
-                WORKER_RUNS,
-            ).ensure_preview_export(
+            return self.assetbundle_worker_service().ensure_preview_export(
                 record,
                 chunk_path,
                 map_meta,
@@ -2676,34 +2158,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
     ) -> tuple[list[tuple[dict, Path]], list[dict]]:
         """Resolve manifest bundle names to readable VFS records in manifest order."""
 
-        resolved: list[tuple[dict, Path]] = []
-        missing: list[dict] = []
-        with self.connect() as conn:
-            for bundle in bundles:
-                file_name = f"Data/Bundles/Windows/{bundle['name']}"
-                candidates = [
-                    row_to_dict(row)
-                    for row in conn.execute(
-                        "SELECT * FROM files WHERE file_name = ?",
-                        (file_name,),
-                    )
-                ]
-                candidates.sort(
-                    key=lambda row: source_rank(row["source"], bool(row["chunk_exists"]))
-                )
-                source = next(
-                    (
-                        (candidate, Path(candidate["chunk_path"]))
-                        for candidate in candidates
-                        if Path(candidate["chunk_path"]).exists()
-                    ),
-                    None,
-                )
-                if source is None:
-                    missing.append(bundle)
-                else:
-                    resolved.append(source)
-        return resolved, missing
+        return BundleSourceService(self.db_path, source_rank).resolve_many(bundles)
 
     def resolve_index_asset_bundle(
         self,
@@ -2720,79 +2175,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             )
         record, chunk_path = sources[0]
         return asset, record, chunk_path
-
-    def build_skeletal_morph_animation(
-        self,
-        index: ManifestIndex,
-        model_asset: dict,
-        animation_asset: dict,
-        document: dict,
-    ) -> dict:
-        sidecar_path = morph_clip_asset_path(str(animation_asset["path"]))
-        sidecar_matches = index.assets_by_path(sidecar_path)
-        if len(sidecar_matches) != 1:
-            raise RuntimeError(
-                f"expected one skeletal-morph sidecar {sidecar_path!r}, "
-                f"found {len(sidecar_matches)}"
-            )
-
-        avatar_names = morph_avatar_asset_names(str(model_asset["path"]))
-        avatar_matches = []
-        for position, avatar_name in enumerate(avatar_names):
-            matches = [
-                asset
-                for asset in index.assets_by_name(avatar_name)
-                if "/skeletalmorph/skeletalmorphcfg/" in str(asset["path"]).casefold()
-            ]
-            if len(matches) > 1 or (position == 0 and len(matches) != 1):
-                raise RuntimeError(
-                    f"expected {'one' if position == 0 else 'at most one'} skeletal-morph "
-                    f"avatar {avatar_name!r}, found {len(matches)}"
-                )
-            avatar_matches.extend(matches)
-        if not avatar_matches:
-            raise RuntimeError(
-                f"expected a skeletal-morph avatar for {model_asset['path']!r}"
-            )
-
-        sidecar_asset, sidecar_record, sidecar_chunk = self.resolve_index_asset_bundle(
-            index,
-            int(sidecar_matches[0]["assetIndex"]),
-        )
-        sidecar_raw, _ = self.ensure_manifest_monobehaviour_raw(
-            sidecar_record,
-            sidecar_chunk,
-            sidecar_asset,
-        )
-        clip = parse_morph_clip(sidecar_raw.read_bytes())
-        avatar_assets = []
-        avatars = []
-        for avatar_match in avatar_matches:
-            avatar_asset, avatar_record, avatar_chunk = self.resolve_index_asset_bundle(
-                index,
-                int(avatar_match["assetIndex"]),
-            )
-            avatar_raw, _ = self.ensure_manifest_monobehaviour_raw(
-                avatar_record,
-                avatar_chunk,
-                avatar_asset,
-            )
-            avatar_assets.append(avatar_asset)
-            avatars.append(parse_morph_avatar(avatar_raw.read_bytes()))
-        avatar = merge_morph_avatars(tuple(avatars))
-        animation_index = int(animation_asset["asset_index"])
-        return bake_morph_animation(
-            document,
-            clip,
-            avatar,
-            animation_id=f"animation:{animation_index}",
-            source={
-                "logicalPath": str(animation_asset["path"]),
-                "bundle": str(animation_asset["bundle_name"]),
-                "morphClipPath": str(sidecar_asset["path"]),
-                "morphAvatarPaths": [str(asset["path"]) for asset in avatar_assets],
-            },
-        )
 
     def resolve_manifest_asset_source(
         self,
@@ -2882,198 +2264,80 @@ class BrowserHandler(BaseHTTPRequestHandler):
         self,
         query: dict[str, list[str]],
         resolved_source: tuple[ManifestIndex, dict, dict, Path] | None = None,
-    ) -> tuple[dict, Path, dict, dict] | None:
+    ) -> ManifestAssetFile | None:
         resolved_source = resolved_source or self.resolve_manifest_asset_source(query)
         if resolved_source is None:
             return None
-        _, asset, bundle_record, bundle_chunk = resolved_source
-        ensured = self.ensure_assetbundle_export(bundle_record, bundle_chunk)
-        if ensured is None:
+        try:
+            return self.manifest_asset_file_service().resolve_file(resolved_source)
+        except ManifestAssetFileError as error:
+            self.send_error_json(error.status, str(error))
             return None
-        export_root, meta = ensured
-        matches = manifest_asset_entries(meta, asset["path"])
-        if not matches:
-            try:
-                fallback = self.ensure_manifest_monobehaviour_dump(
-                    bundle_record,
-                    bundle_chunk,
-                    asset,
-                )
-            except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-                fallback = None
-            if fallback is not None:
-                target, dump_meta = fallback
-                return (
-                    bundle_record,
-                    target,
-                    {
-                        "Type": "MonoBehaviourDump",
-                        "Name": Path(str(asset["path"])).stem,
-                        "Container": asset["path"],
-                        "Components": dump_meta.get("exportedFiles", []),
-                    },
-                    asset,
-                )
-            self.send_error_json(
-                404,
-                "已解析对应 AssetBundle，但 AnimeStudio 暂不支持导出该资源类型。",
-            )
-            return None
-        for entry in matches:
-            found = find_exported_file(
-                export_root,
-                meta,
-                str(entry.get("Type") or ""),
-                str(entry.get("Name") or ""),
-                str(entry.get("PathID") or ""),
-            )
-            if found is not None:
-                target, asset_meta = found
-                return bundle_record, target, asset_meta, asset
-        self.send_error_json(404, "已找到资源元数据，但对应的导出文件缺失。")
-        return None
 
     def resolve_manifest_cubemap_files(
         self,
         query: dict[str, list[str]],
         resolved_source: tuple[ManifestIndex, dict, dict, Path] | None = None,
-    ) -> tuple[dict, dict[str, Path], dict, dict] | None:
+    ) -> ManifestAssetCubemap | None:
         resolved_source = resolved_source or self.resolve_manifest_asset_source(query)
         if resolved_source is None:
             return None
-        _, asset, bundle_record, bundle_chunk = resolved_source
-        try:
-            ensured = self.ensure_manifest_cubemap_export(bundle_record, bundle_chunk, asset)
-        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
-            return None
-        if ensured is None:
-            return None
-        faces, _ = ensured
-        asset_meta = {
-            "Type": "Cubemap",
-            "Name": Path(str(asset["path"])).stem,
-            "Container": asset["path"],
-        }
-        return bundle_record, faces, asset_meta, asset
+        return self.manifest_asset_file_service().resolve_cubemap(resolved_source)
 
-    def resolve_assetbundle_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, dict | None] | None:
+    def resolve_internal_file(
+        self,
+        query: dict[str, list[str]],
+    ) -> InternalFileResolution | None:
         file_id = self.file_id_from_query(query)
         if file_id is None:
             return None
-        internal_path = query.get("path", [""])[0]
         with self.connect() as conn:
             resolved = self.resolve_file_record(conn, file_id)
             if resolved is None:
                 return None
             _, record, chunk_path = resolved
-
-        if file_suffix(record["file_name"]) != ".ab":
-            self.send_error_json(400, "AssetBundle internal file preview expected an .ab record")
-            return None
-
-        ensured = self.ensure_assetbundle_export(record, chunk_path)
-        if ensured is None:
-            return None
-        export_root, meta = ensured
-        if internal_path:
-            target = safe_relative_path(export_root, internal_path)
-            if target is None or not target.is_file():
-                self.send_error_json(404, "internal file not found")
-                return None
-            asset_meta = metadata_for_file(
-                target,
-                export_root,
-                metadata_by_export_name(meta),
-            )
-            return record, target, asset_meta
-
-        asset_type = query.get("type", [""])[0]
-        asset_name = query.get("name", [""])[0]
-        path_id = query.get("pathId", [""])[0]
-        if not asset_type or not asset_name:
-            self.send_error_json(400, "AssetBundle asset preview expected path or type/name")
-            return None
-        found = find_exported_file(export_root, meta, asset_type, asset_name, path_id)
-        if found is None:
-            self.send_error_json(404, "exported asset not found")
-            return None
-        target, asset_meta = found
-        return record, target, asset_meta
-
-    def resolve_audio_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, AudioEntry] | None:
-        file_id = self.file_id_from_query(query)
-        if file_id is None:
-            return None
-        internal_path = query.get("path", [""])[0]
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return None
-            _, record, chunk_path = resolved
-
-        if file_suffix(record["file_name"]) != ".pck":
-            self.send_error_json(400, "audio internal file preview expected a .pck record")
-            return None
         try:
-            target, entry = self.ensure_audio_entry_file(record, chunk_path, internal_path)
-        except FileNotFoundError as error:
-            self.send_error_json(404, str(error))
-            return None
-        except (ValueError, RuntimeError) as error:
-            self.send_error_json(500, str(error))
-            return None
-        return record, target, entry
-
-    def resolve_usm_internal_file(self, query: dict[str, list[str]]) -> tuple[dict, Path, dict] | None:
-        file_id = self.file_id_from_query(query)
-        if file_id is None:
-            return None
-        internal_path = query.get("path", [""])[0]
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return None
-            _, record, chunk_path = resolved
-
-        if file_suffix(record["file_name"]) != ".usm":
-            self.send_error_json(400, "USM internal file preview expected a .usm record")
-            return None
-        try:
-            target = usm_video_service().ensure_video(
+            return InternalFileResolverService(
+                self.ensure_assetbundle_export,
+                self.ensure_audio_entry_file,
+                lambda item, source, path: usm_video_service().ensure_video(
+                    item,
+                    path,
+                    lambda: self.read_file_slice(item, source),
+                ),
+            ).resolve(
                 record,
-                internal_path,
-                lambda: self.read_file_slice(record, chunk_path),
+                chunk_path,
+                query,
             )
-        except FileNotFoundError as error:
-            self.send_error_json(404, str(error))
+        except InternalFileResolutionError as error:
+            self.send_error_json(error.status, str(error))
             return None
-        except (UsmError, RuntimeError, OSError, subprocess.SubprocessError) as error:
-            self.send_error_json(500, str(error))
-            return None
-        asset_meta = {
-            "Name": target.name,
-            "Type": "MP4",
-            "Container": record["file_name"],
-            "Source": "USM",
-        }
-        return record, target, asset_meta
 
     def resolve_tablecfg_file(self, file_id: int) -> tuple[dict, dict, Path, str] | None:
-        with self.connect() as conn:
-            resolved = self.resolve_file_record(conn, file_id)
-            if resolved is None:
-                return None
-            original, record, chunk_path = resolved
-        table_name = tablecfg_name_for_file(record["file_name"])
-        if table_name is None:
-            self.send_error_json(400, "TableCfg JSON expected a Data/TableCfg/*.bytes record")
+        try:
+            with self.connect() as conn:
+                resolved = self.tablecfg_service().resolve(conn, file_id)
+        except TableCfgResolutionError as error:
+            self.send_error_json(error.status, str(error))
             return None
-        return original, record, chunk_path, table_name
+        return (
+            resolved.original,
+            resolved.record,
+            resolved.chunk_path,
+            resolved.table_name,
+        )
+
+    def tablecfg_service(self) -> TableCfgService:
+        return TableCfgService(
+            LogicalFileSourceService(self.db_path, source_rank),
+            self.read_file_slice,
+            parse_sparkbuffer,
+            tablecfg_name_for_file,
+        )
 
     def parse_tablecfg_file(self, record: dict, chunk_path: Path) -> tuple[dict, bytes]:
-        parsed = parse_sparkbuffer(self.read_file_slice(record, chunk_path))
-        data = json.dumps(parsed["data"], ensure_ascii=False, indent=2).encode("utf-8")
-        return parsed, data
+        return self.tablecfg_service().parse(record, chunk_path)
 
     def handle_preview(self, query: dict[str, list[str]]) -> None:
         file_id = self.file_id_from_query(query)
@@ -3144,15 +2408,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
         cubemap = self.resolve_manifest_cubemap_files(query, resolved_source)
         if cubemap is not None:
-            bundle_record, faces, asset_meta, manifest_asset = cubemap
             manifest_id = query.get("manifestId", [""])[0]
             asset_index = query.get("assetIndex", [""])[0]
             self.send_json(
                 ManifestAssetPreviewService().build_cubemap(
-                    bundle_record,
-                    faces,
-                    asset_meta,
-                    manifest_asset,
+                    cubemap.bundle_record,
+                    cubemap.faces,
+                    cubemap.asset,
+                    cubemap.manifest_asset,
                     manifest_id=manifest_id,
                     asset_index=asset_index,
                 )
@@ -3162,15 +2425,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
         resolved = self.resolve_manifest_asset_file(query, resolved_source)
         if resolved is None:
             return
-        bundle_record, target, asset_meta, manifest_asset = resolved
         manifest_id = query.get("manifestId", [""])[0]
         asset_index = query.get("assetIndex", [""])[0]
         self.send_json(
             ManifestAssetPreviewService().build_file(
-                bundle_record,
-                target,
-                asset_meta,
-                manifest_asset,
+                resolved.bundle_record,
+                resolved.target,
+                resolved.asset,
+                resolved.manifest_asset,
                 manifest_id=manifest_id,
                 asset_index=asset_index,
             )
@@ -3289,19 +2551,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
         resolved = self.resolve_manifest_asset_source(query)
         if resolved is None:
             return
-        index, asset, bundle_record, bundle_chunk = resolved
-        if not is_avatar_mesh_asset_path(str(asset["path"])):
-            self.send_error_json(400, "resource is not an NPC AvatarMesh asset")
-            return
         try:
             lod = int(query.get("lod", ["0"])[0])
-            avatar_mesh, plan, plan_meta = self.load_avatar_mesh_plan(
-                index,
-                asset,
-                bundle_record,
-                bundle_chunk,
+            payload = self.avatar_resource_plan_service().build_from_resolved(
+                resolved,
                 lod,
             )
+        except AvatarResourcePlanError as error:
+            self.send_error_json(400, str(error))
+            return
         except FileNotFoundError as error:
             self.send_error_json(503, str(error))
             return
@@ -3311,15 +2569,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
         except (KeyError, OSError, RuntimeError, ValueError, sqlite3.Error) as error:
             self.send_error_json(500, str(error))
             return
-        self.send_json(
-            AvatarResourcePlanService().build(
-                asset,
-                avatar_mesh,
-                plan,
-                plan_meta,
-            ),
-            compress=True,
-        )
+        self.send_json(payload, compress=True)
 
     def ensure_manifest_asset_model_glb(
         self,
@@ -3328,47 +2578,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
         lod: int = 0,
         cancel_event: threading.Event | None = None,
     ) -> tuple[dict, Path, Path]:
-        index, asset, bundle_record, bundle_chunk = resolved
-        is_avatar_mesh = is_avatar_mesh_asset_path(str(asset["path"]))
-        if is_avatar_mesh:
-            document, _, model_path = self.ensure_avatar_mesh_model(
-                index,
-                asset,
-                bundle_record,
-                bundle_chunk,
-                lod,
-                cancel_event=cancel_event,
-            )
-        else:
-            dependencies = index.bundle_dependencies(int(asset["bundle_index"]))
-            dependency_sources, missing_dependencies = self.resolve_bundle_sources(dependencies)
-            document, run_meta = self.ensure_model_hierarchy(
-                bundle_record,
-                bundle_chunk,
-                asset,
-                dependencies,
-                dependency_sources,
-                missing_dependencies,
-                cancel_event=cancel_event,
-            )
-            cache_root, _, _ = self.model_snapshot_cache_paths(
-                bundle_record, int(asset["asset_index"])
-            )
-            published_root = resolve_published_model_run(
-                cache_root,
-                str(run_meta.get("selectedRun") or ""),
-            )
-            if published_root is None:
-                raise RuntimeError("published model run is unavailable")
-            model_path = published_root / "model.json"
-        glb_path = self.model_glb_service().ensure(
-            asset,
-            bundle_record,
-            model_path,
+        return self.manifest_model_glb_service().ensure(
+            resolved,
             lod=lod,
             cancel_event=cancel_event,
         )
-        return asset, model_path, glb_path
 
     def load_model_glb_inputs(
         self,
@@ -3607,8 +2821,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             if cubemap is None:
                 self.send_error_json(404, "Cubemap face not found")
                 return
-            _, faces, _, _ = cubemap
-            target = faces.get(face_name)
+            target = cubemap.faces.get(face_name)
             if target is None:
                 self.send_error_json(404, "Unknown Cubemap face")
                 return
@@ -3616,14 +2829,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
             resolved = self.resolve_manifest_asset_file(query, resolved_source)
             if resolved is None:
                 return
-            _, target, _, _ = resolved
+            target = resolved.target
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
         self.send_raw_file(
             RawFileService(STREAM_CHUNK_SIZE).prepare_path(target, download=download)
         )
 
     def handle_internal_list(self, query: dict[str, list[str]]) -> None:
-        optional_tools = optional_tool_registry()
         file_id = self.file_id_from_query(query)
         if file_id is None:
             return
@@ -3634,21 +2846,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 return
             original, record, chunk_path = resolved
 
-        vgmstream = optional_tools.capability("vgmstream")
-        usm_convert = optional_tools.capability("usm-convert")
-        ffmpeg = optional_tools.capability("ffmpeg")
-        tool_meta = {
-            "audio": {
-                "wavPreviewAvailable": vgmstream.available,
-                "vgmstreamCli": str(vgmstream.resolved_path or VGMSTREAM_CLI),
-            },
-            "usm": {
-                "usmConvertAvailable": usm_convert.available,
-                "ffmpegAvailable": ffmpeg.available,
-                "usmConvert": str(usm_convert.resolved_path or USM_CONVERT),
-                "ffmpeg": str(ffmpeg.resolved_path or FFMPEG),
-            },
-        }
         service = InternalDirectoryService(
             self.ensure_assetbundle_export,
             lambda root, inner_path, meta: list_export_directory(
@@ -3663,6 +2860,12 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 source,
                 inner_path,
             ),
+            build_internal_tool_metadata(
+                optional_tool_registry(),
+                vgmstream_default=VGMSTREAM_CLI,
+                usm_convert_default=USM_CONVERT,
+                ffmpeg_default=FFMPEG,
+            ),
         )
         try:
             document = service.build(
@@ -3670,92 +2873,42 @@ class BrowserHandler(BaseHTTPRequestHandler):
                 record,
                 chunk_path,
                 path,
-                tool_meta,
             )
-        except (FileNotFoundError, ValueError) as error:
-            message = (
-                "internal directory not found"
-                if file_suffix(record["file_name"]) == ".ab"
-                else str(error)
-            )
-            self.send_error_json(404, message)
+        except InternalDirectoryError as error:
+            self.send_error_json(error.status, str(error))
             return
         if document is not None:
             self.send_json(document)
 
     def handle_internal_preview(self, query: dict[str, list[str]]) -> None:
-        file_id = self.file_id_from_query(query)
-        if file_id is None:
-            return
-        with self.connect() as conn:
-            resolved_record = self.resolve_file_record(conn, file_id)
-            if resolved_record is None:
-                return
-            _, record, chunk_path = resolved_record
-
-        suffix = file_suffix(record["file_name"])
-        asset_meta = None
-        audio_entry = None
-        if suffix == ".ab":
-            resolved = self.resolve_assetbundle_internal_file(query)
-            if resolved is None:
-                return
-            record, target, asset_meta = resolved
-        elif suffix == ".pck":
-            resolved = self.resolve_audio_internal_file(query)
-            if resolved is None:
-                return
-            record, target, audio_entry = resolved
-        elif suffix == ".usm":
-            resolved = self.resolve_usm_internal_file(query)
-            if resolved is None:
-                return
-            record, target, asset_meta = resolved
-        else:
-            self.send_error_json(400, "unsupported internal preview container")
+        resolved = self.resolve_internal_file(query)
+        if resolved is None:
             return
         rel_path = query.get("path", [""])[0]
         self.send_json(
             InternalFilePreviewService().build(
-                record,
-                target,
+                resolved.record,
+                resolved.target,
                 rel_path,
-                asset=asset_meta,
-                audio_entry=audio_entry.to_json() if audio_entry else None,
+                asset=resolved.asset,
+                audio_entry=(
+                    resolved.audio_entry.to_json()
+                    if resolved.audio_entry is not None
+                    else None
+                ),
             )
         )
 
     def handle_internal_raw(self, query: dict[str, list[str]]) -> None:
-        file_id = self.file_id_from_query(query)
-        if file_id is None:
-            return
-        with self.connect() as conn:
-            resolved_record = self.resolve_file_record(conn, file_id)
-            if resolved_record is None:
-                return
-            _, record, _ = resolved_record
-        suffix = file_suffix(record["file_name"])
-        if suffix == ".ab":
-            resolved = self.resolve_assetbundle_internal_file(query)
-            if resolved is None:
-                return
-            _, target, _ = resolved
-        elif suffix == ".pck":
-            resolved = self.resolve_audio_internal_file(query)
-            if resolved is None:
-                return
-            _, target, _ = resolved
-        elif suffix == ".usm":
-            resolved = self.resolve_usm_internal_file(query)
-            if resolved is None:
-                return
-            _, target, _ = resolved
-        else:
-            self.send_error_json(400, "unsupported internal raw container")
+        resolved = self.resolve_internal_file(query)
+        if resolved is None:
             return
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
         self.send_raw_file(
-            RawFileService(STREAM_CHUNK_SIZE).prepare_path(target, download=download)
+            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
+                resolved.target,
+                download=download,
+            )
         )
 
     def serve_static(self, request_path: str) -> None:

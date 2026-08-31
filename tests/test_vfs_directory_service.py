@@ -28,6 +28,7 @@ class VfsDirectoryServiceTests(unittest.TestCase):
                 length INTEGER, encrypted INTEGER, iv_seed INTEGER,
                 file_data_md5 TEXT
             );
+            CREATE TABLE meta (key TEXT, value TEXT);
             INSERT INTO directories VALUES ('effective', 'Root', 'Root', 3, 60, 0, 0);
             INSERT INTO entries VALUES (
                 'effective', 'Root', 'dir', 'Root/Child', 'Child', NULL,
@@ -83,6 +84,28 @@ class VfsDirectoryServiceTests(unittest.TestCase):
                 page=1,
                 page_size=100,
             )
+
+    def test_overview_decodes_metadata_and_returns_available_roots(self):
+        self.conn.executemany(
+            "INSERT INTO meta VALUES (?, ?)",
+            [("version", '"1.2"'), ("sourceCount", "3")],
+        )
+        self.conn.executemany(
+            "INSERT INTO directories VALUES (?, '', ?, 1, 2, 0, 0)",
+            [
+                ("effective", "Effective"),
+                ("Persistent", "Persistent"),
+            ],
+        )
+        self.conn.commit()
+
+        result = VfsDirectoryService(lambda *_args: 0).overview(self.conn)
+
+        self.assertEqual({"version": "1.2", "sourceCount": 3}, result["meta"])
+        self.assertEqual(
+            ["effective", "Persistent"],
+            [root["scope"] for root in result["scopes"]],
+        )
 
 
 if __name__ == "__main__":

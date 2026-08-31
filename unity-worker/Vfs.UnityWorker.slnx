@@ -1,7 +1,7 @@
 <Solution>
   <Project Path="src/AnimeStudio.Core/Vfs.AnimeStudio.Core.csproj" />
+  <Project Path="src/AnimeStudio.PInvoke/Vfs.AnimeStudio.PInvoke.csproj" />
   <Project Path="src/AnimeStudio.Animation/Vfs.AnimeStudio.Animation.csproj" />
-  <Project Path="vendor/animestudio/AnimeStudio.PInvoke/AnimeStudio.PInvoke.csproj" />
   <Project Path="src/Endfield.Extensions/Vfs.Endfield.Extensions.csproj" />
   <Project Path="src/Vfs.UnityWorker/Vfs.UnityWorker.csproj" />
   <Project Path="tests/Vfs.UnityWorker.Tests/Vfs.UnityWorker.Tests.csproj" />

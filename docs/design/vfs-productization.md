@@ -415,15 +415,100 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 节点、44 Mesh、17 Material、52 Skin、9,971,028 字节 geometry 和 39 张纹理；几何及全部
 PNG 与旧产物逐字节一致，并成功发布 run 指针。
 
-本轮验证：.NET `36` 项通过、`4` 项未配置的外部证据测试跳过，其中对象与纹理真实闭包测试已
-显式启用并通过；Python worker、健康检查、模型 run、AvatarMesh 与 ModelDocument 聚焦测试 `35` 项
-通过；模型生产路径另以临时缓存完成端到端验证。全量 Python discovery 的 267 项仍有 3 失败、
-5 错误，集中在动画版本旧 fixture、两项已知 MemoryPack override、runtime probe 导入、Humanoid
-oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结果。Release 构建 0 警告、0 错误，产品自有文件的
-`git diff --check` 通过。锁定导入的上游 vendor 保留其原始尾随空白，不以格式化改写破坏
-来源比对。真实 fixture 位于被忽略的研究目录，不进入提交。
+2026-08-31 已恢复完整验证门禁：Python discovery `554/554` 通过；.NET 解决方案
+`37` 项通过，`6` 项缺少本机外部样本的证据测试按设计跳过，0 失败。SDK 固定为 .NET 9；
+AnimeStudio.PInvoke 通过 VFS 自有包装工程编译上游唯一源码，不再让上游 net9/net10 多目标工程
+进入产品 restore 图。检查还发现 `64176df` checkpoint 曾把 AnimeStudioAnimation 1.1 fixture、
+Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有证据的 MemoryPack 类型覆盖退回
+旧状态；现已按该提交之前的实现和研究文档恢复。后续合并 checkpoint 时必须运行两套全量门禁，
+不能把“研究保存提交”默认视为只增加文件。锁定导入的上游 vendor 保留其原始尾随空白，不以
+格式化改写破坏来源比对；真实 fixture 位于被忽略的研究目录，不进入提交。
 
 ## 变更记录
+
+### 2026-08-31
+
+- 恢复服务拆分后 `ModelBlendService` 的测试桩签名，基础/动画 GLB provider 的取消与进度参数重新
+  进入测试契约；相关 11 项测试通过。
+- 新增 `Vfs.AnimeStudio.PInvoke` 包装工程。它只编译 vendor 中唯一的 `DllLoader.cs`，产品目标框架
+  固定为 net9，不复制实现、不修改上游 csproj；锁定 SDK 9 的解决方案可直接 restore/build/test。
+- 审计并修复 `64176df` 引入的历史回退：恢复 Humanoid Avatar pose、humanScale、IK/采样选项，
+  恢复 runtime RVA 探针的 `SeDebugPrivilege`，更新 AnimationClip 1.1 fixture，并按已实现的 morph
+  delta 语义覆盖 translation/scale 两条轨道。
+- 依据 `docs/research/combat-config-runtime-bridge.md` 的三份本地技能完整消费证据，将
+  `BlackboardSuperArmorValue.value` 恢复为 Int32；依据既有反编译布局恢复 8 字节
+  `EnemyCheckAIMarkerInfo`，未改动 checkpoint 后新增的其他 MemoryPack 规则。
+- HTTP GET/POST 路由表已从 `BrowserHandler` 抽到 `request_router.py`。新请求层只决定入口与
+  index gate 顺序，不承载领域逻辑；健康/任务观察绕过 stale gate、数据 API 先过 gate、静态文件
+  回退和 POST 404 边界均有独立测试。`do_GET` 从 104 行缩为 5 行。
+- AB/PCK/USM 内部文件定位已统一到 `internal_file_resolver_service.py`：三类容器共享一次 VFS
+  记录解析和统一结果对象，AB 路径直接复用 `assetbundle_browser.resolve_export_path`，删除了
+  `server.py` 内的重复安全路径实现；preview/raw 不再先查记录后又各自重复查询。错误仍保留原有
+  400/404/500 分类，AssetBundle worker 已报告失败时仍返回 None，避免重复响应。
+- Manifest 普通导出、MonoBehaviour fallback 和 Cubemap 面集合已抽到
+  `manifest_asset_file_service.py`。服务以不可变结果对象返回 bundle、目标文件/面集合、AssetMap
+  元数据和 Manifest 资源身份；Handler 只保留 query 解析及 HTTP 错误映射。普通预览仍按原顺序
+  先尝试 Cubemap 再回退普通文件，显式 `face=` 缺失仍为 404。旧测试不再从 `server.py` 间接导入
+  `manifest_asset_entries`，改为依赖其权威模块。
+- `InternalDirectoryService` 现在拥有 AB/PCK/USM 目录错误分类和可选工具能力摘要；Handler 不再
+  拼装 vgmstream/usm-convert/ffmpeg 状态，也不再根据文件后缀二次解释异常。AB 的具体本机路径
+  错误仍折叠为稳定的 `internal directory not found`，PCK/USM 保留领域错误文本。
+  `handle_internal_list` 从 60 行降为 44 行。
+- Projectile 的 Manifest 定位、精确 asset 选择、Bundle 解析、Unity worker 错误分类、导出解析和
+  API 文档组装已迁到 `projectile_service.py`。`BrowserHandler.build_projectile_document` 保留为
+  15 行兼容入口，后台任务、HTTP 与 AKEDB-compatible 路径继续调用同一入口；原 95 行实现不再
+  混在请求类中。
+- 审计发现 `3326e9d` 已将模型动画调用切换到 `SkeletalMorphService.build`，却遗漏删除原 72 行
+  Handler 实现；旧方法甚至引用了当时已移除的解析函数导入。该不可达第二实现已删除，调用搜索
+  确认只剩服务入口。AbilityEntity 同样按 Projectile 分层模式迁入 `ability_entity_service.py`，
+  Handler 兼容方法由 45 行缩为 9 行。
+- Manifest 模型到基础 GLB 的准备编排已迁到 `manifest_model_glb_service.py`。AvatarMesh 直接复用
+  构建服务返回的已发布 `model.json`；普通模型则通过 `ModelRunStore.resolve_model_path` 验证指定
+  immutable run 后取得产物，不在请求层复制缓存目录公式或扫描未发布目录。Handler 保留同名兼容
+  委托供预览、动画与 Blender 服务调用，普通/Avatar/未发布运行三条边界均有直接测试。
+- `StringPathHash.bin` 的有效 VFS 来源选择、缓存身份、版本校验和物化发布已迁到
+  `string_path_hash_file_service.py`。失效重建不再先删除旧文件，而是写入唯一候选文件、校验长度后
+  原子替换；复制或元数据发布失败会清理候选，已有缓存保持可恢复。原 Handler 方法仅保留兼容
+  委托。
+- AKEDB-compatible 的 TableCfg、Skill/Buff 集合、Projectile 与 AbilityEntity 路径语法已迁到
+  `akedb_compatible_route.py`。该模块集中维护允许的集合与名称规则、URL 解码后的路径穿越拒绝、
+  标准化 ID 和 400/404 分类；Handler 不再用 50 行条件树解释兼容协议，只分派解析后的封闭路由。
+- VFS 逻辑文件的 effective 优先、来源排序与本地可读性回退已迁到
+  `logical_file_source_service.py`。Manifest、Projectile、AbilityEntity 与共享运行时资源仍通过 Handler
+  兼容委托调用同一规则；后续 Manifest 查询服务可直接依赖该基础设施，不应复制查询 SQL。
+- 当前安装 Manifest 的打开和精确文件名候选查询已并入既有 `ManifestAssetService`，直接复用上述
+  逻辑来源服务。候选查询只接受单个文件名并保留全部同名资产，统一构造 preview/raw URL；Handler
+  只映射领域错误，不再自行解析 Manifest 或组装候选文档。
+- Manifest Asset 解析与模型依赖闭包原先分别维护的 Bundle 来源 SQL 已统一到
+  `bundle_source_service.py`。服务以单次批量查询取得所有候选，按统一来源优先级选择本地可读文件，
+  并按调用方输入顺序分别返回成功来源和缺失 Bundle；空请求不打开数据库。
+- `LogicalFileSourceService` 进一步统一了按 file ID 读取原记录，以及“指定记录可读则保持、否则按
+  同 logical ID 来源排序回退”的规则；调用方可传入现有 SQLite 连接，避免额外连接和事务视图变化。
+  `ManifestAssetService` 与 Handler 中原有的两套查询和回退实现均已删除。
+- `ManifestVirtualDirectoryService.list_from_vfs` 现在负责虚拟目录入口、file ID、来源回退、ManifestIndex
+  和目录文档的完整无 HTTP 编排，来源错误以稳定领域异常返回。普通 VFS 目录中的 Manifest 资产数
+  统计也迁入 `ManifestAssetService.asset_count`；记录缺失或索引损坏按摘要语义返回 0，不再调用会先
+  写出 404 的 Handler 方法，消除了随后继续发送目录 JSON 的双响应风险。
+- `LogicalFileSourceService.resolve_file_id` 以单一连接完成 ID 查询和来源回退，Wwise media 的 VFS
+  来源不再手写组合查询。AKEDB-compatible 的 TableCfg、集合清单和集合文件读取已迁入
+  `akedb_compatible_data_service.py`，Handler 仅映射领域状态并发送统一来源头。
+- MemoryPack 类型推断、可选解码器加载、值解码、消费位置与 discovered union 收集已统一到通用
+  `memorypack_value_decoder.py`；AKEDB 在其结果上强制完整消费，普通文件预览复用同一结果显示诊断，
+  不再保留第二套解码流程。
+- worker 共用的 VFS 文件物化已迁入 `vfs_file_materializer.py`：普通切片和解密内容先写唯一候选文件，
+  校验精确长度后原子替换；并发请求不再共享固定 `.tmp`，截断或失败会清理候选并保留旧目标。
+- ManifestIndex 的内存缓存、锁和持久缓存入口已迁入进程级 `manifest_index_service.py`；MemoryPack
+  schema/union 的惰性加载、线程锁与稳定失败缓存已迁入 `memorypack_schema_service.py`。HTTP Handler
+  不再持有这两类进程状态。
+- StringPathHash 的共享锁也移出 Handler；GLB 迁移后无调用者的模型缓存路径包装已删除。
+  AssetBundle map/preview 统一通过一个 worker service factory 构造，不再重复列出缓存、worker、物化器和
+  run store 依赖。VFS 索引 meta 与可用 scope 根目录文档已并入 `VfsDirectoryService.overview`，
+  `/api/manifest` 不再直接执行查询和拼装结果。
+- VFS 记录的偏移读取、limit、解密 IV 和范围边界已迁入 `vfs_file_reader.py`，worker、音频、配置与
+  预览继续通过 Handler 兼容委托共享同一实现。TableCfg 的 file ID/source/type 解析和 SparkBuffer
+  JSON 字节构建已迁入 `tablecfg_service.py`；AKEDB、普通预览和下载不再分别组合这些步骤。
+  `server.py` 维持 3111 行，但请求类中的文件读取和 TableCfg 领域逻辑已替换为显式服务边界。
+- 当前放行结果：Python `554/554`；.NET `37` 通过、`6` 个外部样本测试跳过。
 
 ### 2026-08-25
 
@@ -941,7 +1026,12 @@ oracle 与 skeletal morph 既有断言，不属于本次对象迁移的放行结
   `no-cache` 且无 Content-Disposition。
 - AvatarMesh resource-plan 的最终文档已抽到 `avatar_resource_plan_service.py`：服务统一配置摘要、
   完整资源闭包以及 dump/StringPathHash 的最小公开 run 身份，不触发 Worker 或解析 Bundle。
-  Handler 仅保留 AvatarMesh 类型门禁、LOD、计划加载和 HTTP 错误映射。真实 Adaxier LOD0 重启后
+  现已进一步统一 AvatarMesh 类型门禁、TypeTree dump、配置解析、StringPathHash 路径附着、资源计划
+  构建与公开文档组装；网页 resource-plan 与 `AvatarModelBuildService` 均注入并复用同一个 `load`
+  入口，直接 bundle 与 Manifest 依赖的去重排序闭包也由该服务统一提供，不再由 Handler 保存共享
+  加载/依赖流水线。Handler 仅保留来源定位、LOD 查询参数、HTTP 错误映射
+  和发送。非 AvatarMesh 仍由明确领域错误映射为 HTTP 400，不与计划内部的解析/资源错误混淆。
+  真实 Adaxier LOD0 重启后
   仍为 1 个 slot、各 LOD `9/9/7/7` 个 mesh、32 个引用、0 个未解析引用，plan/run 字段完全一致。
 - 同步 `/api/manifest-asset/model-blend` 与后台 Blend 任务现共享 `ModelBlendService.prepare_bundle`：
   基础/动画 GLB 选择、批量兼容问题、全部动画失败判定、prepare/failure 文档和 artifact 文件名

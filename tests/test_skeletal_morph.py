@@ -170,10 +170,17 @@ class SkeletalMorphTests(unittest.TestCase):
         )
 
         self.assertEqual(animation["timelines"], [[0.0, 1.0]])
-        self.assertEqual(len(animation["tracks"]), 1)
-        self.assertEqual(animation["tracks"][0]["targetId"], "node:face")
-        self.assertEqual(animation["tracks"][0]["property"], "translation")
-        self.assertEqual(animation["tracks"][0]["values"], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]])
+        tracks = {track["property"]: track for track in animation["tracks"]}
+        self.assertEqual({"translation", "scale"}, set(tracks))
+        self.assertEqual(tracks["translation"]["targetId"], "node:face")
+        self.assertEqual(
+            tracks["translation"]["values"],
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
+        )
+        self.assertEqual(
+            tracks["scale"]["values"],
+            [[1.0, 1.0, 1.0], [2.0, 2.0, 2.0]],
+        )
 
 
 if __name__ == "__main__":

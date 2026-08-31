@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from manifest_index import ManifestIndex
+from logical_file_source_service import LogicalFileSourceService
+from bundle_source_service import BundleSourceService
 from npc_avatar_config import is_avatar_mesh_asset_path
 
 
@@ -40,10 +42,13 @@ class ManifestAssetService:
         asset_index: int,
     ) -> tuple[ManifestIndex, dict, dict, Path]:
         with closing(self._connect()) as conn:
-            original = self._file_by_id(conn, manifest_id)
+            source_service = LogicalFileSourceService(
+                self._db_path, self._source_ranker
+            )
+            original = source_service.find_record(manifest_id, connection=conn)
             if original is None:
                 raise ManifestAssetResolutionError(404, "file not found")
-            manifest_source = self._readable_source(conn, original)
+            manifest_source = source_service.resolve_record(original, connection=conn)
             if manifest_source is None:
                 raise ManifestAssetResolutionError(
                     404,
@@ -59,35 +64,15 @@ class ManifestAssetService:
             if asset is None:
                 raise ManifestAssetResolutionError(404, "Manifest 中不存在该资源")
 
-            bundle_file_name = f"Data/Bundles/Windows/{asset['bundle_name']}"
-            candidates = [
-                dict(row)
-                for row in conn.execute(
-                    "SELECT * FROM files WHERE file_name = ?",
-                    (bundle_file_name,),
-                )
-            ]
-            candidates.sort(
-                key=lambda row: self._source_ranker(
-                    str(row["source"]),
-                    bool(row["chunk_exists"]),
-                )
+        bundle_sources, missing = BundleSourceService(
+            self._db_path, self._source_ranker
+        ).resolve_many([{"name": asset["bundle_name"]}])
+        if missing or len(bundle_sources) != 1:
+            raise ManifestAssetResolutionError(
+                404,
+                f"找不到资源对应的 AssetBundle：{asset['bundle_name']}",
             )
-            bundle_source = next(
-                (
-                    (candidate, Path(candidate["chunk_path"]))
-                    for candidate in candidates
-                    if Path(candidate["chunk_path"]).exists()
-                ),
-                None,
-            )
-            if bundle_source is None:
-                raise ManifestAssetResolutionError(
-                    404,
-                    f"找不到资源对应的 AssetBundle：{asset['bundle_name']}",
-                )
-
-        bundle_record, bundle_chunk = bundle_source
+        bundle_record, bundle_chunk = bundle_sources[0]
         return index, asset, bundle_record, bundle_chunk
 
     def resolve_many(
@@ -113,42 +98,77 @@ class ManifestAssetService:
             )
         return resolved
 
+    def resolve_installed(
+        self,
+        logical_id: str,
+    ) -> tuple[ManifestIndex, dict, Path]:
+        """打开当前 VFS 安装中生效且本地可读的 Manifest。"""
+
+        resolved = LogicalFileSourceService(
+            self._db_path, self._source_ranker
+        ).resolve(logical_id)
+        if resolved is None:
+            raise FileNotFoundError(f"local VFS manifest is unavailable: {logical_id}")
+        record, chunk_path = resolved
+        return self._index_provider(record, chunk_path), record, chunk_path
+
+    def candidates_by_name(self, logical_id: str, name: str) -> dict:
+        """返回同名资源的全部精确候选，不擅自选择其中一项。"""
+
+        normalized_name = name.strip()
+        if not normalized_name or "/" in normalized_name or "\\" in normalized_name:
+            raise ManifestAssetResolutionError(
+                400, "name must be one exact manifest asset filename"
+            )
+        try:
+            index, record, _ = self.resolve_installed(logical_id)
+            candidates = index.assets_by_name(normalized_name)
+        except FileNotFoundError as error:
+            raise ManifestAssetResolutionError(503, str(error)) from error
+        except (OSError, sqlite3.Error, ValueError) as error:
+            raise ManifestAssetResolutionError(503, str(error)) from error
+
+        manifest_id = int(record["id"])
+        return {
+            "name": normalized_name,
+            "manifestId": manifest_id,
+            "candidates": [
+                {
+                    **candidate,
+                    "previewUrl": (
+                        "/api/manifest-asset/preview?"
+                        f"manifestId={manifest_id}&assetIndex={candidate['assetIndex']}"
+                    ),
+                    "rawUrl": (
+                        "/api/manifest-asset/raw?"
+                        f"manifestId={manifest_id}&assetIndex={candidate['assetIndex']}"
+                    ),
+                }
+                for candidate in candidates
+            ],
+        }
+
+    def asset_count(
+        self,
+        connection: sqlite3.Connection,
+        file_id: int,
+    ) -> int:
+        """为 VFS 目录摘要读取 Manifest 资产数；不可用资源按零项处理。"""
+
+        sources = LogicalFileSourceService(self._db_path, self._source_ranker)
+        original = sources.find_record(file_id, connection=connection)
+        if original is None:
+            return 0
+        resolved = sources.resolve_record(original, connection=connection)
+        if resolved is None:
+            return 0
+        record, chunk_path = resolved
+        try:
+            return int(self._index_provider(record, chunk_path).summary()["assetCount"])
+        except (KeyError, TypeError, ValueError, OSError, sqlite3.Error):
+            return 0
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self._db_path)
         connection.row_factory = sqlite3.Row
         return connection
-
-    @staticmethod
-    def _file_by_id(conn: sqlite3.Connection, file_id: int) -> dict | None:
-        row = conn.execute("SELECT * FROM files WHERE id = ?", (file_id,)).fetchone()
-        return dict(row) if row is not None else None
-
-    def _readable_source(
-        self,
-        conn: sqlite3.Connection,
-        original: dict,
-    ) -> tuple[dict, Path] | None:
-        original_path = Path(original["chunk_path"])
-        if original_path.exists():
-            return original, original_path
-        candidates = [
-            dict(row)
-            for row in conn.execute(
-                "SELECT * FROM files WHERE logical_id = ?",
-                (original["logical_id"],),
-            )
-        ]
-        candidates.sort(
-            key=lambda row: self._source_ranker(
-                str(row["source"]),
-                bool(row["chunk_exists"]),
-            )
-        )
-        return next(
-            (
-                (candidate, Path(candidate["chunk_path"]))
-                for candidate in candidates
-                if Path(candidate["chunk_path"]).exists()
-            ),
-            None,
-        )

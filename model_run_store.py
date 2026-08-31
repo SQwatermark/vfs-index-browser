@@ -71,6 +71,23 @@ class ModelRunStore:
             root /= f"avatar-lod-{lod}"
         return root, root / "runs", root / "run.json"
 
+    def resolve_model_path(
+        self,
+        record_id: int,
+        asset_index: int,
+        requested_run: str = "",
+        *,
+        lod: int | None = None,
+    ) -> Path | None:
+        """解析一次已经完成并发布的模型运行产物。"""
+
+        cache_root, _, _ = self.cache_paths(record_id, asset_index, lod=lod)
+        published_root = resolve_published_model_run(cache_root, requested_run)
+        if published_root is None:
+            return None
+        model_path = published_root / "model.json"
+        return model_path if model_path.is_file() else None
+
     def load_cached(
         self,
         cache_root: Path,

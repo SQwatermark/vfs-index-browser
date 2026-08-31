@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol
+from typing import Callable, Protocol
+import sqlite3
 
 from npc_avatar_config import is_avatar_mesh_asset_path
 from vfs_directory_service import MANIFEST_VIRTUAL_NAME, join_manifest_virtual_path
@@ -13,7 +14,65 @@ class ManifestDirectoryIndex(Protocol):
     def list(self, path: str, page: int, page_size: int) -> dict: ...
 
 
+class ManifestVirtualDirectoryError(RuntimeError):
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class ManifestVirtualDirectoryService:
+    def __init__(
+        self,
+        source_service: object | None = None,
+        index_provider: Callable[[dict, Path], ManifestDirectoryIndex] | None = None,
+    ) -> None:
+        self._sources = source_service
+        self._index_provider = index_provider
+
+    def list_from_vfs(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        scope: str,
+        base_path: str,
+        inner_path: str,
+        page: int,
+        page_size: int,
+    ) -> dict:
+        if self._sources is None or self._index_provider is None:
+            raise RuntimeError("VFS manifest directory dependencies are unavailable")
+        row = connection.execute(
+            """
+            SELECT e.file_id FROM entries e
+            WHERE e.scope = ? AND e.parent = ? AND e.type = 'file'
+              AND e.name = 'manifest.hgmmap'
+            LIMIT 1
+            """,
+            (scope, base_path),
+        ).fetchone()
+        if row is None:
+            raise ManifestVirtualDirectoryError(404, "manifest.hgmmap not found")
+        original = self._sources.find_record(int(row["file_id"]), connection=connection)
+        if original is None:
+            raise ManifestVirtualDirectoryError(404, "file not found")
+        resolved = self._sources.resolve_record(original, connection=connection)
+        if resolved is None:
+            raise ManifestVirtualDirectoryError(
+                404,
+                "chunk not found; this record likely requires a source fallback "
+                "that is unavailable on this host",
+            )
+        record, chunk_path = resolved
+        return self.list_directory(
+            self._index_provider(record, chunk_path),
+            scope=scope,
+            base_path=base_path,
+            inner_path=inner_path,
+            manifest_id=int(original["id"]),
+            page=page,
+            page_size=page_size,
+        )
+
     def list_directory(
         self,
         index: ManifestDirectoryIndex,

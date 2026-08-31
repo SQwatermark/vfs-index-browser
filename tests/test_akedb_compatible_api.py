@@ -10,6 +10,7 @@ from server import BrowserHandler
 class AkedbCompatibleApiTests(unittest.TestCase):
     def make_handler(self):
         handler = object.__new__(BrowserHandler)
+        handler.db_path = Path("unused.sqlite")
         responses = []
         handler.send_json = lambda payload, status=200, **kwargs: responses.append(
             (status, payload, kwargs)

@@ -86,7 +86,7 @@ class AnimeStudioAnimationTests(unittest.TestCase):
         path_hash = zlib.crc32(b"Armature/Bone") & 0xFFFFFFFF
         clip = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "name": "Idle",
             "sampleRate": 60,
             "duration": 1,
@@ -183,7 +183,7 @@ class AnimeStudioAnimationTests(unittest.TestCase):
         ]
         clip = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "name": "Broken",
             "duration": 1,
             "timelines": [[0, 1]],
@@ -235,7 +235,7 @@ class AnimeStudioAnimationTests(unittest.TestCase):
         path_hash = zlib.crc32(b"??") & 0xFFFFFFFF
         clip = {
             "format": "AnimeStudioAnimationClip",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "name": "Idle",
             "duration": 0,
             "timelines": [[0]],

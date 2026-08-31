@@ -1,10 +1,10 @@
 import unittest
 from pathlib import Path
-from server import (
+from assetbundle_worker_service import (
     ASSETBUNDLE_EXPORT_TYPES,
-    internal_preview_kind,
     manifest_asset_entries,
 )
+from server import internal_preview_kind
 
 
 class ServerPreviewTests(unittest.TestCase):

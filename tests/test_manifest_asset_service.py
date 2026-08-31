@@ -13,6 +13,9 @@ class FakeIndex:
     def asset(self, asset_index):
         return self.assets.get(asset_index)
 
+    def assets_by_name(self, name):
+        return self.assets.get(name, [])
+
 
 class ManifestAssetServiceTests(unittest.TestCase):
     def test_resolves_manifest_fallback_and_readable_bundle(self):
@@ -119,11 +122,91 @@ class ManifestAssetServiceTests(unittest.TestCase):
             "invalid Brotli-compressed HGM manifest", str(raised.exception)
         )
 
+    def test_resolves_installed_manifest_and_builds_all_name_candidates(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "index.sqlite"
+            manifest = root / "manifest.chk"
+            manifest.write_bytes(b"manifest")
+            self._create_database(database, [
+                (7, "manifest", str(manifest), "Persistent", 1, "manifest.hgmmap"),
+            ])
+            connection = sqlite3.connect(database)
+            try:
+                connection.execute(
+                    "INSERT INTO entries VALUES ('effective', 'file', 'manifest', 7)"
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            index = FakeIndex({
+                "icon.png": [
+                    {"assetIndex": 11, "path": "assets/a/icon.png"},
+                    {"assetIndex": 22, "path": "assets/b/icon.png"},
+                ]
+            })
+            service = ManifestAssetService(
+                database,
+                lambda *_args: index,
+                lambda *_args: (0,),
+            )
+
+            resolved_index, record, path = service.resolve_installed("manifest")
+            document = service.candidates_by_name("manifest", " icon.png ")
+
+        self.assertIs(index, resolved_index)
+        self.assertEqual(7, record["id"])
+        self.assertEqual(manifest, path)
+        self.assertEqual("icon.png", document["name"])
+        self.assertEqual([11, 22], [x["assetIndex"] for x in document["candidates"]])
+        self.assertIn("manifestId=7&assetIndex=11", document["candidates"][0]["rawUrl"])
+
+    def test_name_query_rejects_path_and_maps_missing_manifest(self):
+        service = object.__new__(ManifestAssetService)
+        with self.assertRaises(ManifestAssetResolutionError) as invalid:
+            service.candidates_by_name("manifest", "../icon.png")
+        self.assertEqual(400, invalid.exception.status)
+
+        service.resolve_installed = lambda _logical_id: (_ for _ in ()).throw(
+            FileNotFoundError("manifest missing")
+        )
+        with self.assertRaises(ManifestAssetResolutionError) as missing:
+            service.candidates_by_name("manifest", "icon.png")
+        self.assertEqual(503, missing.exception.status)
+
+    def test_directory_asset_count_has_no_error_side_effect(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = root / "index.sqlite"
+            manifest = root / "manifest.chk"
+            manifest.write_bytes(b"manifest")
+            self._create_database(database, [
+                (7, "manifest", str(manifest), "Persistent", 1, "manifest.hgmmap"),
+            ])
+
+            class SummaryIndex:
+                @staticmethod
+                def summary():
+                    return {"assetCount": 23}
+
+            service = ManifestAssetService(
+                database,
+                lambda *_args: SummaryIndex(),
+                lambda *_args: (0,),
+            )
+            connection = sqlite3.connect(database)
+            connection.row_factory = sqlite3.Row
+            try:
+                self.assertEqual(23, service.asset_count(connection, 7))
+                self.assertEqual(0, service.asset_count(connection, 99))
+            finally:
+                connection.close()
+
     @staticmethod
     def _create_database(path: Path, rows) -> None:
         connection = sqlite3.connect(path)
         try:
-            connection.execute(
+            connection.executescript(
                 """
                 CREATE TABLE files (
                     id INTEGER PRIMARY KEY,
@@ -132,6 +215,10 @@ class ManifestAssetServiceTests(unittest.TestCase):
                     source TEXT NOT NULL,
                     chunk_exists INTEGER NOT NULL,
                     file_name TEXT NOT NULL
+                )
+                ;
+                CREATE TABLE entries (
+                    scope TEXT, type TEXT, path TEXT, file_id INTEGER
                 )
                 """
             )

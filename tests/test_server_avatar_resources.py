@@ -94,7 +94,10 @@ class ServerAvatarResourceTests(unittest.TestCase):
                 second_meta["version"],
             )
             self.assertEqual(2, first_meta["source"]["recordId"])
-            self.assertEqual(first_meta, second_meta)
+            self.assertEqual(first_meta["source"], second_meta["source"])
+            self.assertGreaterEqual(
+                second_meta["builtAtEpoch"], first_meta["builtAtEpoch"]
+            )
 
     def test_avatar_plan_handler_connects_dump_hash_and_manifest_layers(self):
         with tempfile.TemporaryDirectory() as directory:

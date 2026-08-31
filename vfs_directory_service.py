@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from typing import Callable
 
@@ -36,6 +37,30 @@ class VfsDirectoryService:
         manifest_asset_count: Callable[[sqlite3.Connection, int], int],
     ) -> None:
         self._manifest_asset_count = manifest_asset_count
+
+    @staticmethod
+    def overview(
+        conn: sqlite3.Connection,
+        scopes: tuple[str, ...] = (
+            "effective",
+            "Persistent",
+            "StreamingAssets",
+            "all",
+        ),
+    ) -> dict:
+        meta = {
+            row["key"]: json.loads(row["value"])
+            for row in conn.execute("SELECT key, value FROM meta")
+        }
+        roots = []
+        for scope in scopes:
+            row = conn.execute(
+                "SELECT * FROM directories WHERE scope = ? AND path = ''",
+                (scope,),
+            ).fetchone()
+            if row is not None:
+                roots.append(_row_to_dict(row))
+        return {"meta": meta, "scopes": roots}
 
     def list_directory(
         self,

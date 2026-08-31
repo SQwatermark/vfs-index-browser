@@ -82,6 +82,11 @@ class ModelRunStoreTests(unittest.TestCase):
         self.assertIsNone(resolve_published_model_run(cache, "../outside"))
         self.assertIsNone(resolve_published_model_run(cache, "incomplete"))
 
+    def test_resolves_published_model_path_from_asset_identity(self):
+        _cache, _pointer, run = self.publish()
+        self.assertEqual(run / "model.json", self.store.resolve_model_path(7, 11))
+        self.assertIsNone(self.store.resolve_model_path(7, 11, "missing"))
+
     def test_publish_writes_completion_before_atomic_pointer(self):
         cache, runs, pointer = self.store.cache_paths(7, 11)
         run = runs / "next"
