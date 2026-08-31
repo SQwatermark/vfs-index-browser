@@ -42,7 +42,7 @@ jobs:
         run: python -m pip install -r requirements.txt -r requirements-build.txt
 
       - name: Build and test Windows release
-        shell: pwsh
+        shell: powershell
         run: |
           ./tools/Publish-Windows.ps1 `
             -OutputDirectory artifacts/endfield-vfs-browser `
@@ -51,7 +51,7 @@ jobs:
             -DotnetExe dotnet
 
       - name: Validate packaged worker and file manifest
-        shell: pwsh
+        shell: powershell
         run: |
           ./tools/Test-WindowsRelease.ps1 `
             -ReleaseDirectory artifacts/endfield-vfs-browser `

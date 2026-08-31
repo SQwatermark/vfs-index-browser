@@ -24,6 +24,7 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_runs_the_production_publish_and_validation_commands(self):
         self.assertIn("./tools/Publish-Windows.ps1", self.source)
         self.assertIn("./tools/Test-WindowsRelease.ps1", self.source)
+        self.assertGreaterEqual(self.source.count("shell: powershell"), 2)
         self.assertIn("-IsolatedRuntime", self.source)
         self.assertIn("endfield-vfs-browser-win-x64.zip.sha256", self.source)
         self.assertNotIn("-SkipTests", self.source)

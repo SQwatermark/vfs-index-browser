@@ -47,8 +47,8 @@ onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查和 worker 握
 
 仓库的 `Windows release` GitHub Actions 工作流在手动触发或推送 `vfs-browser-v*` 标签时，
 使用 Windows Server 2025、Python 3.13 和精确 .NET SDK 9.0.200 从干净 checkout 执行同一
-发布与静态验收命令，并上传 ZIP 与 `.sha256`，保留 14 天。CI 没有游戏数据，因此不能替代
-下一节的真实 data root 验收。
+发布与静态验收命令。发布器和包内验收器均由 Windows PowerShell 5.1 执行，并上传 ZIP 与
+`.sha256`，保留 14 天。CI 没有游戏数据，因此不能替代下一节的真实 data root 验收。
 
 ## 安装与首次启动
 
