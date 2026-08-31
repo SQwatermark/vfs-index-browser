@@ -7,8 +7,8 @@ VFS Browser 的 Windows 产品包由一个冻结的 Python 服务和一个自包
 
 ## 构建发布包
 
-构建机需要 x64 Windows、Python 3.13 和仓库 `unity-worker/global.json` 锁定的 .NET SDK
-9.0.200。首次准备隔离环境：
+构建机需要 x64 Windows、Python 3.13、仓库 `unity-worker/global.json` 锁定的 .NET SDK
+9.0.200，以及带 C++ x64 工具链的 Visual Studio。首次准备隔离环境：
 
 ```powershell
 python -m venv .tmp/release-venv
@@ -25,7 +25,9 @@ python -m venv .tmp/release-venv
 ```
 
 目标目录必须不存在，脚本不会覆盖旧发布包。正常发布会依次执行完整 Python 与 .NET 门禁、
-PyInstaller onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查和 worker 握手。只有 Git
+恢复经过提交与 SHA-256 锁定的 ACL/RTM 源码、构建 Endfield ACL 原生桥、执行 PyInstaller
+onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查和 worker 握手。首次恢复依赖需要
+联网，后续会复用 `unity-worker/.deps/` 中校验通过的缓存；产品运行时不会联网。只有 Git
 跟踪的 `public/`、`schemas/` 与许可证会进入包，工作树中的研究样本和临时文件不会被复制。
 `-SkipTests` 只供已经执行过同一提交门禁的本地迭代，不用于正式发布。
 

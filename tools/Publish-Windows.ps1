@@ -60,6 +60,10 @@ Push-Location $RepositoryRoot
 try {
     Invoke-Checked $PythonCommand @("-m", "PyInstaller", "--version")
 
+    & (Join-Path $RepositoryRoot "unity-worker\Initialize.ps1") `
+        -DotnetExe $DotnetCommand
+    & (Join-Path $RepositoryRoot "unity-worker\tools\Build-EndfieldAcl.ps1")
+
     if (-not $SkipTests) {
         Invoke-Checked $PythonCommand @("-m", "unittest", "discover", "-s", "tests")
         Push-Location (Join-Path $RepositoryRoot "unity-worker")
