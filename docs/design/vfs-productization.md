@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- 主索引初审与可选原子重建、二级音频启动、Manifest 预热及五类健康报告合成已迁到
+  `application_startup_service.py`。`main()` 不再伪造一个未初始化的 `BrowserHandler` 获取 Manifest，
+  而是用 Manifest 服务、VFS reader 和进程级索引缓存直接预热；当前、重建、禁用自动修复及三类
+  独立失败均有合成回归。Python discovery 更新为 `578/578`。
 - JSONL 到派生 SQLite 的批量插入、source/all/effective entry、目录聚合、来源优先级和 meta 发布已
   迁到 `vfs_database_builder.py`；`server.py` 的数据库构建入口由 250 余行缩为直接导入。旧实现
   对 5000 项满批次与末尾残批次复制两套更新逻辑，新服务统一走同一函数，并以 batch size 2 的

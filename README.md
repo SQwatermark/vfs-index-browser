@@ -148,6 +148,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `secondary_audio_rebuild.py` | Wwise 候选库构建、完整性/freshness 门禁与原子发布 |
 | `audio_dialog_rebuild.py` | AudioDialog 输入发现、已安装语言构建、TableCfg 门禁与原子发布 |
 | `secondary_audio_startup.py` | 二级音频审计、逐项重建、重审计与启动结果协调 |
+| `application_startup_service.py` | 主索引修复、二级音频启动与 Manifest 预热总编排 |
 | `vfs_directory_service.py` | VFS 目录分页、批量文件回填与 manifest 虚拟目录占位 |
 | `manifest_virtual_directory_service.py` | BundleManifest 虚拟目录分页与资源预览链接组装 |
 | `manifest_asset_preview_service.py` | Manifest 普通导出资源与 Cubemap 六面预览文档组装 |

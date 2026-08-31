@@ -73,6 +73,7 @@ from manifest_index import ManifestIndex
 from manifest_index_service import ManifestIndexService
 from index_freshness import inspect_index_freshness
 from secondary_audio_startup import ensure_secondary_audio_indexes
+from application_startup_service import ApplicationStartupService
 from vfs_directory_service import (
     MANIFEST_VIRTUAL_DIR,
     VfsDirectoryService,
@@ -280,6 +281,56 @@ def audio_package_index_service() -> AudioPackageIndexService:
         INTERNAL_CACHE_DIR,
         CACHE_VERSIONS.version("audio-package"),
         vgmstream=vgmstream,
+    )
+
+
+def installed_manifest_summary(database_path: Path) -> dict:
+    reader = VfsFileReader(decrypt_vfs_file)
+
+    def provide_index(record: dict, chunk_path: Path) -> ManifestIndex:
+        return MANIFEST_INDEXES.ensure(
+            record,
+            lambda: reader.read(record, chunk_path),
+        )
+
+    index, _, _ = ManifestAssetService(
+        database_path,
+        provide_index,
+        source_rank,
+    ).resolve_installed(MANIFEST_LOGICAL_ID)
+    return index.summary()
+
+
+def application_startup_service() -> ApplicationStartupService:
+    def rebuild(database_path: Path) -> dict:
+        return rebuild_index_atomically(
+            database_path,
+            load_index_source_roots(database_path),
+            build_database,
+        )
+
+    def secondary_audio(database_path: Path, auto_rebuild: bool):
+        return ensure_secondary_audio_indexes(
+            database_path,
+            AUDIO_DIALOG_DB,
+            WWISE_DB,
+            PROJECT_ROOT,
+            audio_package_index_service(),
+            decrypt_vfs_file,
+            auto_rebuild=auto_rebuild,
+            emit=lambda level, event, payload: getattr(LOGGER, level)(
+                event,
+                extra=payload,
+            ),
+        )
+
+    return ApplicationStartupService(
+        inspect_index_freshness,
+        rebuild,
+        secondary_audio,
+        installed_manifest_summary,
+        lambda level, event, payload: getattr(LOGGER, level)(event, extra=payload),
+        rebuild_error_types=(IndexRebuildError,),
     )
 
 
@@ -2483,63 +2534,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     BrowserHandler.db_path = args.db
-    INDEX_FRESHNESS_REPORT = inspect_index_freshness(args.db)
-    INDEX_REBUILD_REPORT = {"status": "notNeeded"}
-    if (
-        not args.no_auto_rebuild
-        and INDEX_FRESHNESS_REPORT.get("status") in {"stale", "unverified"}
-    ):
-        LOGGER.warning(
-            "index_rebuild_started",
-            extra={"freshnessStatus": INDEX_FRESHNESS_REPORT.get("status")},
-        )
-        try:
-            INDEX_REBUILD_REPORT = rebuild_index_atomically(
-                args.db,
-                load_index_source_roots(args.db),
-                build_database,
-            )
-            INDEX_FRESHNESS_REPORT = inspect_index_freshness(args.db)
-        except IndexRebuildError as error:
-            INDEX_REBUILD_REPORT = {
-                "status": "failed",
-                "message": str(error),
-            }
-            LOGGER.error("index_rebuild_failed", extra={"error": str(error)})
-    secondary_audio = ensure_secondary_audio_indexes(
+    reports = application_startup_service().run(
         args.db,
-        AUDIO_DIALOG_DB,
-        WWISE_DB,
-        PROJECT_ROOT,
-        audio_package_index_service(),
-        decrypt_vfs_file,
         auto_rebuild=not args.no_auto_rebuild,
-        emit=lambda level, event, payload: getattr(LOGGER, level)(
-            event,
-            extra=payload,
-        ),
     )
-    SECONDARY_AUDIO_INDEX_REPORT = secondary_audio.index_report
-    SECONDARY_AUDIO_REBUILD_REPORT = secondary_audio.rebuild_report
-    if SECONDARY_AUDIO_INDEX_REPORT["status"] != "current":
-        LOGGER.warning(
-            "secondary_audio_index_audit_failed",
-            extra={"report": SECONDARY_AUDIO_INDEX_REPORT},
-        )
-    manifest_service = object.__new__(BrowserHandler)
-    manifest_service.db_path = args.db
-    try:
-        manifest_summary = manifest_service.resolve_installed_manifest_index().summary()
-        MANIFEST_INDEX_REPORT = {
-            "status": "ready",
-            **manifest_summary,
-        }
-    except (OSError, sqlite3.Error, ValueError) as error:
-        MANIFEST_INDEX_REPORT = {
-            "status": "unavailable",
-            "message": str(error),
-        }
-        LOGGER.error("manifest_prewarm_failed", extra={"error": str(error)})
+    INDEX_FRESHNESS_REPORT = reports.index_freshness
+    INDEX_REBUILD_REPORT = reports.index_rebuild
+    SECONDARY_AUDIO_INDEX_REPORT = reports.secondary_audio_indexes
+    SECONDARY_AUDIO_REBUILD_REPORT = reports.secondary_audio_rebuild
+    MANIFEST_INDEX_REPORT = reports.manifest_index
     server = ThreadingHTTPServer((args.host, args.port), BrowserHandler)
     LOGGER.info(
         "server_started",

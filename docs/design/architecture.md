@@ -97,6 +97,9 @@ PCK，只有 banks 与 stream 均可读的语言才进入候选；PCK 目录元�
 `secondary_audio_startup.py` 统一协调两类索引的启动审计、逐项重建和发布后重审计。一个索引构建
 失败不会阻止另一个索引尝试修复；最终 rebuilt/failed/notNeeded 报告由协调器合成，`server.py`
 只注入数据库、PCK 服务、解密函数和结构化日志出口。
+`application_startup_service.py` 再组合主索引审计/可选修复、上述二级音频启动与 Manifest 预热，
+并一次性返回五类健康报告。各阶段失败保持独立；`main()` 只安装报告，不再伪造 Handler 实例
+调用请求层方法。
 普通 VFS 目录的当前目录查询、子目录统计、分页文件 ID 批量回填及 `manifest.hgmmap` 虚拟目录
 占位由 `vfs_directory_service.py` 负责。Manifest 内容计数仍通过注入的已发布 ManifestIndex
 解析边界获取；HTTP Handler 只解析页码、分派虚拟路径并映射目录不存在错误。
