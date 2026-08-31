@@ -428,6 +428,11 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- JSONL 到派生 SQLite 的批量插入、source/all/effective entry、目录聚合、来源优先级和 meta 发布已
+  迁到 `vfs_database_builder.py`；`server.py` 的数据库构建入口由 250 余行缩为直接导入。旧实现
+  对 5000 项满批次与末尾残批次复制两套更新逻辑，新服务统一走同一函数，并以 batch size 2 的
+  跨批回归证明 readable Persistent 会稳定覆盖 StreamingAssets、缺失来源仍保留诊断。Python
+  discovery 更新为 `574/574`，`server.py` 当前为 2565 行。
 - 派生 VFS SQLite 的 schema、查询索引、目录行与父级 entry 发布已迁到
   `vfs_database_schema.py`。服务入口不再持有 140 余行 DDL 与目录 SQL；内存数据库回归覆盖完整
   表/索引集合、重建清空旧数据以及同 scope 直接子目录计数。Python discovery 更新为 `572/572`。

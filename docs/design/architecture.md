@@ -132,6 +132,9 @@ VFS ChaCha20 原语及文件 nonce 规则独立位于 `vfs_crypto.py`；`vfs_fil
 的 tar.gz 具有同一逐行接口，多文件归档会明确拒绝，不由数据库构建器猜测应选哪个成员。
 派生 SQLite 的表定义、查询索引以及 scope 目录/父级 entry 发布由 `vfs_database_schema.py` 管理；
 schema 重建会明确清空旧表，目录的 `child_dir_count` 只由同 scope 的直接子目录计算。
+`vfs_database_builder.py` 在该 schema 上逐批写入来源文件，同时维护 source、all 与 effective 三类
+视图、目录统计和构建元数据。所有批次（包括末尾不足批次）共享同一发布函数；effective 先按
+chunk 可读性、再按 Persistent/StreamingAssets 优先级选择，不受 JSONL 批次边界影响。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由

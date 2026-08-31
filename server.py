@@ -14,13 +14,11 @@ import struct
 import subprocess
 import sys
 import threading
-import time
 import uuid
 from contextlib import closing
-from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Callable, Iterable, Iterator
+from typing import Callable, Iterable
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import blender_material_plan
@@ -113,13 +111,7 @@ from vfs_crypto import (
     quarter_round,
     rotl32,
 )
-from vfs_index_jsonl import open_index
-from vfs_database_schema import (
-    create_indexes,
-    create_schema,
-    insert_directories,
-    split_parent,
-)
+from vfs_database_builder import build_database, source_rank
 from tablecfg_service import TableCfgResolutionError, TableCfgService
 from internal_directory_service import (
     InternalDirectoryError,
@@ -383,11 +375,6 @@ def load_cache_identity(path: Path) -> dict | None:
     except (OSError, json.JSONDecodeError):
         return None
 
-SOURCE_PRIORITY = {
-    "Persistent": 0,
-    "StreamingAssets": 1,
-}
-
 MODEL_SNAPSHOT_TYPES = (
     "GameObject",
     "Transform",
@@ -401,251 +388,6 @@ MODEL_SNAPSHOT_TYPES = (
     "LODGroup",
 )
 PAGE_SIZE_MAX = 500
-
-
-@dataclass(frozen=True)
-class FileView:
-    file_id: int
-    path: str
-    name: str
-    source: str
-    chunk_exists: bool
-    length: int
-    encrypted: bool
-
-
-def iter_ancestor_dirs(file_path: str) -> Iterator[str]:
-    yield ""
-    parts = [part for part in file_path.split("/") if part]
-    current: list[str] = []
-    for part in parts[:-1]:
-        current.append(part)
-        yield "/".join(current)
-
-
-def add_dir_stats(
-    dirs: dict[tuple[str, str], dict[str, int]],
-    scope: str,
-    file_path: str,
-    length: int,
-    encrypted: bool,
-    chunk_exists: bool,
-) -> None:
-    for dir_path in iter_ancestor_dirs(file_path):
-        stats = dirs.setdefault(
-            (scope, dir_path),
-            {"file_count": 0, "total_bytes": 0, "encrypted_count": 0, "missing_chunk_count": 0},
-        )
-        stats["file_count"] += 1
-        stats["total_bytes"] += length
-        if encrypted:
-            stats["encrypted_count"] += 1
-        if not chunk_exists:
-            stats["missing_chunk_count"] += 1
-
-
-def queue_file_entry(
-    batch: list[tuple],
-    scope: str,
-    view: FileView,
-) -> None:
-    parent, name = split_parent(view.path)
-    batch.append(
-        (
-            scope,
-            parent,
-            "file",
-            name,
-            view.path,
-            view.file_id,
-            view.length,
-            int(view.encrypted),
-            int(not view.chunk_exists),
-        )
-    )
-
-
-def flush_file_entries(conn: sqlite3.Connection, batch: list[tuple]) -> None:
-    if not batch:
-        return
-    conn.executemany(
-        """
-        INSERT INTO entries (
-            scope, parent, type, name, path, file_id, total_bytes, encrypted_count, missing_chunk_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        batch,
-    )
-    batch.clear()
-
-
-def source_rank(source: str, chunk_exists: bool) -> tuple[int, int]:
-    return (0 if chunk_exists else 1, SOURCE_PRIORITY.get(source, 99))
-
-
-def build_database(index_path: Path, db_path: Path) -> None:
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    if db_path.exists():
-        db_path.unlink()
-
-    started = time.time()
-    conn = sqlite3.connect(db_path)
-    create_schema(conn)
-
-    dirs: dict[tuple[str, str], dict[str, int]] = {}
-    file_batch: list[tuple] = []
-    entry_batch: list[tuple] = []
-    effective: dict[str, tuple[tuple[int, int], FileView]] = {}
-    header = None
-    summary = None
-    file_count = 0
-
-    for line in open_index(index_path):
-        record = json.loads(line)
-        record_type = record.get("recordType")
-        if record_type == "header":
-            header = record
-            continue
-        if record_type == "summary":
-            summary = record
-            continue
-        if record_type != "file":
-            continue
-
-        file_count += 1
-        file_row = (
-            record["source"],
-            record.get("sourceRoot", ""),
-            record["blockHash"],
-            record["blockName"],
-            record["logicalId"],
-            record["sourceLogicalId"],
-            record["fileName"],
-            str(record.get("fileNameHash", "")),
-            record["chunkFile"],
-            record.get("chunkPath", ""),
-            int(record.get("chunkExists", False)),
-            record.get("chunkMd5Name"),
-            record.get("chunkContentMd5"),
-            record.get("fileChunkMd5"),
-            record.get("fileDataMd5"),
-            record["offset"],
-            record["length"],
-            int(record.get("encrypted", False)),
-            record.get("ivSeed") or 0,
-        )
-        file_batch.append(file_row)
-        if len(file_batch) >= 5000:
-            conn.executemany(
-                """
-                INSERT INTO files (
-                    source, source_root, block_hash, block_name, logical_id, source_logical_id,
-                    file_name, file_name_hash, chunk_file, chunk_path, chunk_exists,
-                    chunk_md5_name, chunk_content_md5, file_chunk_md5, file_data_md5,
-                    offset, length, encrypted, iv_seed
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                file_batch,
-            )
-            first_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0] - len(file_batch) + 1
-            for i, row in enumerate(file_batch):
-                file_id = first_id + i
-                source = row[0]
-                block_name = row[3]
-                logical_id = row[4]
-                length = int(row[16])
-                encrypted = bool(row[17])
-                chunk_exists = bool(row[10])
-                source_path = logical_id
-                all_path = f"{source}/{logical_id}"
-
-                source_view = FileView(file_id, source_path, split_parent(source_path)[1], source, chunk_exists, length, encrypted)
-                all_view = FileView(file_id, all_path, split_parent(all_path)[1], source, chunk_exists, length, encrypted)
-                queue_file_entry(entry_batch, source, source_view)
-                queue_file_entry(entry_batch, "all", all_view)
-                add_dir_stats(dirs, source, source_path, length, encrypted, chunk_exists)
-                add_dir_stats(dirs, "all", all_path, length, encrypted, chunk_exists)
-
-                rank = source_rank(source, chunk_exists)
-                current = effective.get(logical_id)
-                if current is None or rank < current[0]:
-                    effective[logical_id] = (
-                        rank,
-                        FileView(file_id, logical_id, split_parent(logical_id)[1], source, chunk_exists, length, encrypted),
-                    )
-            flush_file_entries(conn, entry_batch)
-            file_batch.clear()
-
-        if file_count % 100000 == 0:
-            LOGGER.info("database_index_progress", extra={"fileCount": file_count})
-
-    if file_batch:
-        conn.executemany(
-            """
-            INSERT INTO files (
-                source, source_root, block_hash, block_name, logical_id, source_logical_id,
-                file_name, file_name_hash, chunk_file, chunk_path, chunk_exists,
-                chunk_md5_name, chunk_content_md5, file_chunk_md5, file_data_md5,
-                offset, length, encrypted, iv_seed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            file_batch,
-        )
-        first_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0] - len(file_batch) + 1
-        for i, row in enumerate(file_batch):
-            file_id = first_id + i
-            source = row[0]
-            logical_id = row[4]
-            length = int(row[16])
-            encrypted = bool(row[17])
-            chunk_exists = bool(row[10])
-            all_path = f"{source}/{logical_id}"
-            queue_file_entry(entry_batch, source, FileView(file_id, logical_id, split_parent(logical_id)[1], source, chunk_exists, length, encrypted))
-            queue_file_entry(entry_batch, "all", FileView(file_id, all_path, split_parent(all_path)[1], source, chunk_exists, length, encrypted))
-            add_dir_stats(dirs, source, logical_id, length, encrypted, chunk_exists)
-            add_dir_stats(dirs, "all", all_path, length, encrypted, chunk_exists)
-            rank = source_rank(source, chunk_exists)
-            current = effective.get(logical_id)
-            if current is None or rank < current[0]:
-                effective[logical_id] = (
-                    rank,
-                    FileView(file_id, logical_id, split_parent(logical_id)[1], source, chunk_exists, length, encrypted),
-                )
-        flush_file_entries(conn, entry_batch)
-
-    for _, view in effective.values():
-        queue_file_entry(entry_batch, "effective", view)
-        add_dir_stats(dirs, "effective", view.path, view.length, view.encrypted, view.chunk_exists)
-        if len(entry_batch) >= 5000:
-            flush_file_entries(conn, entry_batch)
-    flush_file_entries(conn, entry_batch)
-
-    insert_directories(conn, dirs)
-    create_indexes(conn)
-
-    meta = {
-        "indexPath": str(index_path),
-        "builtAtEpoch": int(time.time()),
-        "elapsedSeconds": round(time.time() - started, 3),
-        "sourceFileCount": file_count,
-        "effectiveFileCount": len(effective),
-        "header": header,
-        "summary": summary,
-    }
-    conn.executemany(
-        "INSERT INTO meta(key, value) VALUES (?, ?)",
-        [(key, json.dumps(value, ensure_ascii=False)) for key, value in meta.items()],
-    )
-    conn.commit()
-    conn.close()
-    LOGGER.info(
-        "database_built",
-        extra={
-            "database": str(db_path),
-            "sourceFileCount": file_count,
-            "effectiveFileCount": len(effective),
-        },
-    )
 
 
 def row_to_dict(row: sqlite3.Row) -> dict:
