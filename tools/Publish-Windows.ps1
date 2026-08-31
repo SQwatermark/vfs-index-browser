@@ -223,9 +223,12 @@ try {
             -DestinationPath $BuildArchivePath `
             -CompressionLevel Optimal
         $ArchiveHash = (Get-FileHash -LiteralPath $BuildArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-        "$ArchiveHash  $([System.IO.Path]::GetFileName($ResolvedArchivePath))" | Set-Content `
-            -LiteralPath $BuildChecksumPath `
-            -Encoding ascii
+        $ArchiveChecksum = "$ArchiveHash  $([System.IO.Path]::GetFileName($ResolvedArchivePath))`n"
+        [IO.File]::WriteAllText(
+            $BuildChecksumPath,
+            $ArchiveChecksum,
+            (New-Object Text.UTF8Encoding($false))
+        )
     }
 
     $OutputParent = Split-Path -Parent $OutputPath

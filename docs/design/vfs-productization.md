@@ -459,6 +459,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- Windows PowerShell 5.1 的 Unicode 归档实测继续发现 `.sha256` 原以 ASCII 写入，哈希正确但
+  中文 ZIP 文件名退化为问号。发布器现以无 BOM UTF-8 写入标准双空格格式，契约测试禁止恢复
+  ASCII；Unicode ZIP 的重新生成、校验、解压和包内验收将在修复提交的干净构建中复核。
 - Unicode 路径发布审计发现 ACL 构建临时批处理原以 ASCII 写入，会把 checkout 中的中文替换为
   `?` 并导致 MSVC 找不到源码。构建器现以无 BOM UTF-8 写入并在首行切换代码页 65001，保留
   空格与 Unicode 路径；回归门禁禁止恢复 ASCII 命令文件。提交 `b69e6a9` 已从名称同时含空格和

@@ -42,6 +42,11 @@ class ReleasePackagingContractTests(unittest.TestCase):
         self.assertNotIn("GetRelativePath", self.source)
         self.assertNotIn("GetRelativePath", self.validator_source)
 
+    def test_archive_checksum_preserves_unicode_filename_without_bom(self):
+        self.assertIn("$ArchiveChecksum", self.source)
+        self.assertIn("UTF8Encoding", self.source)
+        self.assertNotIn("-Encoding ascii", self.source)
+
     def test_python_runtime_libraries_are_required_release_files(self):
         self.assertIn('"_internal/VCRUNTIME140.dll"', self.validator_source)
         self.assertIn('"_internal/VCRUNTIME140_1.dll"', self.validator_source)
