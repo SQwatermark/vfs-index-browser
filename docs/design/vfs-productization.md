@@ -1084,3 +1084,7 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 - `/api/health` 的公开文档已抽到 `health_service.py`：Unity worker 必需能力、主索引、Manifest 与
   二级音频门禁共同决定 ready/degraded，可选工具和缓存版本只形成诊断；Handler 继续只返回
   `no-store` JSON。既有健康回归覆盖全部降级分支和可选工具不阻塞语义。
+- MemoryPack 解码值到普通文件预览的格式转换已抽到 `memorypack_preview_service.py`：服务统一
+  `__meta`、完整消费标志、union tag 字符串化与稳定排序、Unicode JSON 和正文截断，并将领域
+  解码错误翻译为现有 binary JSON 回退所消费的错误。Handler 不再拼装 MemoryPack 预览；Python
+  门禁增至 594 项。

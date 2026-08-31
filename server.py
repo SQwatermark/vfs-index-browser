@@ -56,7 +56,8 @@ from akedb_compatible_data_service import (
     AkedbCompatibleDataError,
     AkedbCompatibleDataService,
 )
-from memorypack_value_decoder import MemoryPackValueDecodeError, MemoryPackValueDecoder
+from memorypack_value_decoder import MemoryPackValueDecoder
+from memorypack_preview_service import MemoryPackPreviewService
 from memorypack_schema_service import MemoryPackSchemaService
 from audio_dialog_service import (
     AudioDialogConflictError,
@@ -99,7 +100,6 @@ from file_preview_service import (
     FilePreviewService,
     file_suffix,
     guess_content_type,
-    truncate_text,
 )
 from vfs_file_preview_service import VfsFilePreviewService, tablecfg_name_for_file
 from vfs_file_materializer import VfsFileMaterializer
@@ -640,26 +640,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         return MEMORYPACK_INPUTS.load()
 
     def decode_memorypack_json_preview(self, record: dict, chunk_path: Path) -> tuple[str, bool, dict] | None:
-        try:
-            decoded = self.memorypack_value_decoder().decode(
-                record.get("logical_id"), record, chunk_path
-            )
-        except MemoryPackValueDecodeError as error:
-            raise RuntimeError(str(error)) from error
-        if decoded is None:
-            return None
-        meta = {
-            "class": decoded.class_name,
-            "bytes": decoded.byte_count,
-            "consumed": decoded.consumed,
-            "complete": decoded.complete,
-            "discoveredUnions": {
-                base_type: {str(tag): derived_type for tag, derived_type in sorted(entries.items())}
-                for base_type, entries in sorted(decoded.discovered_unions.items())
-            },
-        }
-        text, truncated = truncate_text(json.dumps({"__meta": meta, "value": decoded.value}, ensure_ascii=False, indent=2))
-        return text, truncated, meta
+        return MemoryPackPreviewService(self.memorypack_value_decoder().decode).build(
+            record,
+            chunk_path,
+        )
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
