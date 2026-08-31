@@ -29,6 +29,12 @@ PyInstaller onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查�
 跟踪的 `public/`、`schemas/` 与许可证会进入包，工作树中的研究样本和临时文件不会被复制。
 `-SkipTests` 只供已经执行过同一提交门禁的本地迭代，不用于正式发布。
 
+构建后可先做不依赖游戏数据的结构与 worker 验收：
+
+```powershell
+./tools/Test-WindowsRelease.ps1 -ReleaseDirectory .tmp/endfield-vfs-browser-win-x64
+```
+
 ## 安装与首次启动
 
 将整个发布目录复制到目标机器的普通可写目录，不要只复制 EXE。游戏索引和派生数据库默认
@@ -42,6 +48,15 @@ $env:VFS_BROWSER_DATA_ROOT = "E:\EndfieldVfsData"
 浏览器打开 `http://127.0.0.1:8765/`。首次缺少 SQLite 时服务会从 data root 下的
 `endfield-vfs-index.jsonl.tgz` 构建；启动时也会验证主索引与当前游戏数据，发现过期后原子
 重建。若只想诊断而不修复，可加 `--no-auto-rebuild`。
+
+在新机器上应使用验收脚本绑定实际 data root。脚本在隐藏窗口中启动服务，验证主页、索引、
+Manifest、包内 worker、能力集合和旧工具状态，然后停止进程并恢复原环境变量：
+
+```powershell
+./tools/Test-WindowsRelease.ps1 `
+  -ReleaseDirectory E:/Apps/endfield-vfs-browser `
+  -DataRoot E:/EndfieldVfsData
+```
 
 部署到其他机器时必须连同下列目录保留：
 

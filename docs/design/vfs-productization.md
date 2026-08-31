@@ -262,7 +262,7 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 
 - [ ] 构建 Windows 自包含发布包并在干净环境验证。
 - [x] 完成安装、升级、故障诊断、开发和发布文档。
-- [ ] 验证没有固定盘符、相邻源码仓库或用户目录依赖。
+- [x] 验证没有固定盘符、相邻源码仓库或用户目录依赖。
 - [ ] 归档独立 AnimeStudio 仓库，并在 VFS 中记录最后同步点。
 
 完成门禁：新机器仅凭发布包和游戏数据即可使用已声明能力。
@@ -291,8 +291,11 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 握手，以及连接现有外部 data root 后的完整启动验证：主页 HTTP 200，健康状态 `ready`，
 主索引 `current`、Manifest `ready`、worker `ready`、缺失 worker 能力 0、旧工具 0。
 包内文件审计确认未混入未跟踪的 `public/` 研究样本，也未发现外部 AnimeStudio 绝对路径。
-P5 的剩余门禁是从干净 checkout/另一台机器复跑、完成机器路径依赖审计，并在用户确认后
-归档独立 AnimeStudio 仓库；当前本机成功不能替代新机器验收。
+`Test-WindowsRelease.ps1` 已把包结构、版本身份、worker 握手和可选的真实 data root 服务
+启动收成单条验收命令；它还要求服务最终使用的 worker 位于发布根目录下。生产模块的开发机
+盘符/用户目录禁入和旧 CLI 禁入已有自动化边界，发布目录文本审计也未发现外部 AnimeStudio
+绝对路径。P5 的剩余门禁是从干净 checkout/另一台机器复跑，并在用户确认后归档独立
+AnimeStudio 仓库；当前本机成功不能替代新机器验收。
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
@@ -367,6 +370,9 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
   版本的 `release.json`；成功后只清理经过 `.tmp` 根目录校验的本次 GUID 构建目录；
 - `docs/deployment/windows-release.md` 已覆盖隔离构建环境、安装、外部 data root、健康检查、
   路径覆盖、并列目录升级与回退。正式包不要求 Python、.NET 或 AnimeStudio；
+- `tools/Test-WindowsRelease.ps1` 可在无 data root 时验证产品文件、版本清单和 worker 握手，
+  也可绑定指定 data root 隐藏启动服务并验证主页、索引、Manifest、能力集合和包内 worker
+  路径；验收完成后会停止进程、恢复环境变量并清理本次临时日志；
 
 - worker `0.14.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
   聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理、Cubemap 六面和固定
@@ -415,10 +421,8 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 1. 在干净 checkout 或另一台未安装 Python/.NET/AnimeStudio 的 Windows x64 机器，用发布包与
    游戏数据复跑主页、健康检查和至少一条真实 Unity 导出链；
-2. 对 Git 跟踪的发布配置和实际发布目录做固定盘符、相邻仓库与用户目录扫描，并把检查固化
-   到自动化门禁；开发工具中的示例证据路径不应误判为生产依赖；
-3. 验收通过后由用户决定何时归档独立 AnimeStudio 仓库，并在本文记录最终同步提交；
-4. P5 关闭后再回到消费者驱动的领域工作。AudioClip 或在线 Shader 没有真实消费者时不设计
+2. 验收通过后由用户决定何时归档独立 AnimeStudio 仓库，并在本文记录最终同步提交；
+3. P5 关闭后再回到消费者驱动的领域工作。AudioClip 或在线 Shader 没有真实消费者时不设计
    协议，LODGroup 没有完整 TypeTree 时继续明确失败。
 
 2026-08-29 本机使用庄方宜 PostModel 的 71 Bundle 闭包完成新旧对象快照审计：忽略旧流程中
@@ -453,6 +457,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   本机完整门禁为 Python `606/606`、.NET `37` 通过且 6 项外部证据跳过；发布服务连接现有
   data root 后主页 200、健康状态全绿。安装、升级、诊断、开发和发布说明见
   `docs/deployment/windows-release.md`；另一台干净机器验收仍未完成。
+- 新增 `Test-WindowsRelease.ps1`，将发布文件、`release.json`、worker 握手和可选的真实 data
+  root 启动检查统一为一条命令；真实启动还验证 worker 路径没有逃出发布根目录。生产根模块的
+  开发机盘符/用户目录禁入已加入架构测试，P5 的机器路径依赖审计门禁关闭。
 - 同步模型、Avatar plan、GLB、Blend 与单动画路由的 LOD、下载和预检查参数已统一到
   `model_sync_request.py`。解析严格保持既有布尔集合和 ValueError 分类；Blend 下载 URL 去除
   `prepare` 时保留重复动画参数。27 项模型路由回归及 Python discovery `590/590` 通过。

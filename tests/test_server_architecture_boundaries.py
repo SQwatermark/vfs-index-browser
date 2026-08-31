@@ -1,9 +1,12 @@
 import ast
+import re
+import subprocess
 import unittest
 from pathlib import Path
 
 
-SERVER_PATH = Path(__file__).resolve().parents[1] / "server.py"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+SERVER_PATH = REPOSITORY_ROOT / "server.py"
 
 
 def call_name(node: ast.Call) -> str:
@@ -83,6 +86,31 @@ class ServerArchitectureBoundaryTests(unittest.TestCase):
             {},
             {name: values for name, values in violations.items() if values},
         )
+
+    def test_production_modules_do_not_embed_developer_machine_paths(self):
+        developer_path = re.compile(
+            r"(?:[a-z]:[\\/](?:projects|users)[\\/]|(?:/home|/users)/[^/\\]+[\\/])",
+            re.IGNORECASE,
+        )
+        violations = {}
+        tracked = subprocess.run(
+            ["git", "ls-files", "--", "*.py"],
+            cwd=REPOSITORY_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        production_modules = (
+            REPOSITORY_ROOT / relative
+            for relative in tracked
+            if Path(relative).parent == Path(".")
+        )
+        for path in production_modules:
+            matches = sorted(set(developer_path.findall(path.read_text(encoding="utf-8"))))
+            if matches:
+                violations[path.name] = matches
+
+        self.assertEqual({}, violations)
 
 
 if __name__ == "__main__":
