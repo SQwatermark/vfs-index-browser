@@ -428,6 +428,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- 索引 JSONL 的 plain/gzip/单成员 tar.gz 读取已迁到 `vfs_index_jsonl.py`，数据库构建不再让 HTTP
+  模块持有压缩容器细节；多文件归档严格拒绝，四类输入边界均有合成回归。当前 Python discovery
+  `569/569` 通过；当前机器只有 .NET 10，仓库 `global.json` 锁定的 9.0.200 未安装，因此保留白天
+  `37` 项全绿基线，本轮没有改写 SDK 约束来制造假通过。
 - VFS ChaCha20 轮函数、流处理和文件 nonce 规则已迁到 `vfs_crypto.py`。8 个索引/格式诊断工具改为
   直接依赖基础模块（文本探测也改从 `file_preview_service.py` 导入），不再为了读取一个加密切片
   初始化完整 HTTP 服务、运行时配置与 worker。`server.py` 保留旧名称重导出以兼容现有调用者；

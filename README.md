@@ -155,6 +155,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `file_preview_service.py` | 普通、Manifest 与容器内部文件共享的媒体/文本/十六进制预览 |
 | `vfs_file_preview_service.py` | VFS 容器、TableCfg、JSON/MemoryPack 与通用预览应用层 |
 | `vfs_crypto.py` | 服务与离线工具共享的 VFS ChaCha20 文件解密原语 |
+| `vfs_index_jsonl.py` | plain/gzip/tar.gz VFS 索引 JSONL 输入边界 |
 | `internal_directory_service.py` | AB/PCK/USM 内部虚拟目录的统一应用层文档组装 |
 | `internal_file_preview_service.py` | 容器内部已解析文件的预览与稳定 raw/download 链接组装 |
 | `raw_file_service.py` | VFS 切片及内部产物的 MIME、下载头与有界分块读取 |

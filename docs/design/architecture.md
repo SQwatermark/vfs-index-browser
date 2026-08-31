@@ -128,6 +128,8 @@ AB、PCK 与 USM 的内部目录文档由 `internal_directory_service.py` 按容
 等已生成内存字节可用同一描述分块发送；静态文件也走路径流，不再由 Handler 整体载入。
 VFS ChaCha20 原语及文件 nonce 规则独立位于 `vfs_crypto.py`；`vfs_file_reader.py` 与离线工具直接依赖
 该基础模块，不为解密一个切片而导入 HTTP 服务。`server.py` 仅重导出旧名称维持已有脚本兼容。
+索引数据库构建消费的 JSONL 输入由 `vfs_index_jsonl.py` 统一打开；plain、gzip 与只含一个普通文件
+的 tar.gz 具有同一逐行接口，多文件归档会明确拒绝，不由数据库构建器猜测应选哪个成员。
 已发布 AssetBundle run 的目录遍历、路径逃逸防护、文件类型分类以及导出文件到 AssetMap
 `Type + Name + PathID` 的回绑由 `assetbundle_browser.py` 负责；HTTP 层只选择 run 和返回响应。
 AssetBundle、Projectile、Cubemap、MonoBehaviour 与动画导出的通用 run 生命周期由
