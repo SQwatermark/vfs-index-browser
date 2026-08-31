@@ -5,6 +5,7 @@ param(
 
     [string]$PythonExe = "python",
     [string]$DotnetExe = "dotnet",
+    [string]$ArchivePath,
     [switch]$SkipTests
 )
 
@@ -18,6 +19,19 @@ $OutputPath = [System.IO.Path]::GetFullPath(
 
 if (Test-Path -LiteralPath $OutputPath) {
     throw "Output directory already exists: $OutputPath"
+}
+$ResolvedArchivePath = $null
+$ArchiveChecksumPath = $null
+if ($ArchivePath) {
+    $ResolvedArchivePath = [System.IO.Path]::GetFullPath(
+        (Join-Path (Get-Location).Path $ArchivePath)
+    )
+    $ArchiveChecksumPath = "$ResolvedArchivePath.sha256"
+    foreach ($Path in @($ResolvedArchivePath, $ArchiveChecksumPath)) {
+        if (Test-Path -LiteralPath $Path) {
+            throw "Archive output already exists: $Path"
+        }
+    }
 }
 
 $BuildId = [Guid]::NewGuid().ToString("N")
@@ -183,11 +197,35 @@ try {
         -LiteralPath (Join-Path $ReleaseRoot "release.json") `
         -Encoding utf8
 
+    $BuildArchivePath = $null
+    $BuildChecksumPath = $null
+    if ($ResolvedArchivePath) {
+        $BuildArchivePath = Join-Path $BuildRoot "endfield-vfs-browser-win-x64.zip"
+        $BuildChecksumPath = "$BuildArchivePath.sha256"
+        Compress-Archive `
+            -LiteralPath $ReleaseRoot `
+            -DestinationPath $BuildArchivePath `
+            -CompressionLevel Optimal
+        $ArchiveHash = (Get-FileHash -LiteralPath $BuildArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+        "$ArchiveHash  $([System.IO.Path]::GetFileName($ResolvedArchivePath))" | Set-Content `
+            -LiteralPath $BuildChecksumPath `
+            -Encoding ascii
+    }
+
     $OutputParent = Split-Path -Parent $OutputPath
     New-Item -ItemType Directory -Force -Path $OutputParent | Out-Null
     Move-Item -LiteralPath $ReleaseRoot -Destination $OutputPath
+    if ($ResolvedArchivePath) {
+        $ArchiveParent = Split-Path -Parent $ResolvedArchivePath
+        New-Item -ItemType Directory -Force -Path $ArchiveParent | Out-Null
+        Move-Item -LiteralPath $BuildArchivePath -Destination $ResolvedArchivePath
+        Move-Item -LiteralPath $BuildChecksumPath -Destination $ArchiveChecksumPath
+    }
     $Published = $true
     Write-Host "Windows release published to $OutputPath"
+    if ($ResolvedArchivePath) {
+        Write-Host "Windows release archive published to $ResolvedArchivePath"
+    }
 }
 finally {
     Pop-Location

@@ -20,6 +20,7 @@ python -m venv .tmp/release-venv
 ```powershell
 ./tools/Publish-Windows.ps1 `
   -OutputDirectory .tmp/endfield-vfs-browser-win-x64 `
+  -ArchivePath .tmp/endfield-vfs-browser-win-x64.zip `
   -PythonExe .tmp/release-venv/Scripts/python.exe `
   -DotnetExe dotnet
 ```
@@ -29,6 +30,8 @@ python -m venv .tmp/release-venv
 onedir 构建、win-x64 自包含 worker 发布、EXE 帮助检查和 worker 握手。首次恢复依赖需要
 联网，后续会复用 `unity-worker/.deps/` 中校验通过的缓存；产品运行时不会联网。只有 Git
 跟踪的 `public/`、`schemas/` 与许可证会进入包，工作树中的研究样本和临时文件不会被复制。
+指定 `-ArchivePath` 时还会生成包含顶层产品目录的 ZIP 和相邻 `.sha256` 文件；归档目标同样
+必须不存在，发布过程不会覆盖历史归档。
 `-SkipTests` 只供已经执行过同一提交门禁的本地迭代，不用于正式发布。
 
 构建后可先做不依赖游戏数据的结构与 worker 验收：

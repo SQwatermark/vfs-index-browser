@@ -457,6 +457,14 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ## 变更记录
 
+### 2026-09-01
+
+- Windows 发布入口新增可选 `-ArchivePath`：在不覆盖既有目录或归档的前提下生成包含顶层
+  产品目录的 ZIP 和独立 `.sha256`。本机候选归档为 56,967,620 字节，SHA-256
+  `7372e5c2e0ea92531ddead4127f99c9ef24b28f3a686de9919077c6f5d483b3b`；重新解压后 351 个
+  不可变文件完整性复核通过，连接真实 data root 后服务、索引、Manifest 和包内 worker
+  继续全部 `ready`。这证明目录发布、归档、传输校验与解压验收是同一条可重复链路。
+
 ### 2026-08-31
 
 - 新增 Windows x64 自包含发布链：PyInstaller 6.22.2 冻结服务，.NET SDK 9.0.200 发布
