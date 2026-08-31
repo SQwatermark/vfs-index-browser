@@ -428,6 +428,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- 派生 VFS SQLite 的 schema、查询索引、目录行与父级 entry 发布已迁到
+  `vfs_database_schema.py`。服务入口不再持有 140 余行 DDL 与目录 SQL；内存数据库回归覆盖完整
+  表/索引集合、重建清空旧数据以及同 scope 直接子目录计数。Python discovery 更新为 `572/572`。
 - 索引 JSONL 的 plain/gzip/单成员 tar.gz 读取已迁到 `vfs_index_jsonl.py`，数据库构建不再让 HTTP
   模块持有压缩容器细节；多文件归档严格拒绝，四类输入边界均有合成回归。当前 Python discovery
   `569/569` 通过；当前机器只有 .NET 10，仓库 `global.json` 锁定的 9.0.200 未安装，因此保留白天
