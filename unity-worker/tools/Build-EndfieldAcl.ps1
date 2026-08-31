@@ -71,6 +71,26 @@ try {
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $output)) {
         throw 'acl_endfield.dll 构建失败。'
     }
+
+    $dumpbin = Get-ChildItem `
+        -Path (Join-Path $VisualStudioPath 'VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe') `
+        -File |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
+    if ($null -eq $dumpbin) {
+        throw '未找到 x64 dumpbin.exe，无法验证 acl_endfield.dll 的运行时依赖。'
+    }
+    $dependencyReport = & $dumpbin.FullName /nologo /dependents $output | Out-String
+    if ($LASTEXITCODE -ne 0) {
+        throw 'dumpbin 无法读取 acl_endfield.dll 的运行时依赖。'
+    }
+    $dynamicCppRuntime = [regex]::Match(
+        $dependencyReport,
+        '(?i)\b(?:VCRUNTIME\d*(?:_\d+)?|MSVCP\d+|CONCRT\d+|ucrtbase|api-ms-win-crt-[\w-]+)\.dll\b'
+    )
+    if ($dynamicCppRuntime.Success) {
+        throw "acl_endfield.dll 意外依赖动态 C/C++ 运行时：$($dynamicCppRuntime.Value)"
+    }
 }
 finally {
     Remove-Item -LiteralPath $commandFile -Force -ErrorAction SilentlyContinue

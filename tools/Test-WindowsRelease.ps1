@@ -105,6 +105,9 @@ function Assert-ReleaseFile {
 @(
     "endfield-vfs-browser.exe",
     "release.json",
+    "_internal/VCRUNTIME140.dll",
+    "_internal/VCRUNTIME140_1.dll",
+    "_internal/ucrtbase.dll",
     "public/index.html",
     "schemas/memorypack-known-schema.json",
     "schemas/memorypack-known-unions.json",

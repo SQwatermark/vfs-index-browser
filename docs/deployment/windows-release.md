@@ -5,6 +5,10 @@ VFS Browser 的 Windows 产品包由一个冻结的 Python 服务和一个自包
 或用户目录寻找 Unity 能力。Blender、vgmstream、usm-convert 和 ffmpeg 是可选工具；缺失时
 健康检查会明确报告，但不影响不依赖它们的功能。
 
+产品包面向带系统 UCRT API-set 的 Windows 10/11 x64。冻结 Python 所需的 `VCRUNTIME140.dll`、
+`VCRUNTIME140_1.dll` 和 `ucrtbase.dll` 随包放在 `_internal/`，验收器会明确检查；Endfield ACL
+原生桥使用静态 C/C++ 运行时构建，并在构建后通过 PE 导入表拒绝动态 VC++ Runtime 依赖。
+
 ## 构建发布包
 
 构建机需要 x64 Windows、Python 3.13、仓库 `unity-worker/global.json` 锁定的 .NET SDK
