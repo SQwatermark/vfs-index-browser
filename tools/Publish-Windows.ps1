@@ -151,6 +151,23 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "git rev-parse HEAD failed"
     }
+    $ReleaseFiles = @(
+        Get-ChildItem -LiteralPath $ReleaseRoot -File -Recurse |
+            ForEach-Object {
+                $RelativePath = [System.IO.Path]::GetRelativePath(
+                    $ReleaseRoot,
+                    $_.FullName
+                ).Replace("\", "/")
+                if (-not $RelativePath.StartsWith("data/")) {
+                    [ordered]@{
+                        path = $RelativePath
+                        size = $_.Length
+                        sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+                    }
+                }
+            } |
+            Sort-Object { $_.path }
+    )
     $ReleaseMetadata = [ordered]@{
         schemaVersion = 1
         product = "endfield-vfs-browser"
@@ -160,6 +177,7 @@ try {
         pyInstaller = (& $PythonCommand -m PyInstaller --version | Out-String).Trim()
         workerProtocol = $Handshake.protocol.version
         workerVersion = $Handshake.workerVersion
+        files = $ReleaseFiles
     }
     $ReleaseMetadata | ConvertTo-Json | Set-Content `
         -LiteralPath (Join-Path $ReleaseRoot "release.json") `

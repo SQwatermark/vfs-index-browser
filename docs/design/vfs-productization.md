@@ -373,7 +373,10 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
   路径覆盖、并列目录升级与回退。正式包不要求 Python、.NET 或 AnimeStudio；
 - `tools/Test-WindowsRelease.ps1` 可在无 data root 时验证产品文件、版本清单和 worker 握手，
   也可绑定指定 data root 隐藏启动服务并验证主页、索引、Manifest、能力集合和包内 worker
-  路径；验收完成后会停止进程、恢复环境变量并清理本次临时日志；
+  路径；验收完成后会停止进程、恢复环境变量并清理本次临时日志。`release.json` 还记录除
+  可写 `data/` 外全部不可变文件的路径、大小和 SHA-256；验收器拒绝缺失、额外或被修改的
+  文件。本机候选共核对 351 个文件、122,887,548 字节，人工改动 `public/index.html` 后按
+  预期在启动前失败；
 - 已从提交 `1c4ebf0` 建立不含主工作树未跟踪文件、`.deps`、原生 DLL、bin 或 obj 的本地干净
   克隆，只执行一条 `Publish-Windows.ps1` 即自动下载并校验 ACL/RTM、构建原生桥、通过
   Python 607 项与 .NET 37 项门禁并生成发布目录。随后用主工作树外部 data root 验收，服务
@@ -469,6 +472,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   `Initialize.ps1` 接受显式 dotnet 路径，不再要求调用者改系统 PATH。提交 `1c4ebf0` 的全新
   本地克隆在没有 `.deps`、ACL DLL、bin/obj 的情况下由单条发布命令成功构建，并通过真实
   data root 启动验收；干净 checkout 门禁关闭，仍保留另一台机器验收。
+- 发布清单扩展为逐文件完整性契约。当前候选的 351 个不可变文件在启动前全部复核大小与
+  SHA-256；`data/` 明确保留为运行时可写边界。篡改前完整服务验收通过，修改前端文件后验收器
+  稳定报告 `Release file size mismatch`，证明跨机器复制损坏不会被误诊为服务问题。
 - 同步模型、Avatar plan、GLB、Blend 与单动画路由的 LOD、下载和预检查参数已统一到
   `model_sync_request.py`。解析严格保持既有布尔集合和 ValueError 分类；Blend 下载 URL 去除
   `prepare` 时保留重复动画参数。27 项模型路由回归及 Python discovery `590/590` 通过。

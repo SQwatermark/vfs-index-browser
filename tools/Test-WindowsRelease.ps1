@@ -45,6 +45,44 @@ if ($ReleaseMetadata.schemaVersion -ne 1 -or $ReleaseMetadata.target -ne "win-x6
 if (-not $ReleaseMetadata.gitCommit -or -not $ReleaseMetadata.workerVersion) {
     throw "Release metadata is missing build identity"
 }
+if (@($ReleaseMetadata.files).Count -eq 0) {
+    throw "Release metadata is missing the immutable file manifest"
+}
+
+$ManifestFiles = @{}
+foreach ($File in $ReleaseMetadata.files) {
+    if (-not $File.path -or $File.path -eq "release.json" -or $File.path.StartsWith("data/")) {
+        throw "Release metadata contains an invalid file path: $($File.path)"
+    }
+    if ($ManifestFiles.ContainsKey($File.path)) {
+        throw "Release metadata contains a duplicate file path: $($File.path)"
+    }
+    $ManifestFiles[$File.path] = $File
+}
+$ActualFiles = @(
+    Get-ChildItem -LiteralPath $ReleaseRoot -File -Recurse |
+        ForEach-Object {
+            [System.IO.Path]::GetRelativePath($ReleaseRoot, $_.FullName).Replace("\", "/")
+        } |
+        Where-Object { $_ -ne "release.json" -and -not $_.StartsWith("data/") } |
+        Sort-Object
+)
+$ManifestPaths = @($ManifestFiles.Keys | Sort-Object)
+$FileSetDifference = @(Compare-Object $ManifestPaths $ActualFiles)
+if ($FileSetDifference.Count -ne 0) {
+    throw "Release file set does not match release.json: $($FileSetDifference | ConvertTo-Json -Compress)"
+}
+foreach ($RelativePath in $ManifestPaths) {
+    $File = Get-Item -LiteralPath (Join-Path $ReleaseRoot $RelativePath)
+    $Expected = $ManifestFiles[$RelativePath]
+    if ($File.Length -ne $Expected.size) {
+        throw "Release file size mismatch: $RelativePath"
+    }
+    $ActualHash = (Get-FileHash -LiteralPath $File.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($ActualHash -ne $Expected.sha256) {
+        throw "Release file hash mismatch: $RelativePath"
+    }
+}
 
 $HandshakeResponse = & $WorkerExe handshake | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or -not $HandshakeResponse.ok) {
@@ -67,6 +105,7 @@ $Result = [ordered]@{
     workerProtocol = $Handshake.protocol.version
     workerVersion = $Handshake.workerVersion
     workerCapabilityCount = @($Handshake.capabilities).Count
+    verifiedFileCount = $ManifestPaths.Count
     service = "notRun"
 }
 

@@ -79,8 +79,10 @@ Manifest、包内 worker、能力集合和旧工具状态，然后停止进程�
   `missingCapabilities` 为空；
 - `legacyTools` 为空。
 
-`release.json` 记录 Git 提交、Python/PyInstaller 版本、worker 协议与版本，用于确认问题包的
-构建身份。服务日志默认输出结构化 JSON；可用 `VFS_BROWSER_LOG_FORMAT=text` 改为文本，或用
+`release.json` 记录 Git 提交、Python/PyInstaller 版本、worker 协议与版本，以及全部不可变
+文件的相对路径、大小和 SHA-256。验收脚本会拒绝缺失、被修改或额外出现的不可变文件；运行时
+可写的 `data/` 不进入该清单。服务日志默认输出结构化 JSON；可用
+`VFS_BROWSER_LOG_FORMAT=text` 改为文本，或用
 `--log-level debug` 增加诊断。所有路径覆盖都通过 `runtime_config.py` 中列出的
 `VFS_BROWSER_*`、`BLENDER_EXE`、`VGMSTREAM_CLI`、`USM_CONVERT` 和 `FFMPEG` 环境变量提供，
 不修改包内文件来绑定机器路径。
