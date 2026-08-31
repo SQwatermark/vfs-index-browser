@@ -28,8 +28,12 @@ class ReleasePackagingContractTests(unittest.TestCase):
         self.assertIn('sourceTree -ne "clean"', self.validator_source)
 
     def test_absolute_output_paths_are_not_joined_to_the_current_directory(self):
-        self.assertIn("IsPathFullyQualified", self.source)
-        self.assertIn("IsPathFullyQualified", self.validator_source)
+        self.assertIn("IsPathRooted", self.source)
+        self.assertIn("IsPathRooted", self.validator_source)
+
+    def test_release_scripts_support_windows_powershell_51_path_apis(self):
+        self.assertNotIn("GetRelativePath", self.source)
+        self.assertNotIn("GetRelativePath", self.validator_source)
 
 
 if __name__ == "__main__":

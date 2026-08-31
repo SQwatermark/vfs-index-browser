@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 function Resolve-RequestedPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    if ([System.IO.Path]::IsPathFullyQualified($Path)) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
         return [System.IO.Path]::GetFullPath($Path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
@@ -182,13 +182,11 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "git rev-parse HEAD failed"
     }
+    $ReleasePrefix = $ReleaseRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
     $ReleaseFiles = @(
         Get-ChildItem -LiteralPath $ReleaseRoot -File -Recurse |
             ForEach-Object {
-                $RelativePath = [System.IO.Path]::GetRelativePath(
-                    $ReleaseRoot,
-                    $_.FullName
-                ).Replace("\", "/")
+                $RelativePath = $_.FullName.Substring($ReleasePrefix.Length).Replace("\", "/")
                 if (-not $RelativePath.StartsWith("data/")) {
                     [ordered]@{
                         path = $RelativePath

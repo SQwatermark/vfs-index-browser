@@ -459,6 +459,11 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- 发布与随包验收脚本已移除仅由较新 .NET/PowerShell 提供的路径和运行时信息 API，并为
+  Windows PowerShell 5.1 的网页探测启用基础解析。源码验收器已在系统自带 Windows PowerShell
+  `5.1.26100.9168` 下，以隔离运行时复核干净候选的 353 个不可变文件、真实 data root、索引、
+  Manifest 和 11 项 worker 能力，全部通过并生成 `schemaVersion: 1` 报告。目标机因此不需要
+  PowerShell 7；另一台物理或虚拟 Windows 机器的最终 P5 验收仍未完成。
 - 发布源码身份从“仅记录 HEAD”收紧为 clean/dirty 契约：正式发布拒绝任何已修改或未跟踪
   文件，`release.json` 写入 `sourceTree: clean`；显式 `-AllowDirty` 仅供试构建，验收器默认
   拒绝且禁止其生成正式报告。输出/归档/报告路径也改为先区分绝对与相对路径，避免 PowerShell

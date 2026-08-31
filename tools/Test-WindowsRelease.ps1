@@ -18,13 +18,14 @@ $ErrorActionPreference = "Stop"
 function Resolve-RequestedPath {
     param([Parameter(Mandatory = $true)][string]$Path)
 
-    if ([System.IO.Path]::IsPathFullyQualified($Path)) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
         return [System.IO.Path]::GetFullPath($Path)
     }
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
 }
 
 $ReleaseRoot = (Resolve-Path $ReleaseDirectory).Path
+$ReleasePrefix = $ReleaseRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
 $ResolvedReportPath = $null
 if ($ReportPath) {
     if (-not $DataRoot) {
@@ -34,9 +35,8 @@ if ($ReportPath) {
     if (Test-Path -LiteralPath $ResolvedReportPath) {
         throw "Acceptance report already exists: $ResolvedReportPath"
     }
-    $ReleasePrefixForReport = $ReleaseRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
     if ($ResolvedReportPath.StartsWith(
-        $ReleasePrefixForReport,
+        $ReleasePrefix,
         [System.StringComparison]::OrdinalIgnoreCase
     )) {
         throw "Acceptance report must be written outside the immutable release directory"
@@ -144,7 +144,7 @@ foreach ($File in $ReleaseMetadata.files) {
 $ActualFiles = @(
     Get-ChildItem -LiteralPath $ReleaseRoot -File -Recurse |
         ForEach-Object {
-            [System.IO.Path]::GetRelativePath($ReleaseRoot, $_.FullName).Replace("\", "/")
+            $_.FullName.Substring($ReleasePrefix.Length).Replace("\", "/")
         } |
         Where-Object { $_ -ne "release.json" -and -not $_.StartsWith("data/") } |
         Sort-Object
@@ -258,7 +258,7 @@ if ($DataRoot) {
             throw "Released service did not become ready within $StartupTimeoutSeconds seconds"
         }
 
-        $Page = Invoke-WebRequest "http://127.0.0.1:$Port/"
+        $Page = Invoke-WebRequest "http://127.0.0.1:$Port/" -UseBasicParsing
         if ($Page.StatusCode -ne 200 -or $Health.status -ne "ready") {
             throw "Released service health or home page is not ready"
         }
@@ -273,7 +273,6 @@ if ($DataRoot) {
         }
 
         $WorkerCommand = [System.IO.Path]::GetFullPath($Health.unityWorker.command[0])
-        $ReleasePrefix = $ReleaseRoot.TrimEnd("\", "/") + [System.IO.Path]::DirectorySeparatorChar
         if (-not $WorkerCommand.StartsWith(
             $ReleasePrefix,
             [System.StringComparison]::OrdinalIgnoreCase
@@ -301,10 +300,7 @@ if ($DataRoot) {
 }
 
 if ($ResolvedReportPath) {
-    $WorkerRelativePath = [System.IO.Path]::GetRelativePath(
-        $ReleaseRoot,
-        $Result.workerCommand
-    ).Replace("\", "/")
+    $WorkerRelativePath = $Result.workerCommand.Substring($ReleasePrefix.Length).Replace("\", "/")
     $AcceptanceReport = [ordered]@{
         schemaVersion = 1
         outcome = "passed"
@@ -315,8 +311,8 @@ if ($ResolvedReportPath) {
             verifiedFileCount = $ManifestPaths.Count
         }
         machine = [ordered]@{
-            operatingSystem = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
-            architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+            operatingSystem = [Environment]::OSVersion.VersionString
+            architecture = $env:PROCESSOR_ARCHITECTURE
             powershell = $PSVersionTable.PSVersion.ToString()
         }
         runtimeIsolation = [bool]$IsolatedRuntime

@@ -77,6 +77,9 @@ Set-Location E:/Apps/endfield-vfs-browser
   -ReportPath E:/VfsAcceptance/endfield-vfs-browser.json
 ```
 
+发布与验收脚本兼容 Windows 自带的 Windows PowerShell 5.1，不要求目标机器额外安装
+PowerShell 7。验收器在 Windows PowerShell 5.1 下也会执行同一份逐文件完整性、worker 和服务检查。
+
 `-IsolatedRuntime` 会在 worker 握手和服务子进程启动期间清除 Python、dotnet、旧 worker 与
 可选工具覆盖，并把 `PATH` 限制为 Windows 系统目录；检查结束后恢复调用进程原环境。该模式
 用于排除发布包意外借用开发机运行时，但仍不能替代另一台物理或虚拟 Windows 机器验收。
