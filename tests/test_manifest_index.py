@@ -123,6 +123,37 @@ class ManifestDependencyTests(unittest.TestCase):
             self.assertEqual(["body.ab"], [row["name"] for row in index.bundle_dependencies(0, transitive=False)])
             self.assertEqual(["body.ab", "shared.ab"], [row["name"] for row in index.bundle_dependencies(0)])
 
+    def test_queries_all_exact_asset_filenames_case_insensitively(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "manifest.sqlite"
+            conn = sqlite3.connect(path)
+            try:
+                conn.executescript("""
+                    CREATE TABLE bundles (bundle_index INTEGER PRIMARY KEY, name TEXT NOT NULL);
+                    CREATE TABLE assets (
+                        asset_index INTEGER PRIMARY KEY, path TEXT NOT NULL, parent TEXT NOT NULL,
+                        name TEXT NOT NULL, bundle_index INTEGER NOT NULL, size INTEGER NOT NULL,
+                        path_hash TEXT NOT NULL
+                    );
+                """)
+                conn.execute("INSERT INTO bundles VALUES (7, 'icons.ab')")
+                conn.executemany(
+                    "INSERT INTO assets VALUES (?, ?, ?, ?, 7, 42, 'hash')",
+                    [
+                        (1, "assets/bufficon/icon_test.png", "assets/bufficon", "icon_test.png"),
+                        (2, "assets/termicon/icon_test.png", "assets/termicon", "icon_test.png"),
+                        (3, "assets/bufficon/icon_other.png", "assets/bufficon", "icon_other.png"),
+                    ],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            rows = ManifestIndex(path).assets_by_name("ICON_TEST.PNG")
+
+            self.assertEqual([1, 2], [row["assetIndex"] for row in rows])
+            self.assertEqual(["icons.ab", "icons.ab"], [row["bundleName"] for row in rows])
+
 
 if __name__ == "__main__":
     unittest.main()

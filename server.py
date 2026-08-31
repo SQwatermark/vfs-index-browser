@@ -1153,6 +1153,9 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/search":
             self.handle_search(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/manifest-assets/by-name":
+            self.handle_manifest_assets_by_name(parse_qs(parsed.query))
+            return
         if parsed.path == "/api/projectile":
             self.handle_projectile(parse_qs(parsed.query))
             return
@@ -1502,6 +1505,51 @@ class BrowserHandler(BaseHTTPRequestHandler):
             raise FileNotFoundError(f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}")
         record, chunk_path = resolved
         return self.manifest_index(record, chunk_path)
+
+    def handle_manifest_assets_by_name(self, query: dict[str, list[str]]) -> None:
+        """Return exact manifest asset candidates for one referenced resource filename.
+
+        This endpoint intentionally does not pick a winner when Unity contains the same
+        filename in several sprite collections.  Asset consumers must narrow candidates
+        with their source-domain evidence instead of silently accepting an arbitrary icon.
+        """
+
+        name = query.get("name", [""])[0].strip()
+        if not name or "/" in name or "\\" in name:
+            self.send_error_json(400, "name must be one exact manifest asset filename")
+            return
+        resolved = self.resolve_logical_file_source(MANIFEST_LOGICAL_ID)
+        if resolved is None:
+            self.send_error_json(503, f"local VFS manifest is unavailable: {MANIFEST_LOGICAL_ID}")
+            return
+        record, chunk_path = resolved
+        try:
+            candidates = self.manifest_index(record, chunk_path).assets_by_name(name)
+        except (OSError, sqlite3.Error, ValueError) as error:
+            self.send_error_json(503, str(error))
+            return
+        manifest_id = int(record["id"])
+        self.send_json(
+            {
+                "name": name,
+                "manifestId": manifest_id,
+                "candidates": [
+                    {
+                        **candidate,
+                        "previewUrl": (
+                            "/api/manifest-asset/preview?"
+                            f"manifestId={manifest_id}&assetIndex={candidate['assetIndex']}"
+                        ),
+                        "rawUrl": (
+                            "/api/manifest-asset/raw?"
+                            f"manifestId={manifest_id}&assetIndex={candidate['assetIndex']}"
+                        ),
+                    }
+                    for candidate in candidates
+                ],
+            },
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
 
     def handle_akedb_compatible_projectile_manifest(self) -> None:
         try:
