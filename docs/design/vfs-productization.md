@@ -200,7 +200,7 @@ source file、PathID、container、长度和 SHA-256。`container` 使用精确�
 
 ### P4：服务端产品化
 
-- [ ] 将单体 `server.py` 拆成请求层、应用服务、任务系统、缓存和基础设施适配器。
+- [x] 将单体 `server.py` 拆成请求层、应用服务、任务系统、缓存和基础设施适配器。
 - [x] 长任务具备 ID、进度、取消、原子结果发布和结构化失败。
 - [x] 配置、缓存版本、日志、端口和数据根目录有统一入口。
 - [x] 启动时校验 VFS 主索引与当前游戏安装的一致性；索引过期时自动重建并原子切换，
@@ -279,7 +279,8 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 
 ## 实施状态
 
-当前阶段：**P3 生产调用迁移**。P0 已完成，P1 的首个领域能力已经形成可调用闭环。
+当前阶段：**P3 能力迁移收尾与 P5 发布准备**。P0、P1、P2 与 P4 已完成；P3 只继续处理
+具有真实消费者和样本证据的剩余能力，不为暂无消费者的 AudioClip 猜测实现。
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
@@ -1099,3 +1100,8 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   SparkBuffer 解析、JSON 字节、配置根名文件名和格式错误翻译；Handler 不再导入或解释
   SparkBuffer/`struct` 异常，只映射服务错误并发送统一 raw response。合成回归覆盖服务导出、
   格式失败和下载响应，Python 门禁增至 602 项。
+- P4 服务端产品化门禁已完成。最终 AST 审计确认 51 个 HTTP 请求入口不直接调用 VFS 解密、
+  SparkBuffer/MemoryPack reader 或二进制 unpack，`server.py` 也不直接启动 subprocess；格式、
+  外部工具、缓存、任务和领域构建均经显式服务/适配器。任务注册表既有回归继续证明结果先写
+  独占临时文件，再原子发布 `result.json` 与 succeeded 状态，取消/失败不会留下成功指针。
+  两条架构边界已成为自动化测试，Python 门禁增至 604 项。

@@ -233,6 +233,10 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 
 ## 关键约束
 
+`tests/test_server_architecture_boundaries.py` 固化请求层边界：所有 `do_`、`handle_`、`serve_`
+入口不得直接调用 VFS 解密、SparkBuffer/MemoryPack reader 或二进制 unpack，HTTP server 模块
+不得直接启动外部进程。新格式和工具必须进入领域服务或基础设施适配器，不能回流到 Handler。
+
 公开健康文档由 `health_service.py` 根据注入的 Unity worker、可选工具、缓存版本和启动审计报告
 构建。核心 worker 未就绪，或主索引、Manifest、二级音频任一硬门禁不可用时状态为 degraded；
 可选工具缺失只进入诊断，不影响服务存活状态。HTTP 层只附加 `no-store` 缓存策略。
