@@ -61,6 +61,29 @@ class ServerArchitectureBoundaryTests(unittest.TestCase):
 
         self.assertEqual([], violations)
 
+    def test_production_entrypoints_do_not_restore_legacy_animestudio_cli(self):
+        forbidden = (
+            "AnimeStudio.CLI",
+            "ANIMESTUDIO_CLI",
+            "ANIMESTUDIO_EXE",
+            "data/research/AnimeStudio",
+            "data\\research\\AnimeStudio",
+        )
+        entrypoints = (
+            SERVER_PATH,
+            SERVER_PATH.with_name("runtime_config.py"),
+            SERVER_PATH.with_name("unity_worker.py"),
+        )
+        violations = {
+            path.name: [value for value in forbidden if value in path.read_text(encoding="utf-8")]
+            for path in entrypoints
+        }
+
+        self.assertEqual(
+            {},
+            {name: values for name, values in violations.items() if values},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

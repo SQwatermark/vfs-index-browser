@@ -190,11 +190,12 @@ source file、PathID、container、长度和 SHA-256。`container` 使用精确�
 
 按以下顺序迁移，每批独立验证和可回退：
 
-1. 原始/TypeTree MonoBehaviour、Projectile、AbilityEntity；
-2. AssetMap、CABMap、ObjectJSON 和通用 AssetBundle 导出；
-3. Texture2D、Sprite、Cubemap、模型层级和 AvatarMesh；
-4. AnimationClip、Humanoid、ACL；
-5. Shader 二进制包、程序映射和反汇编输入。
+- [x] 原始/TypeTree MonoBehaviour、Projectile、AbilityEntity；
+- [x] AssetMap、CABMap、ObjectJSON 和通用 AssetBundle 导出；
+- [x] Texture2D、Sprite、Cubemap、模型层级和 AvatarMesh；AudioClip 无生产消费者，保留显式不支持诊断；
+- [x] AnimationClip、Humanoid、ACL；
+- [x] Shader 二进制包、程序映射和反汇编输入当前只服务离线研究，没有 HTTP/应用服务消费者，
+  因而不引入无调用者的 worker 协议；研究线继续消费已验证的无损包读取器。
 
 完成门禁：旧入口已无生产调用者，代表性真实样本和合成错误样本全部通过等价测试。
 
@@ -279,8 +280,8 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 
 ## 实施状态
 
-当前阶段：**P3 能力迁移收尾与 P5 发布准备**。P0、P1、P2 与 P4 已完成；P3 只继续处理
-具有真实消费者和样本证据的剩余能力，不为暂无消费者的 AudioClip 猜测实现。
+当前阶段：**P5 发布准备**。P0 至 P4 均已完成。后续若出现 AudioClip 或在线 Shader 导出的
+真实消费者与样本，按新能力增量设计协议，不重新打开外部 AnimeStudio CLI 回退。
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
@@ -1105,3 +1106,7 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   外部工具、缓存、任务和领域构建均经显式服务/适配器。任务注册表既有回归继续证明结果先写
   独占临时文件，再原子发布 `result.json` 与 succeeded 状态，取消/失败不会留下成功指针。
   两条架构边界已成为自动化测试，Python 门禁增至 604 项。
+- P3 生产调用迁移已按真实消费者边界完成。根入口、运行时配置和唯一 worker 适配器均由回归
+  禁止重新出现 `AnimeStudio.CLI`、旧环境变量或 `data/research/AnimeStudio` 探测；AudioClip
+  继续返回结构化 unsupported 诊断，Shader 二进制包/反编译保持离线研究线，二者都没有生产调用者，
+  不为清空清单增加虚假协议。Python 门禁增至 605 项。
