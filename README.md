@@ -144,6 +144,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `model_artifact_resolver.py` | 不可变模型 run 的 geometry/texture 请求身份与安全文件定位 |
 | `model_single_animation_service.py` | 单 AnimationClip/Dialog Morph 的模型准备、绑定与进度协调 |
 | `model_animation_catalog_service.py` | 模型动画候选查询、分页、Avatar LOD 与稳定预览 URL 组装 |
+| `model_sync_request.py` | 同步模型路由共享的 LOD、下载、预检查参数与下载 URL |
 | `index_freshness.py` | 启动时审计主索引中已消失的 VFS chunk 引用 |
 | `secondary_audio_freshness.py` | AudioDialog/Wwise 稳定 PCK 路径与长度启动审计 |
 | `secondary_audio_rebuild.py` | Wwise 候选库构建、完整性/freshness 门禁与原子发布 |

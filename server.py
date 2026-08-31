@@ -19,7 +19,7 @@ from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Callable, Iterable
-from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import blender_material_plan
 from assetbundle_browser import (
@@ -180,6 +180,7 @@ from model_artifact_resolver import (
 )
 from model_single_animation_service import ModelSingleAnimationService
 from model_animation_catalog_service import ModelAnimationCatalogService
+from model_sync_request import ModelSyncRequest
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2025,13 +2026,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if query.get("animationAssetIndex") and animation_resolved is None:
             return
         try:
-            lod = int(query.get("lod", ["0"])[0])
+            options = ModelSyncRequest.parse(query)
             manifest_id = int(query["manifestId"][0])
             payload = self.build_model_preview_result(
                 manifest_id,
                 resolved,
                 animation_resolved,
-                lod,
+                options.lod,
             )
         except FileNotFoundError as error:
             self.send_json(
@@ -2059,10 +2060,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
         if resolved is None:
             return
         try:
-            lod = int(query.get("lod", ["0"])[0])
+            options = ModelSyncRequest.parse(query)
             payload = self.avatar_resource_plan_service().build_from_resolved(
                 resolved,
-                lod,
+                options.lod,
             )
         except AvatarResourcePlanError as error:
             self.send_error_json(400, str(error))
@@ -2128,10 +2129,10 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            lod = int(query.get("lod", ["0"])[0])
+            options = ModelSyncRequest.parse(query)
             asset, _, glb_path = self.ensure_manifest_asset_model_glb(
                 resolved,
-                lod=lod,
+                lod=options.lod,
             )
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "AnimeStudio timed out while exporting the model")
@@ -2140,12 +2141,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
 
-        download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
         name = f"{Path(str(asset['path'])).stem}.glb"
         self.send_raw_file(
             RawFileService(STREAM_CHUNK_SIZE).prepare_path(
                 glb_path,
-                download=download,
+                download=options.download,
                 download_name=name,
                 content_type="model/gltf-binary",
             ),
@@ -2172,21 +2172,23 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            lod = int(query.get("lod", ["0"])[0])
+            options = ModelSyncRequest.parse(query)
             animation_sources = self.resolve_animation_sources(query)
             if animation_sources is None:
                 return
             service = self.model_blend_service()
-            bundle = service.prepare_bundle(resolved, animation_sources, lod)
+            bundle = service.prepare_bundle(
+                resolved,
+                animation_sources,
+                options.lod,
+            )
 
-            if query.get("prepare", ["0"])[0] in {"1", "true", "yes"}:
-                download_query = {
-                    key: values
-                    for key, values in query.items()
-                    if key != "prepare"
-                }
+            if options.prepare:
                 download_url = (
-                    f"/api/manifest-asset/model-blend?{urlencode(download_query, doseq=True)}"
+                    ModelSyncRequest.download_url(
+                        "/api/manifest-asset/model-blend",
+                        query,
+                    )
                     if not bundle.all_animations_failed
                     else None
                 )
@@ -2241,11 +2243,11 @@ class BrowserHandler(BaseHTTPRequestHandler):
             return
 
         try:
-            lod = int(query.get("lod", ["0"])[0])
+            options = ModelSyncRequest.parse(query)
             animation = self.build_model_animation_result(
                 model_resolved,
                 animation_resolved,
-                lod,
+                options.lod,
             )
         except subprocess.TimeoutExpired:
             self.send_error_json(504, "AnimeStudio timed out while exporting the animation")

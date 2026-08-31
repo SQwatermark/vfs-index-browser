@@ -223,6 +223,9 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 模型动画候选查询由 `model_animation_catalog_service.py` 协调。服务保留 ManifestIndex 的搜索和
 分页语义，统一计算路径默认查询与显式查询，验证 Avatar LOD，并为普通/Avatar 候选分别组装带
 缓存版本的单动画和 Blender URL。Handler 只负责解析模型来源并把查询或索引错误映射为 HTTP 400。
+同步模型、Avatar plan、GLB、Blend 和单动画路由的 `lod/download/prepare` 由
+`model_sync_request.py` 统一解析；布尔值沿用既有 `1/true/yes` 集合，Blend 预检查下载 URL 统一
+移除 `prepare` 并保留重复动画参数，不改变各领域服务和异常分类。
 
 ## 关键约束
 
