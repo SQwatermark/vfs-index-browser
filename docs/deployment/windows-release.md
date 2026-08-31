@@ -65,8 +65,13 @@ Manifest、包内 worker、能力集合和旧工具状态，然后停止进程�
 ```powershell
 ./tools/Test-WindowsRelease.ps1 `
   -ReleaseDirectory E:/Apps/endfield-vfs-browser `
-  -DataRoot E:/EndfieldVfsData
+  -DataRoot E:/EndfieldVfsData `
+  -IsolatedRuntime
 ```
+
+`-IsolatedRuntime` 会在 worker 握手和服务子进程启动期间清除 Python、dotnet、旧 worker 与
+可选工具覆盖，并把 `PATH` 限制为 Windows 系统目录；检查结束后恢复调用进程原环境。该模式
+用于排除发布包意外借用开发机运行时，但仍不能替代另一台物理或虚拟 Windows 机器验收。
 
 部署到其他机器时必须连同下列目录保留：
 

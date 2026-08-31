@@ -459,6 +459,11 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- 发布验收器新增 `-IsolatedRuntime`。它在直接 worker 握手和服务启动期间把 `PATH` 限制为
+  Windows 系统目录，并清除 Python、dotnet、旧 worker 与可选工具覆盖，结束后完整恢复环境。
+  解压候选在该模式下连接真实 data root，351 个文件、worker 11 项能力、服务、索引和
+  Manifest 继续全部通过；CI 的无数据 worker 验收也启用同一隔离模式。它大幅收紧了“未借用
+  开发机运行时”的证据，但文档仍不把同机隔离冒充另一台机器验收。
 - 新增只读权限的 `Windows release` GitHub Actions 工作流。手动触发或 `vfs-browser-v*` 标签
   会在 Windows Server 2025 上安装 Python 3.13 和精确 .NET SDK 9.0.200，执行与本地一致的
   完整发布/门禁/文件清单/worker 验收，再上传 ZIP 与 SHA-256。CI 不带游戏数据，明确不能

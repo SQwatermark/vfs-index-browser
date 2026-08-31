@@ -54,7 +54,8 @@ jobs:
         shell: pwsh
         run: |
           ./tools/Test-WindowsRelease.ps1 `
-            -ReleaseDirectory artifacts/endfield-vfs-browser
+            -ReleaseDirectory artifacts/endfield-vfs-browser `
+            -IsolatedRuntime
 
       - name: Upload Windows release
         uses: actions/upload-artifact@v7

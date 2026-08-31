@@ -4,6 +4,7 @@ param(
     [string]$ReleaseDirectory,
 
     [string]$DataRoot,
+    [switch]$IsolatedRuntime,
     [ValidateRange(1, 65535)]
     [int]$Port = 18765,
     [ValidateRange(1, 120)]
@@ -15,6 +16,52 @@ $ReleaseRoot = (Resolve-Path $ReleaseDirectory).Path
 $ServerExe = Join-Path $ReleaseRoot "endfield-vfs-browser.exe"
 $WorkerExe = Join-Path $ReleaseRoot "unity-worker\artifacts\Vfs.UnityWorker.exe"
 $ReleaseMetadataPath = Join-Path $ReleaseRoot "release.json"
+$RuntimeIsolationNames = @(
+    "PATH",
+    "DOTNET_ROOT",
+    "DOTNET_ROOT_X64",
+    "DOTNET_MULTILEVEL_LOOKUP",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "VFS_BROWSER_UNITY_WORKER",
+    "BLENDER_EXE",
+    "VGMSTREAM_CLI",
+    "USM_CONVERT",
+    "FFMPEG"
+)
+
+function Save-ProcessEnvironment {
+    param([Parameter(Mandatory = $true)][string[]]$Names)
+
+    $Saved = @{}
+    foreach ($Name in $Names) {
+        $Saved[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+    }
+    return $Saved
+}
+
+function Restore-ProcessEnvironment {
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Names,
+        [Parameter(Mandatory = $true)][hashtable]$Saved
+    )
+
+    foreach ($Name in $Names) {
+        [Environment]::SetEnvironmentVariable($Name, $Saved[$Name], "Process")
+    }
+}
+
+function Enable-IsolatedRuntimeEnvironment {
+    [Environment]::SetEnvironmentVariable(
+        "PATH",
+        [Environment]::SystemDirectory,
+        "Process"
+    )
+    foreach ($Name in $RuntimeIsolationNames | Where-Object { $_ -ne "PATH" }) {
+        [Environment]::SetEnvironmentVariable($Name, $null, "Process")
+    }
+    [Environment]::SetEnvironmentVariable("DOTNET_MULTILEVEL_LOOKUP", "0", "Process")
+}
 
 function Assert-ReleaseFile {
     param([Parameter(Mandatory = $true)][string]$RelativePath)
@@ -84,9 +131,21 @@ foreach ($RelativePath in $ManifestPaths) {
     }
 }
 
-$HandshakeResponse = & $WorkerExe handshake | ConvertFrom-Json
-if ($LASTEXITCODE -ne 0 -or -not $HandshakeResponse.ok) {
-    throw "Unity worker handshake failed"
+$HandshakeIsolation = $null
+if ($IsolatedRuntime) {
+    $HandshakeIsolation = Save-ProcessEnvironment $RuntimeIsolationNames
+    Enable-IsolatedRuntimeEnvironment
+}
+try {
+    $HandshakeResponse = & $WorkerExe handshake | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0 -or -not $HandshakeResponse.ok) {
+        throw "Unity worker handshake failed"
+    }
+}
+finally {
+    if ($null -ne $HandshakeIsolation) {
+        Restore-ProcessEnvironment $RuntimeIsolationNames $HandshakeIsolation
+    }
 }
 $Handshake = $HandshakeResponse.result
 if ($Handshake.protocol.name -ne "vfs-unity-worker") {
@@ -106,6 +165,7 @@ $Result = [ordered]@{
     workerVersion = $Handshake.workerVersion
     workerCapabilityCount = @($Handshake.capabilities).Count
     verifiedFileCount = $ManifestPaths.Count
+    isolatedRuntime = [bool]$IsolatedRuntime
     service = "notRun"
 }
 
@@ -117,10 +177,10 @@ if ($DataRoot) {
         "VFS_BROWSER_PORT",
         "VFS_BROWSER_LOG_FORMAT"
     )
-    $SavedEnvironment = @{}
-    foreach ($Name in $EnvironmentNames) {
-        $SavedEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
+    if ($IsolatedRuntime) {
+        $EnvironmentNames = @($EnvironmentNames + $RuntimeIsolationNames | Select-Object -Unique)
     }
+    $SavedEnvironment = Save-ProcessEnvironment $EnvironmentNames
 
     $LogId = [Guid]::NewGuid().ToString("N")
     $StdoutPath = Join-Path ([System.IO.Path]::GetTempPath()) "vfs-release-$LogId.out.log"
@@ -131,6 +191,9 @@ if ($DataRoot) {
         [Environment]::SetEnvironmentVariable("VFS_BROWSER_HOST", "127.0.0.1", "Process")
         [Environment]::SetEnvironmentVariable("VFS_BROWSER_PORT", "$Port", "Process")
         [Environment]::SetEnvironmentVariable("VFS_BROWSER_LOG_FORMAT", "text", "Process")
+        if ($IsolatedRuntime) {
+            Enable-IsolatedRuntimeEnvironment
+        }
 
         $Process = Start-Process `
             -FilePath $ServerExe `
@@ -193,9 +256,7 @@ if ($DataRoot) {
             Stop-Process -Id $Process.Id
             $Process.WaitForExit()
         }
-        foreach ($Name in $EnvironmentNames) {
-            [Environment]::SetEnvironmentVariable($Name, $SavedEnvironment[$Name], "Process")
-        }
+        Restore-ProcessEnvironment $EnvironmentNames $SavedEnvironment
         foreach ($LogPath in @($StdoutPath, $StderrPath)) {
             if (Test-Path -LiteralPath $LogPath -PathType Leaf) {
                 Remove-Item -LiteralPath $LogPath -Force
