@@ -459,6 +459,10 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- 新增只读权限的 `Windows release` GitHub Actions 工作流。手动触发或 `vfs-browser-v*` 标签
+  会在 Windows Server 2025 上安装 Python 3.13 和精确 .NET SDK 9.0.200，执行与本地一致的
+  完整发布/门禁/文件清单/worker 验收，再上传 ZIP 与 SHA-256。CI 不带游戏数据，明确不能
+  冒充真实 data root 或另一台最终用户机器验收。
 - Windows 发布入口新增可选 `-ArchivePath`：在不覆盖既有目录或归档的前提下生成包含顶层
   产品目录的 ZIP 和独立 `.sha256`。本机候选归档为 56,967,620 字节，SHA-256
   `7372e5c2e0ea92531ddead4127f99c9ef24b28f3a686de9919077c6f5d483b3b`；重新解压后 351 个
