@@ -1077,3 +1077,7 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
   不再在 Handler 重复。`prepare=1` 只构建 bundle 而不启动 Blender，实际下载才调用 artifact 阶段。
   真实 Adaxier LOD0 prepare 文档逐字段一致，下载仍生成 42,553,475 字节 Blend、原文件名、0 个
   跳过动画及 private/max-age 缓存头。
+- 同步 GLB/Blend 下载的公开文件响应已抽到 `model_file_response_service.py`：服务统一 MIME、从资源
+  路径派生的 GLB 下载名、Blend artifact 下载名、private/max-age 缓存头与跳过动画数诊断头，
+  Handler 只把领域产物交给统一 raw sender。合成回归覆盖两类文件的响应头与分块正文，Python
+  门禁增至 592 项。

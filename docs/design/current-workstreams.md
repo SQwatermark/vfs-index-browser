@@ -15,7 +15,7 @@
 | Shader 解包与反编译 | 支线 | 在 AnimeStudio 中保存完整编译载荷，逐层识别 GPU 程序封装 |
 | 模型与动画 | 维护线 | 已具备网页预览和 Blender 导出；只处理阻塞性问题与低风险收口 |
 | 音频 | 维护线 | 对话逻辑路径已可浏览；继续保留索引能力，不抢占主线 |
-| VFS 产品化 | 当前执行主线 | worker 0.14.0 已接管模型 LODGroup TypeTree、精确 AnimationJSON 和通用 AnimationClip YAML；Python 590 项门禁全绿，.NET 37 项基线因当前机器缺少锁定的 SDK 9.0.200 未复跑，旧通用类型只剩暂无实测消费者的 AudioClip |
+| VFS 产品化 | 当前执行主线 | worker 0.14.0 已接管模型 LODGroup TypeTree、精确 AnimationJSON 和通用 AnimationClip YAML；Python 592 项门禁全绿，.NET 37 项基线因当前机器缺少锁定的 SDK 9.0.200 未复跑，旧通用类型只剩暂无实测消费者的 AudioClip |
 | VFS 与配置解码 | 基础设施 | 为研究与上层消费者提供稳定定位、解码和可部署接口 |
 
 ## 已稳定的基础能力

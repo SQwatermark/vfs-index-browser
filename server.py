@@ -181,6 +181,7 @@ from model_artifact_resolver import (
 from model_single_animation_service import ModelSingleAnimationService
 from model_animation_catalog_service import ModelAnimationCatalogService
 from model_sync_request import ModelSyncRequest
+from model_file_response_service import ModelFileResponseService
 from gltf_export import build_glb
 from material_semantic_plans import CHARACTER_NPR_PATH, build_blender_material_plans
 from animestudio_animation import (
@@ -2141,15 +2142,14 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
 
-        name = f"{Path(str(asset['path'])).stem}.glb"
+        prepared = ModelFileResponseService(STREAM_CHUNK_SIZE).glb(
+            asset,
+            glb_path,
+            download=options.download,
+        )
         self.send_raw_file(
-            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
-                glb_path,
-                download=options.download,
-                download_name=name,
-                content_type="model/gltf-binary",
-            ),
-            extra_headers={"Cache-Control": "private, max-age=3600"},
+            prepared.response,
+            extra_headers=prepared.headers,
         )
 
     def ensure_model_blend_file(
@@ -2213,20 +2213,8 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(500, str(error))
             return
 
-        self.send_raw_file(
-            RawFileService(STREAM_CHUNK_SIZE).prepare_path(
-                artifact.path,
-                download=True,
-                download_name=artifact.name,
-                content_type="application/x-blender",
-            ),
-            extra_headers={
-                "X-Endfield-Skipped-Animation-Count": str(
-                    artifact.skipped_animation_count
-                ),
-                "Cache-Control": "private, max-age=3600",
-            },
-        )
+        prepared = ModelFileResponseService(STREAM_CHUNK_SIZE).blend(artifact)
+        self.send_raw_file(prepared.response, extra_headers=prepared.headers)
 
     def handle_manifest_asset_model_animation(
         self,

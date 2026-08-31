@@ -226,6 +226,9 @@ GLB、Blender、动画候选和单动画 URL，裁剪公开 run 摘要，并将�
 同步模型、Avatar plan、GLB、Blend 和单动画路由的 `lod/download/prepare` 由
 `model_sync_request.py` 统一解析；布尔值沿用既有 `1/true/yes` 集合，Blend 预检查下载 URL 统一
 移除 `prepare` 并保留重复动画参数，不改变各领域服务和异常分类。
+公开 GLB/Blend 文件响应由 `model_file_response_service.py` 描述：它在领域产物已经解析或构建完成
+后统一确定 MIME、下载文件名、私有缓存头和 Blend 跳过动画数诊断头，再交给通用 raw sender
+流式发送。Handler 不再重复这些稳定 HTTP 契约，也不会让响应层反向参与模型构建或缓存决策。
 
 ## 关键约束
 
