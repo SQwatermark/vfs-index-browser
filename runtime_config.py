@@ -10,6 +10,18 @@ from pathlib import Path
 from typing import Callable, Mapping
 
 
+def resolve_application_root(
+    module_file: str | Path,
+    *,
+    executable: str | Path,
+    frozen: bool,
+) -> Path:
+    """Resolve data/assets beside the executable in a frozen Windows package."""
+
+    anchor = Path(executable).parent if frozen else Path(module_file).parent
+    return anchor.resolve()
+
+
 def _path(environ: Mapping[str, str], name: str, default: Path) -> Path:
     return Path(environ.get(name, str(default)))
 

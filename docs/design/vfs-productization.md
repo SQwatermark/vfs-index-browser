@@ -261,7 +261,7 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 ### P5：发布与弃用
 
 - [ ] 构建 Windows 自包含发布包并在干净环境验证。
-- [ ] 完成安装、升级、故障诊断、开发和发布文档。
+- [x] 完成安装、升级、故障诊断、开发和发布文档。
 - [ ] 验证没有固定盘符、相邻源码仓库或用户目录依赖。
 - [ ] 归档独立 AnimeStudio 仓库，并在 VFS 中记录最后同步点。
 
@@ -282,6 +282,17 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 
 当前阶段：**P5 发布准备**。P0 至 P4 均已完成。后续若出现 AudioClip 或在线 Shader 导出的
 真实消费者与样本，按新能力增量设计协议，不重新打开外部 AnimeStudio CLI 回退。
+
+首个 Windows x64 发布候选已在本机从隔离 Python 环境生成。Python 服务由 PyInstaller
+6.22.2 以 onedir 形式冻结，Unity worker 使用锁定的 .NET SDK 9.0.200 发布为 win-x64
+自包含运行时；包内包含 ACL 原生库、前端、schema、Blender 辅助入口和第三方许可证。
+冻结服务以 EXE 所在目录为应用根，不依赖 PyInstaller 的临时源码位置。发布候选已通过
+606 项 Python 测试、37 项 .NET 测试（6 项外部真实样本按设计跳过）、EXE `--help`、worker
+握手，以及连接现有外部 data root 后的完整启动验证：主页 HTTP 200，健康状态 `ready`，
+主索引 `current`、Manifest `ready`、worker `ready`、缺失 worker 能力 0、旧工具 0。
+包内文件审计确认未混入未跟踪的 `public/` 研究样本，也未发现外部 AnimeStudio 绝对路径。
+P5 的剩余门禁是从干净 checkout/另一台机器复跑、完成机器路径依赖审计，并在用户确认后
+归档独立 AnimeStudio 仓库；当前本机成功不能替代新机器验收。
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
@@ -349,7 +360,13 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 ## 当前交接断点
 
-截至 2026-08-29，当前工作树的可交付边界为：
+截至 2026-08-31，当前工作树的可交付边界为：
+
+- `tools/Publish-Windows.ps1` 已形成不覆盖目标目录的发布入口。它只复制 Git 跟踪的前端、
+  schema 与许可证，发布自包含 worker，验证服务帮助和 worker 握手，并写出含提交与运行时
+  版本的 `release.json`；成功后只清理经过 `.tmp` 根目录校验的本次 GUID 构建目录；
+- `docs/deployment/windows-release.md` 已覆盖隔离构建环境、安装、外部 data root、健康检查、
+  路径覆盖、并列目录升级与回退。正式包不要求 Python、.NET 或 AnimeStudio；
 
 - worker `0.14.0` 已实现并声明 `handshake`、MonoBehaviour Raw、TypeTree Dump、Projectile
   聚焦解码、单 Bundle AssetMap、多输入 CABMap、对象快照、精确纹理、Cubemap 六面和固定
@@ -396,13 +413,13 @@ Vortice.D3DCompiler。新 worker 骨架只使用 .NET 自带 `System.Text.Json`�
 
 下一位接手者应按以下顺序继续：
 
-1. AudioClip 出现真实样本后再设计协议，不为清空列表引入 FMOD，且禁止退回任意类型
-   `Convert`；
-2. 继续移除发布配置和文档中残留的旧 CLI 假设，生产服务已无旧 CLI 调用点；
-3. 将持续增长的 `server.py` 按请求、资源服务和后台任务边界逐步拆分，拆分过程中保持当前
-   同步兼容入口和任务协议不变；
-4. 为 LODGroup 增加普通角色、NPC 和怪物多样本审计；资源没有完整 TypeTree 时必须明确失败，
-   不得重新引入只有对象外壳的伪快照。
+1. 在干净 checkout 或另一台未安装 Python/.NET/AnimeStudio 的 Windows x64 机器，用发布包与
+   游戏数据复跑主页、健康检查和至少一条真实 Unity 导出链；
+2. 对 Git 跟踪的发布配置和实际发布目录做固定盘符、相邻仓库与用户目录扫描，并把检查固化
+   到自动化门禁；开发工具中的示例证据路径不应误判为生产依赖；
+3. 验收通过后由用户决定何时归档独立 AnimeStudio 仓库，并在本文记录最终同步提交；
+4. P5 关闭后再回到消费者驱动的领域工作。AudioClip 或在线 Shader 没有真实消费者时不设计
+   协议，LODGroup 没有完整 TypeTree 时继续明确失败。
 
 2026-08-29 本机使用庄方宜 PostModel 的 71 Bundle 闭包完成新旧对象快照审计：忽略旧流程中
 没有专用 CLR 解析器的 LODGroup 后，旧 1252 个 `sourceFile + pathId` 身份全部存在于新结果，
@@ -430,6 +447,12 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-08-31
 
+- 新增 Windows x64 自包含发布链：PyInstaller 6.22.2 冻结服务，.NET SDK 9.0.200 发布
+  self-contained worker，发布包只纳入 Git 跟踪的运行资产、包内许可证和 Blender 辅助入口。
+  冻结根目录、非覆盖输出、原生 ACL、worker 握手、版本清单和安全临时目录清理均已固化。
+  本机完整门禁为 Python `606/606`、.NET `37` 通过且 6 项外部证据跳过；发布服务连接现有
+  data root 后主页 200、健康状态全绿。安装、升级、诊断、开发和发布说明见
+  `docs/deployment/windows-release.md`；另一台干净机器验收仍未完成。
 - 同步模型、Avatar plan、GLB、Blend 与单动画路由的 LOD、下载和预检查参数已统一到
   `model_sync_request.py`。解析严格保持既有布尔集合和 ValueError 分类；Blend 下载 URL 去除
   `prepare` 时保留重复动画参数。27 项模型路由回归及 Python discovery `590/590` 通过。

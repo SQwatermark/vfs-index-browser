@@ -2,10 +2,33 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from runtime_config import RuntimeConfig
+from runtime_config import RuntimeConfig, resolve_application_root
 
 
 class RuntimeConfigTests(unittest.TestCase):
+    def test_application_root_uses_executable_only_when_frozen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            module = root / "source" / "server.py"
+            executable = root / "package" / "vfs-browser.exe"
+
+            self.assertEqual(
+                module.parent.resolve(),
+                resolve_application_root(
+                    module,
+                    executable=executable,
+                    frozen=False,
+                ),
+            )
+            self.assertEqual(
+                executable.parent.resolve(),
+                resolve_application_root(
+                    module,
+                    executable=executable,
+                    frozen=True,
+                ),
+            )
+
     def test_defaults_are_self_contained_in_project(self):
         with tempfile.TemporaryDirectory() as directory:
             project = Path(directory) / "project"

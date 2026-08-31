@@ -208,7 +208,7 @@ from task_registry import BackgroundTaskRegistry, TaskNotFoundError
 from task_service import TaskApplicationService
 from task_requests import TaskInputError
 from task_operations import BackgroundTaskOperations
-from runtime_config import RuntimeConfig, parse_port
+from runtime_config import RuntimeConfig, parse_port, resolve_application_root
 from service_logging import LOGGER, configure_service_logging
 from tool_registry import ToolRegistry
 from worker_run_service import WorkerRunService
@@ -222,7 +222,11 @@ except ImportError:
         return None
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = resolve_application_root(
+    __file__,
+    executable=sys.executable,
+    frozen=bool(getattr(sys, "frozen", False)),
+)
 RUNTIME_CONFIG = RuntimeConfig.load(PROJECT_ROOT)
 UNITY_WORKER = UnityWorkerClient.discover(PROJECT_ROOT)
 INDEX_FRESHNESS_REPORT = {
