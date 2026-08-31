@@ -459,6 +459,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- Windows release 工作流此前验收构建目录却上传 ZIP，未自动证明上传对象与已验收对象一致。
+  工作流现由 Windows PowerShell 5.1 严格比对 `.sha256` 完整行、解压实际归档，并运行解压包内
+  验收器后才上传 ZIP/SHA；CI 仍因没有游戏数据而不能替代另一台机器的最终服务验收。
 - Windows PowerShell 5.1 发布的 `release.json` 与验收报告此前均带 UTF-8 BOM，PowerShell 可读但
   Python 以严格 `encoding='utf-8'` 加载会报 `Unexpected UTF-8 BOM`。两处现统一使用无 BOM
   UTF-8，并由契约测试禁止恢复 `Set-Content -Encoding utf8`。提交 `6b30eea` 已从 Unicode clean

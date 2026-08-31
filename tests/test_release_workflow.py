@@ -24,11 +24,20 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def test_runs_the_production_publish_and_validation_commands(self):
         self.assertIn("./tools/Publish-Windows.ps1", self.source)
         self.assertIn("./tools/Test-WindowsRelease.ps1", self.source)
-        self.assertGreaterEqual(self.source.count("shell: powershell"), 2)
+        self.assertGreaterEqual(self.source.count("shell: powershell"), 3)
         self.assertIn("-IsolatedRuntime", self.source)
         self.assertIn("endfield-vfs-browser-win-x64.zip.sha256", self.source)
         self.assertNotIn("-SkipTests", self.source)
         self.assertNotIn("-AllowDirty", self.source)
+
+    def test_validates_the_same_archive_that_is_uploaded(self):
+        self.assertIn("Get-FileHash", self.source)
+        self.assertIn("ReadAllText", self.source)
+        self.assertIn("Expand-Archive", self.source)
+        self.assertIn(
+            "artifacts/extracted/endfield-vfs-browser/tools/Test-WindowsRelease.ps1",
+            self.source,
+        )
 
 
 if __name__ == "__main__":

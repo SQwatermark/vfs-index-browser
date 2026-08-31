@@ -57,6 +57,23 @@ jobs:
             -ReleaseDirectory artifacts/endfield-vfs-browser `
             -IsolatedRuntime
 
+      - name: Verify and validate archived release
+        shell: powershell
+        run: |
+          $archive = Join-Path $PWD "artifacts/endfield-vfs-browser-win-x64.zip"
+          $checksum = "$archive.sha256"
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expectedLine = "$actualHash  $([IO.Path]::GetFileName($archive))"
+          $checksumLine = [IO.File]::ReadAllText($checksum, [Text.Encoding]::UTF8).Trim()
+          if ($checksumLine -cne $expectedLine) {
+            throw "Archive checksum file does not match the release ZIP"
+          }
+          $extractRoot = Join-Path $PWD "artifacts/extracted"
+          Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot
+          ./artifacts/extracted/endfield-vfs-browser/tools/Test-WindowsRelease.ps1 `
+            -ReleaseDirectory artifacts/extracted/endfield-vfs-browser `
+            -IsolatedRuntime
+
       - name: Upload Windows release
         uses: actions/upload-artifact@v7
         with:
