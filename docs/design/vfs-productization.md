@@ -1095,3 +1095,7 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 - 网页普通文件预览现为 `memorypack-json` 显示独立的 `MemoryPack → JSON` 徽标、根类型和
   consumed/bytes 完整消费摘要；SparkBuffer 转换使用同一视觉语言但保持独立颜色。真实弭弗
   SkillData 在原有预览面板宽度内自然换行，完整结果操作和正文空间未受影响。
+- TableCfg 完整 JSON 导出也已收口进 `tablecfg_service.py`：服务在严格 file-ID 来源之上统一
+  SparkBuffer 解析、JSON 字节、配置根名文件名和格式错误翻译；Handler 不再导入或解释
+  SparkBuffer/`struct` 异常，只映射服务错误并发送统一 raw response。合成回归覆盖服务导出、
+  格式失败和下载响应，Python 门禁增至 602 项。

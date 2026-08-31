@@ -130,8 +130,9 @@ AB、PCK 与 USM 的内部目录文档由 `internal_directory_service.py` 按容
 `LogicalFileSourceService.resolve_file_id_required` 保留“记录不存在”和“记录存在但无可读 chunk”
 两类诊断。Handler 不再为 preview/raw 单独打开 SQLite 后再调用容器解析。
 普通 VFS preview/raw、内部目录和 TableCfg 下载同样直接消费该严格来源结果；TableCfg 服务提供
-无 caller connection 的 file-ID 入口并把来源错误保持为原状态码。Handler 中旧的原记录查询、
-fallback 查询和安静查询三套兼容方法已删除。
+无 caller connection 的 file-ID 入口并把来源错误保持为原状态码；SparkBuffer 解析、JSON 字节、
+根名回退和格式错误也由同一服务形成稳定导出对象。Handler 中旧的原记录查询、fallback 查询、
+安静查询和格式异常解释均已删除。
 普通 VFS 原始文件和容器内部产物的响应描述与有界读取由 `raw_file_service.py` 负责。未加密 VFS
 记录只流式读取声明的 offset/length；加密记录沿用整段解密边界并校正 MIME。Handler 只发送 HTTP
 响应头和消费分块，不把 socket 或数据库交给服务。任务、AudioDialog/Wwise、Manifest 导出和模型

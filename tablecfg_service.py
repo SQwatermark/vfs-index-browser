@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import struct
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from logical_file_source_service import LogicalFileSourceError
+from sparkbuffer import SparkBufferError
 
 
 class TableCfgResolutionError(RuntimeError):
@@ -17,12 +19,22 @@ class TableCfgResolutionError(RuntimeError):
         self.status = status
 
 
+class TableCfgParseError(RuntimeError):
+    pass
+
+
 @dataclass(frozen=True)
 class ResolvedTableCfg:
     original: dict
     record: dict
     chunk_path: Path
     table_name: str
+
+
+@dataclass(frozen=True)
+class TableCfgJsonExport:
+    data: bytes
+    name: str
 
 
 class TableCfgService:
@@ -79,3 +91,11 @@ class TableCfgService:
         parsed = self._parse(self._read_file(record, chunk_path))
         data = json.dumps(parsed["data"], ensure_ascii=False, indent=2).encode("utf-8")
         return parsed, data
+
+    def export(self, resolved: ResolvedTableCfg) -> TableCfgJsonExport:
+        try:
+            parsed, data = self.parse(resolved.record, resolved.chunk_path)
+        except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
+            raise TableCfgParseError(str(error)) from error
+        root_name = str(parsed.get("name") or resolved.table_name)
+        return TableCfgJsonExport(data, f"{root_name}.json")

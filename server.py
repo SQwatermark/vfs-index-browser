@@ -10,7 +10,6 @@ import mimetypes
 import os
 import re
 import sqlite3
-import struct
 import subprocess
 import sys
 import threading
@@ -68,7 +67,7 @@ from audio_dialog_store import create_audio_dialog_schema
 from wwise_store import get_wwise_media
 from wwise_catalog_service import WwiseCatalogService
 from wwise_media_service import WwiseMediaBuildError, WwiseMediaService
-from sparkbuffer import SparkBufferError, parse_sparkbuffer
+from sparkbuffer import parse_sparkbuffer
 from usm_video_service import UsmVideoService
 from manifest_index import ManifestIndex
 from manifest_index_service import ManifestIndexService
@@ -113,7 +112,11 @@ from vfs_crypto import (
     rotl32,
 )
 from vfs_database_builder import build_database, source_rank
-from tablecfg_service import TableCfgResolutionError, TableCfgService
+from tablecfg_service import (
+    TableCfgParseError,
+    TableCfgResolutionError,
+    TableCfgService,
+)
 from internal_directory_service import (
     InternalDirectoryError,
     InternalDirectoryService,
@@ -1791,19 +1794,6 @@ class BrowserHandler(BaseHTTPRequestHandler):
             ).resolve_file_id_required,
         )
 
-    def resolve_tablecfg_file(self, file_id: int) -> tuple[dict, dict, Path, str] | None:
-        try:
-            resolved = self.tablecfg_service().resolve_file_id(file_id)
-        except TableCfgResolutionError as error:
-            self.send_error_json(error.status, str(error))
-            return None
-        return (
-            resolved.original,
-            resolved.record,
-            resolved.chunk_path,
-            resolved.table_name,
-        )
-
     def tablecfg_service(self) -> TableCfgService:
         return TableCfgService(
             LogicalFileSourceService(self.db_path, source_rank),
@@ -1836,24 +1826,24 @@ class BrowserHandler(BaseHTTPRequestHandler):
         file_id = self.file_id_from_query(query)
         if file_id is None:
             return
-        resolved = self.resolve_tablecfg_file(file_id)
-        if resolved is None:
-            return
-        _, record, chunk_path, table_name = resolved
+        service = self.tablecfg_service()
         try:
-            parsed, data = self.parse_tablecfg_file(record, chunk_path)
-        except (SparkBufferError, struct.error, UnicodeDecodeError, ValueError) as error:
+            resolved = service.resolve_file_id(file_id)
+            exported = service.export(resolved)
+        except TableCfgResolutionError as error:
+            self.send_error_json(error.status, str(error))
+            return
+        except TableCfgParseError as error:
             self.send_error_json(422, f"SparkBuffer parse failed: {error}")
             return
 
         download = query.get("download", ["0"])[0] in {"1", "true", "yes"}
-        root_name = str(parsed.get("name") or table_name)
         self.send_raw_file(
             RawFileService(STREAM_CHUNK_SIZE).prepare_bytes(
-                data,
+                exported.data,
                 content_type="application/json; charset=utf-8",
                 download=download,
-                download_name=f"{root_name}.json",
+                download_name=exported.name,
             )
         )
 

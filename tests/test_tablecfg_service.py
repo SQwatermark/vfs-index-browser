@@ -3,7 +3,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from tablecfg_service import TableCfgResolutionError, TableCfgService
+from tablecfg_service import (
+    ResolvedTableCfg,
+    TableCfgParseError,
+    TableCfgResolutionError,
+    TableCfgService,
+)
 from logical_file_source_service import LogicalFileSourceError
 
 
@@ -31,12 +36,15 @@ class TableCfgServiceTests(unittest.TestCase):
 
         resolved = self.service.resolve(self.connection, 7)
         parsed, data = self.service.parse(resolved.record, resolved.chunk_path)
+        exported = self.service.export(resolved)
 
         self.assertEqual("Sample", resolved.table_name)
         self.assertEqual({"rows": [1]}, parsed["data"])
         self.assertIn(b'"rows"', data)
-        self.reader.assert_called_once_with(record, chunk)
-        self.parser.assert_called_once_with(b"spark")
+        self.assertEqual("Table.json", exported.name)
+        self.assertEqual(data, exported.data)
+        self.assertEqual(2, self.reader.call_count)
+        self.assertEqual(2, self.parser.call_count)
 
     def test_rejects_missing_or_non_table_record_with_stable_status(self):
         self.sources.find_record.return_value = None
@@ -83,6 +91,18 @@ class TableCfgServiceTests(unittest.TestCase):
         with self.assertRaisesRegex(TableCfgResolutionError, "file not found") as raised:
             self.service.resolve_file_id(99)
         self.assertEqual(404, raised.exception.status)
+
+    def test_export_translates_format_error(self):
+        self.parser.side_effect = ValueError("invalid SparkBuffer")
+        resolved = ResolvedTableCfg(
+            {"id": 7},
+            {"file_name": "Data/TableCfg/Sample.bytes"},
+            Path("chunk.bin"),
+            "Sample",
+        )
+
+        with self.assertRaisesRegex(TableCfgParseError, "invalid SparkBuffer"):
+            self.service.export(resolved)
 
 
 if __name__ == "__main__":

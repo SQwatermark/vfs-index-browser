@@ -160,6 +160,7 @@ $env:BLENDER_EXE = "D:\Applications\Blender\blender.exe"
 | `vfs_search_service.py` | VFS 文件路径检索、LIKE 转义与结果元数据组装 |
 | `file_preview_service.py` | 普通、Manifest 与容器内部文件共享的媒体/文本/十六进制预览 |
 | `vfs_file_preview_service.py` | VFS 容器、TableCfg、JSON/MemoryPack 与通用预览应用层 |
+| `tablecfg_service.py` | TableCfg 来源、SparkBuffer 解析与稳定 JSON 导出契约 |
 | `vfs_crypto.py` | 服务与离线工具共享的 VFS ChaCha20 文件解密原语 |
 | `vfs_index_jsonl.py` | plain/gzip/tar.gz VFS 索引 JSONL 输入边界 |
 | `vfs_database_schema.py` | VFS 派生 SQLite schema、查询索引与目录行发布 |
