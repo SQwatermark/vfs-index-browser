@@ -288,15 +288,15 @@ SQLite 仍指向已被游戏更新替换的 Persistent `.chk`；服务能够启�
 6.22.2 以 onedir 形式冻结，Unity worker 使用锁定的 .NET SDK 9.0.200 发布为 win-x64
 自包含运行时；包内包含 ACL 原生库、前端、schema、Blender 辅助入口和第三方许可证。
 冻结服务以 EXE 所在目录为应用根，不依赖 PyInstaller 的临时源码位置。发布候选已通过
-606 项 Python 测试、37 项 .NET 测试（6 项外部真实样本按设计跳过）、EXE `--help`、worker
+609 项 Python 测试、37 项 .NET 测试（6 项外部真实样本按设计跳过）、EXE `--help`、worker
 握手，以及连接现有外部 data root 后的完整启动验证：主页 HTTP 200，健康状态 `ready`，
 主索引 `current`、Manifest `ready`、worker `ready`、缺失 worker 能力 0、旧工具 0。
 包内文件审计确认未混入未跟踪的 `public/` 研究样本，也未发现外部 AnimeStudio 绝对路径。
 `Test-WindowsRelease.ps1` 已把包结构、版本身份、worker 握手和可选的真实 data root 服务
 启动收成单条验收命令；它还要求服务最终使用的 worker 位于发布根目录下。生产模块的开发机
 盘符/用户目录禁入和旧 CLI 禁入已有自动化边界，发布目录文本审计也未发现外部 AnimeStudio
-绝对路径。P5 的剩余门禁是从干净 checkout/另一台机器复跑，并在用户确认后归档独立
-AnimeStudio 仓库；当前本机的干净 checkout 成功仍不能替代新机器验收。
+绝对路径。P5 的剩余门禁是另一台机器复跑，并在用户确认后归档独立 AnimeStudio 仓库；
+当前本机的干净 checkout 与隔离运行成功仍不能替代新机器验收。
 
 正在进行：在已经可构建的通用核心上整理第一批 MonoBehaviour 所需扩展。VFS 自有
 `Vfs.UnityWorker` 已声明并验证 `handshake`、`exportMonoBehaviourRaw`、
@@ -459,6 +459,9 @@ Humanoid oracle 完整输入、runtime probe 调试权限，以及两项已有�
 
 ### 2026-09-01
 
+- 新增独立 AnimeStudio 仓库归档清单，明确归档不等于删除本地 checkout，且必须晚于 VFS
+  推送、CI、另一台机器真实数据验收和来源审计。清单固定最终分支/提交、停止条件、GitHub
+  只读验证和解除归档后的重新同步流程；实际外部归档继续等待用户明确确认。
 - 发布验收器新增 `-IsolatedRuntime`。它在直接 worker 握手和服务启动期间把 `PATH` 限制为
   Windows 系统目录，并清除 Python、dotnet、旧 worker 与可选工具覆盖，结束后完整恢复环境。
   解压候选在该模式下连接真实 data root，351 个文件、worker 11 项能力、服务、索引和

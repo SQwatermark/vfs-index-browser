@@ -121,6 +121,7 @@ try {
     @(
         "README.md",
         "requirements.txt",
+        "docs/deployment/animestudio-archive.md",
         "docs/deployment/windows-release.md",
         "unity-worker/README.md",
         "unity-worker/THIRD_PARTY_NOTICES.md",

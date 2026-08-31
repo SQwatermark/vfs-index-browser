@@ -118,4 +118,5 @@ Manifest、包内 worker、能力集合和旧工具状态，然后停止进程�
 
 该检查要求外部仓库 HEAD 与 `unity-worker/UPSTREAM.md` 一致、工作树干净，并逐个比较 VFS
 跟踪的 vendor 文件。文本只归一化 CRLF/LF；其余字节严格比较。允许的差异只能是
-`PATCHES.md` 已记录的两个源码补丁。
+`PATCHES.md` 已记录的两个源码补丁。实际归档步骤、停止条件与恢复流程见
+[`animestudio-archive.md`](animestudio-archive.md)。
