@@ -38,6 +38,54 @@ public sealed class CharacterConditionLeafDecoderTests
     }
 
     [TestMethod]
+    public void EnumeratesOnlyPositiveManagedReferencesFromTargetSettings()
+    {
+        var raw = Bytes(w => { Target(w, 2708501211437859999); w.Write(16); });
+        var data = CharacterConditionLeafDecoder.Decode(raw, Entry("CheckObjectTypeMatch/Data", raw.Length,
+            "Beyond.Gameplay.Core.Conditions"))!;
+        CollectionAssert.AreEqual(
+            new long[] { 2708501211437859999 },
+            CharacterConditionLeafDecoder.EnumerateManagedReferenceRids(data).ToArray());
+    }
+
+    [TestMethod]
+    public void DecodesTangtangAdvancedEventBuffTagCondition()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6wMAAAEAAAAAAAAAAAAAAAEAAAAO5bV4AAAAAA==");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckBuffIdInContextAdvanced/Data", raw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.AreEqual(1, data["checkType"]);
+        Assert.AreEqual("", data["blackboardKey"]);
+        Assert.AreEqual(0, ((List<Dictionary<string, object?>>)data["buffIdList"]!).Count);
+        var query = (Dictionary<string, object?>)data["query"]!;
+        Assert.AreEqual("HasAny", ((Dictionary<string, object?>)query["queryType"]!)["name"]);
+        var tags = (List<Dictionary<string, object?>>)query["tags"]!;
+        Assert.AreEqual(2025186574,
+            ((Dictionary<string, object?>)tags[0]["tagId"]!)["value"]);
+    }
+
+    [TestMethod]
+    public void DecodesAdvancedEventBuffIdsUsingBlackboardStringFieldOrder()
+    {
+        var raw = Bytes(w =>
+        {
+            w.Write(0); w.Write(1);
+            w.Write(1); Text(w, "buff.literal"); Text(w, "buff_key");
+            w.Write(0); w.Write(0); Text(w, "saved_buff");
+        });
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckBuffIdInContextAdvanced/Data", raw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        var buffId = ((List<Dictionary<string, object?>>)data["buffIdList"]!)[0];
+        Assert.AreEqual(true, buffId["useKey"]);
+        Assert.AreEqual("buff.literal", buffId["value"]);
+        Assert.AreEqual("buff_key", buffId["key"]);
+        Assert.AreEqual("saved_buff", data["blackboardKey"]);
+    }
+
+    [TestMethod]
     public void DebugPayloadIsPreservedEvenThoughNativeFallbackDoesNotReadIt()
     {
         var raw = Bytes(w =>

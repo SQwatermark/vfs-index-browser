@@ -70,21 +70,31 @@ public static class CharacterTemplateDecoder
         var bundle = (Dictionary<string, object?>)prefix.Data["skillDataBundle"]!;
         var conditions = (List<Dictionary<string, object?>>)bundle["comboSkillConditions"]!;
         var references = new Dictionary<string, object?>();
+        var pendingReferences = new Queue<long>();
         foreach (var condition in conditions)
         {
             var sequence = (Dictionary<string, object?>)condition["comboSkillCheckAction"]!;
             foreach (var rid in (List<string>)sequence["actionData"]!)
+                pendingReferences.Enqueue(long.Parse(rid, CultureInfo.InvariantCulture));
+        }
+        while (pendingReferences.TryDequeue(out var rid))
+        {
+            var ridText = rid.ToString(CultureInfo.InvariantCulture);
+            if (references.ContainsKey(ridText)) continue;
+            if (!entries.TryGetValue(rid, out var action) || action.IsNullSentinel)
+                throw new InvalidDataException($"连携条件引用 {ridText} 缺失或为空。");
+            var description = Describe(action);
+            var decoded = CharacterConditionLeafDecoder.Decode(rawData, action);
+            description["decodeStatus"] = decoded is null ? "raw" : "complete";
+            if (decoded is not null)
             {
-                if (!entries.TryGetValue(long.Parse(rid, CultureInfo.InvariantCulture), out var action)
-                    || action.IsNullSentinel)
-                    throw new InvalidDataException($"连携条件引用 {rid} 缺失或为空。");
-                var description = Describe(action);
-                var decoded = CharacterConditionLeafDecoder.Decode(rawData, action);
-                description["decodeStatus"] = decoded is null ? "raw" : "complete";
-                if (decoded is not null) description["data"] = decoded;
-                description["rawBase64"] = Convert.ToBase64String(rawData, action.DataOffset, action.DataLength);
-                references.TryAdd(rid, description);
+                description["data"] = decoded;
+                foreach (var dependency in CharacterConditionLeafDecoder
+                    .EnumerateManagedReferenceRids(decoded).Distinct())
+                    pendingReferences.Enqueue(dependency);
             }
+            description["rawBase64"] = Convert.ToBase64String(rawData, action.DataOffset, action.DataLength);
+            references.Add(ridText, description);
         }
         return new Dictionary<string, object?>
         {

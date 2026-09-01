@@ -49,4 +49,46 @@ public static class UnityTargetSettingsDecoder
         for (var i = 0; i < count; i++) result.Add(Rid(r, $"{p}[{i}]"));
         return result;
     }
+
+    /// <summary>
+    /// 从已经解码的 TargetSettings 中枚举 Unity managed-reference RID。
+    /// 这里只认 TargetSettings 自身声明的引用字段；负数是 Unity 的空引用哨兵，不进入依赖闭包。
+    /// </summary>
+    public static IEnumerable<long> EnumerateManagedReferenceRids(
+        IReadOnlyDictionary<string, object?> targetSettings)
+    {
+        if (targetSettings.TryGetValue("selectorData", out var selectorValue)
+            && selectorValue is IReadOnlyDictionary<string, object?> selector)
+        {
+            foreach (var rid in EnumerateRidValue(selector, "finderData")) yield return rid;
+            foreach (var rid in EnumerateRidList(selector, "validatorData")) yield return rid;
+            foreach (var rid in EnumerateRidList(selector, "postProcessorData")) yield return rid;
+        }
+        if (targetSettings.TryGetValue("advancedDirection", out var directionValue)
+            && directionValue is IReadOnlyDictionary<string, object?> direction)
+        {
+            foreach (var rid in EnumerateRidValue(direction, "source")) yield return rid;
+            foreach (var rid in EnumerateRidValue(direction, "target")) yield return rid;
+        }
+    }
+
+    private static IEnumerable<long> EnumerateRidValue(
+        IReadOnlyDictionary<string, object?> data, string key)
+    {
+        if (data.TryGetValue(key, out var value) && value is string text
+            && long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rid)
+            && rid > 0)
+            yield return rid;
+    }
+
+    private static IEnumerable<long> EnumerateRidList(
+        IReadOnlyDictionary<string, object?> data, string key)
+    {
+        if (!data.TryGetValue(key, out var value) || value is not IEnumerable<string> values)
+            yield break;
+        foreach (var text in values)
+            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var rid)
+                && rid > 0)
+                yield return rid;
+    }
 }
