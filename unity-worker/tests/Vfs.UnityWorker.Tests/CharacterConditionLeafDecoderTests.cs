@@ -143,6 +143,164 @@ public sealed class CharacterConditionLeafDecoderTests
         Assert.IsNull(CharacterConditionLeafDecoder.Decode([], Entry("CompareFloat/Data", 0) with { AssemblyName = "Other" }));
     }
 
+    [TestMethod]
+    public void DecodesRealMainCharacterTargetWithoutDroppingTargetSettings()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6AMAAAIAAAAHAAAAdHJpZ2dlcgABAAAAAAAAAAAAAAAAAAAAAAAAAP7/////////AAAAAAAAAAAAAAAAAAAAAP7//////////v////////8AAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAA==");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckMainCharacterCondition/Data", raw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        var target = (Dictionary<string, object?>)data["checkTarget"]!;
+        Assert.AreEqual(2, target["targetSource"]);
+        Assert.AreEqual("trigger", target["targetGroupKey"]);
+    }
+
+    [TestMethod]
+    public void DecodesRealContextBuffDiscriminantIdsQueryAndOutputKey()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6QMAAAEAAAABAAAAKgAAAGJ1ZmZfY29tbW9uX2NyeXN0X3RyaWdnZXJlZF9waHlzaWNhbF9icmVhawAAAAAAAAEAAADScNxXAAAAAA==");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckBuffIdInContext/Data", raw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.AreEqual(1, data["checkType"]);
+        var ids = (List<Dictionary<string, object?>>)data["buffIdList"]!;
+        Assert.AreEqual("buff_common_cryst_triggered_physical_break", ids[0]["buffId"]);
+        Assert.AreEqual("", data["blackboardKey"]);
+        Assert.AreEqual(1,
+            ((List<Dictionary<string, object?>>)((Dictionary<string, object?>)data["query"]!)["tags"]!).Count);
+    }
+
+    [TestMethod]
+    public void DecodesRealTagMatchAndHeaderOnlyNotNext()
+    {
+        var tagRaw = Convert.FromBase64String(
+            "AAAAAAAAAAAAAAAA6QMAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD+/////////wAAAAAAAAAAAAAAAAAAAAD+//////////7/////////AAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAOow7Xs=");
+        var tag = CharacterConditionLeafDecoder.Decode(tagRaw,
+            Entry("CheckTagMatch/Data", tagRaw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.IsTrue(tag.ContainsKey("checkTarget"));
+        Assert.IsTrue(tag.ContainsKey("query"));
+
+        var notRaw = Convert.FromBase64String("AQAAAAAAAAAAAAAA6QMAAA==");
+        var notNext = CharacterConditionLeafDecoder.Decode(notRaw,
+            Entry("NotNextCheckAction/Data", notRaw.Length))!;
+        CollectionAssert.AreEquivalent(
+            new[] { "isEnable", "priorityLevel", "priorityOffset", "serverActionIndex" },
+            notNext.Keys.ToArray());
+    }
+
+    [TestMethod]
+    public void DecodesRealComboHpThresholds()
+    {
+        var catcherRaw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6QMAAAIAAAAHAAAAdHJpZ2dlcgABAAAAAAAAAAAAAAAAAAAAAAAAAP7/////////AAAAAAAAAAAAAAAAAAAAAP7//////////v////////8AAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAM3MzD4AAAAA");
+        var catcher = CharacterConditionLeafDecoder.Decode(catcherRaw,
+            Entry("CheckHp/Data", catcherRaw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.AreEqual(0, catcher["compare"]);
+        Assert.AreEqual(true, catcher["isRatio"]);
+        Assert.AreEqual(0.4f, ((Dictionary<string, object?>)catcher["value"]!)["value"]);
+        Assert.AreEqual("trigger",
+            ((Dictionary<string, object?>)catcher["hpOwner"]!)["targetGroupKey"]);
+
+        var snowshineRaw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6QMAAAIAAAAHAAAAdHJpZ2dlcgABAAAAAAAAAAAAAAAAAAAAAAAAAP7/////////AAAAAAAAAAAAAAAAAAAAAP7//////////v////////8AAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAJqZGT8AAAAA");
+        var snowshine = CharacterConditionLeafDecoder.Decode(snowshineRaw,
+            Entry("CheckHp/Data", snowshineRaw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.AreEqual(0.6f, ((Dictionary<string, object?>)snowshine["value"]!)["value"]);
+    }
+
+    [TestMethod]
+    public void DecodesRealComboSingleBuffStackThreshold()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6gMAAAIAAAAHAAAAdHJpZ2dlcgABAAAAAAAAAAAAAAAAAAAAAAAAAP7/////////AAAAAAAAAAAAAAAAAAAAAP7//////////v////////8AAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAABYAAABidWZmX3BoeXNpY2FsX25vX2d1YXJkAAADAAAAAAAAAAAAQEAAAAAA");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckBuffStackNum/Data", raw.Length,
+                "Beyond.Gameplay.Core.Conditions"))!;
+        Assert.AreEqual("buff_physical_no_guard",
+            ((Dictionary<string, object?>)data["buffId"]!)["buffId"]);
+        Assert.AreEqual(3, data["compareType"]);
+        Assert.AreEqual(3f, ((Dictionary<string, object?>)data["value"]!)["value"]);
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterConditionLeafDecoder.Decode(raw,
+                Entry("CheckBuffStackNum/Data", raw.Length - 4,
+                    "Beyond.Gameplay.Core.Conditions")));
+    }
+
+    [TestMethod]
+    public void DecodesRealComboCreateBuffActionWithoutDroppingLifecycleFields()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA7AMAAAEAAAAxAAAAYnVmZl9jaHJfMDAyMF9tZXVyc19zaWduYWxfd2Vha25lc3NfdHJpZ2dlcl9jb21ibwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAA/v////////8AAAAAAAAAAAAAAAAAAAAA/v/////////+/////////wAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQAAABtZXVyc193ZWFrbmVzc19lbmVteQAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CreateBuffAction/Data", raw.Length))!;
+        var buff = ((List<Dictionary<string, object?>>)data["buffs"]!)[0];
+        Assert.AreEqual("buff_chr_0020_meurs_signal_weakness_trigger_combo", buff["buffId"]);
+        Assert.AreEqual(false, buff["assignBlackboard"]);
+        Assert.AreEqual(1f, ((Dictionary<string, object?>)data["count"]!)["value"]);
+        Assert.AreEqual(0, ((Dictionary<string, object?>)data["targetSettings"]!)["targetSource"]);
+        Assert.AreEqual(0, data["buffSource"]);
+        Assert.AreEqual("meurs_weakness_enemy", data["contextKey"]);
+        Assert.AreEqual(true, data["finishWithNextSkillIfNotInherited"]);
+        Assert.AreEqual(true, data["inheritSourceSkillCastInfo"]);
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterConditionLeafDecoder.Decode(raw, Entry("CreateBuffAction/Data", raw.Length - 4)));
+    }
+
+    [TestMethod]
+    public void DecodesRealComboStoreBuffCountAction()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6wMAAAAAAAACAAAABwAAAHRyaWdnZXIAAQAAAAAAAAAAAAAAAAAAAAAAAAD+/////////wAAAAAAAAAAAAAAAAAAAAD+//////////7/////////AAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAQAAAAAAAAAWAAAAYnVmZl9waHlzaWNhbF9ub19ndWFyZAAAFgAAAEVudGl0eUJCX25vZ3VhcmRfY291bnQAAA==");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("StoreBuffCount/Data", raw.Length))!;
+        Assert.AreEqual(false, data["useCurrentBuff"]);
+        Assert.AreEqual("trigger",
+            ((Dictionary<string, object?>)data["buffOwners"]!)["targetGroupKey"]);
+        Assert.AreEqual("buff_physical_no_guard", data["buffId"]);
+        Assert.AreEqual("EntityBB_noguard_count", data["blackboardKey"]);
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterConditionLeafDecoder.Decode(raw, Entry("StoreBuffCount/Data", raw.Length - 4)));
+    }
+
+    [TestMethod]
+    public void DecodesRealComboIfElseAndEnumeratesItsChildActionReferences()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA7AMAAAEAAAByA3hlgIeWJQAAAAAAAAAAAQAAAHMDeGWAh5YlAAAAAAAAAAABAAAAdAN4ZYCHliUAAAAAAAAAAAEAAAA=");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("IfElseAction/IfElseActionData", raw.Length))!;
+        Assert.AreEqual(true, data["alwaysNext"]);
+        CollectionAssert.AreEqual(
+            new[] { "2708501211437859698" },
+            ((List<string>)((Dictionary<string, object?>)data["conditionAction"]!)["actionData"]!).ToArray());
+        CollectionAssert.AreEqual(
+            new long[]
+            {
+                2708501211437859698,
+                2708501211437859699,
+                2708501211437859700,
+            },
+            CharacterConditionLeafDecoder.EnumerateManagedReferenceRids(data).ToArray());
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterConditionLeafDecoder.Decode(raw,
+                Entry("IfElseAction/IfElseActionData", raw.Length - 4)));
+    }
+
+    [TestMethod]
+    public void DecodesHeaderOnlyReturnFalseAction()
+    {
+        var raw = Convert.FromBase64String("AQAAAAAAAAAAAAAA7QMAAA==");
+        var data = CharacterConditionLeafDecoder.Decode(raw, Entry("ReturnFalseAction/Data", raw.Length))!;
+        CollectionAssert.AreEquivalent(
+            new[] { "isEnable", "priorityLevel", "priorityOffset", "serverActionIndex" },
+            data.Keys.ToArray());
+    }
+
     private static ManagedReferenceEntry Entry(string type, int size, string ns = "Beyond.Gameplay.Core") =>
         new(1, type, ns, "Gameplay.Beyond", 0, 0, size, false);
     private static byte[] Bytes(Action<BinaryWriter> write)
