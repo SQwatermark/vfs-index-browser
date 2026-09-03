@@ -4,6 +4,24 @@
 `character-template-prefix-v1`，**总体始终 partial**，不是完整 CharacterTemplate API。
 前序原始资源取得过程见 [诀二进制研究](memorypack-arcane-2026-08-26.md)。
 
+## 2026-09-03：接入 VFS 精确资源接口
+
+当前生产入口为 `/api/endaxis-data/CharacterData/manifest.json` 与
+`/api/endaxis-data/CharacterData/<角色ID>.runtime-template.json`。manifest 只枚举当前安装
+Manifest 的 `assets/beyond/dynamicassets/gamedata/characterdata` 直接子资产；按完整路径唯一定位，
+复用原始 MonoBehaviour 导出服务，再经 worker 0.15.0 的 `decodeCharacterTemplate` 调用本页已有
+`CharacterTemplateDecoder`。Python 不另写二进制解析器。HTTP 直接返回该解码器文档，不包本机
+绝对路径、导出时间或新的字段模型，因此可以进入 Endaxis 同批来源哈希。
+
+该接口不扩大解码范围：整体仍为 partial，raw 引用和未知后缀保留。旧 PowerShell 工具保留为
+取证入口，不是新接口依赖。缺失资产为 404，重复身份/解码失败为 422，旧 worker 不支持操作或
+VFS 不可用为 503。单元测试已覆盖协议与解码器输出一致、错误归属、截断、精确资产定位和状态码；
+2026-09-03 已在台式机独立 worktree / localhost:8766 实机部署，并用不同缓存和输出目录、8 / 3
+workers 两次完整下载。均包含 32 份 CharacterData，共 6230 个受管输入，整批哈希一致：
+`a430238c373b9a137f7d17345837907e9b4911a431e07f2f3978294cd71b7e9c`。
+本机取回完整快照后逐文件哈希也通过。原 8765 服务未替换，验证服务已停止；这是接口/获取层
+可复现证明，不代表 Endaxis 已对新版本完成生成差分、来源 pin 更新或完整模拟回归。
+
 ## 同日后续：14/14 条件叶子载荷完整
 
 新增 UnityTargetSettingsDecoder，按 TargetSettings/SelectorData/DirectionSettings 字段顺序读

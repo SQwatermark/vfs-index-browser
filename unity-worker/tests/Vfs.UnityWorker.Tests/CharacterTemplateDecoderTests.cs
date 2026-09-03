@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Vfs.Endfield.Extensions;
 
@@ -10,6 +11,40 @@ public sealed class CharacterTemplateDecoderTests
     private const long Root = 2708501211437859795;
     private const long SystemRid = Root + 6;
     private const long ActionRid = Root + 40;
+
+    [TestMethod]
+    public void WorkerReturnsTheSameBoundedDocumentAndRejectsWrongOwner()
+    {
+        var input = Path.GetTempFileName();
+        try
+        {
+            var raw = Character();
+            File.WriteAllBytes(input, raw);
+            WorkerResponse Request(string expectedId) => WorkerProtocol.HandleRequestJson(
+                JsonSerializer.Serialize(new
+                {
+                    protocolVersion = WorkerProtocol.ProtocolVersion,
+                    requestId = "character-test",
+                    operation = "decodeCharacterTemplate",
+                    arguments = new { inputPath = input, expectedId },
+                }));
+            var response = Request("chr_test");
+            Assert.IsTrue(response.Ok);
+            Assert.AreEqual("character-test", response.RequestId);
+            Assert.AreEqual(
+                JsonSerializer.Serialize(CharacterTemplateDecoder.Decode(raw, "chr_test"), WorkerProtocol.JsonOptions),
+                JsonSerializer.Serialize(response.Result, WorkerProtocol.JsonOptions));
+            Assert.AreEqual("character_template_decode_failed", Request("wrong").Error?.Code);
+            File.WriteAllBytes(input, [0]);
+            Assert.AreEqual("character_template_decode_failed", Request("chr_test").Error?.Code);
+            File.Delete(input);
+            Assert.AreEqual("input_not_found", Request("chr_test").Error?.Code);
+        }
+        finally
+        {
+            File.Delete(input);
+        }
+    }
 
     [TestMethod]
     public void ReadsRootLinkedPrefixAndPreservesRawConditionsAndTail()

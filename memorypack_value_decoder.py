@@ -35,6 +35,8 @@ class MemoryPackValueDecoder:
         reader_type: object,
         decoder_type: object,
         decode_error_type: type[Exception] | None,
+        *,
+        enum_names: bool = False,
     ) -> None:
         self._infer_class = class_inference
         self._inputs = inputs_provider
@@ -42,6 +44,7 @@ class MemoryPackValueDecoder:
         self._reader_type = reader_type
         self._decoder_type = decoder_type
         self._decode_error_type = decode_error_type
+        self._enum_names = enum_names
 
     def decode(
         self,
@@ -56,7 +59,8 @@ class MemoryPackValueDecoder:
             schema, union_map = self._inputs()
             data = self._read_file(record, chunk_path)
             reader = self._reader_type(data)
-            decoder = self._decoder_type(schema, union_map=union_map)
+            options = {"enum_names": True} if self._enum_names else {}
+            decoder = self._decoder_type(schema, union_map=union_map, **options)
             value = decoder.decode(reader, class_name)
         except (RuntimeError, ValueError) as error:
             raise MemoryPackValueDecodeError(str(error)) from error

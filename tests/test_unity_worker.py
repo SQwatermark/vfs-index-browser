@@ -5,11 +5,26 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from unity_worker import UnityWorkerClient, UnityWorkerError, UnityWorkerProtocolError
 
 
 class UnityWorkerClientTests(unittest.TestCase):
+    def test_character_template_uses_one_worker_request_without_local_decoder(self):
+        client = UnityWorkerClient(["fake-worker"])
+        document = {"decodeStatus": "partial"}
+        client.request = Mock(return_value=document)
+        result = client.decode_character_template(
+            input_path=Path("character.dat"), expected_id="chr_0004_pelica", request_id="character-1",
+        )
+        self.assertIs(document, result)
+        client.request.assert_called_once_with(
+            "decodeCharacterTemplate",
+            {"inputPath": str(Path("character.dat").resolve()), "expectedId": "chr_0004_pelica"},
+            request_id="character-1", cancel_event=None,
+        )
+
     def test_synchronous_worker_uses_hidden_console_flags_on_windows(self):
         observed = {}
 

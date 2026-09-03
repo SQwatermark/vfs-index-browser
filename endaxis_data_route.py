@@ -8,6 +8,7 @@ from urllib.parse import unquote
 
 from ability_entity_data import normalize_ability_entity_id
 from projectile_data import normalize_projectile_id
+from character_template_service import normalize_character_id
 
 
 ENDAXIS_DATA_PREFIX = "/api/endaxis-data/"
@@ -51,6 +52,16 @@ def resolve_endaxis_data_route(request_path: str) -> EndaxisDataRoute:
         if not is_safe_endaxis_json_file(file_name):
             raise EndaxisDataRouteError(400, "invalid collection resource name")
         return EndaxisDataRoute("handle_endaxis_data_collection_file", (collection, file_name))
+
+    if collection == "CharacterData":
+        if file_name == "manifest.json":
+            return EndaxisDataRoute("handle_endaxis_data_character_manifest")
+        if file_name.endswith(".runtime-template.json"):
+            try:
+                character_id = normalize_character_id(file_name.removesuffix(".runtime-template.json"))
+            except ValueError as error:
+                raise EndaxisDataRouteError(400, str(error)) from error
+            return EndaxisDataRoute("handle_endaxis_data_character_file", (character_id,))
 
     if collection == "ProjectileData":
         if file_name == "manifest.json":

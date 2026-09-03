@@ -2,6 +2,35 @@
 
 本项目是一个独立的《明日方舟：终末地》本地资源浏览器。它读取本机游戏资源索引，不依赖远程 CDN，也不属于 Endaxis。
 
+## 与 AKEDB 的内容对齐目标（2026-09-03）
+
+提交交接验证：本机 Python 聚焦 38 项、Unity Worker 角色模板/协议聚焦 20 项通过。
+包含角色模板服务、保持 binary32 位模式的浮点表示修复，以及尚未完成端到端验证的枚举目录工具；
+提交代码不等于枚举功能已部署。临时解包数据与目录不提交，恢复仍需本机游戏资源和同版本 metadata。
+下一步先解决下述泛型枚举名匹配，再验证严格枚举名称全量导出；继续核对叠层布尔值和图片差异。
+
+Endaxis 当前采用 AKEDB 优先、VFS 补缺，不以 VFS-only 作为生产默认。融合选择与下载清单由
+Endaxis 维护；VFS 保持独立产品，不导入 Endaxis 的模拟规则或配置。
+后续逐步补齐 VFS 的枚举名称、共享结构/默认值、角色与全局配置、Sprite 裁切和数值输出一致性，
+在同版本内容全面对齐前不宣称能替代 AKEDB。
+
+- 枚举常量必须从同版本 metadata 和精确字段类型自动批量提取，禁止手填游戏枚举映射。
+  名称还原属于 VFS 导出职责，不能要求 Endaxis 转换器长期兼容裸整数。
+- 当前工作树中新枚举目录/严格名称导出的接线尚未完成验证和部署，不能视为可用发布能力。
+  最近实机批量验证仍在泛型嵌套枚举 `CharacterFollowBehavior` 的 `GuardState` 名称匹配处阻断；
+  metadata 的反引号元数名称与 AI dump 的泛型显示格式需要严格对齐，不能跳过该枚举或手填常量。
+- 已发现 `buff_wpn_sword_0016_valid.stackingSettings.useMaxStackCntKey` 在 AKEDB 为 true、
+  当前 VFS 快照为 false；优先排查解码布局/版本，不修改游戏规则掩盖差异。
+  全量对照进一步发现 313 处布尔差异全部集中在 `stackingSettings`：`usePriorityKey` 204 处、
+  `useMaxStackCntKey` 109 处。另有 Typhoeus common_arrowshow 的 tick 间隔/事件长度差异，
+  必须区分序列化布局与版本更新，不能把全部差异归为枚举格式。
+- 对齐验收必须同时比较集合覆盖、逐字段值、枚举名称、数值表示与图片内容；
+  相同文件数、完整消费字节或局部测试通过都不能替代这些验证。
+- 2026-09-03 Endaxis 对 724 张已引用游戏图片完成两端独立导出对照：393 张 RGBA 完全一致，
+  331 张尺寸不同；AKEDB 图片已核验索引大小/MD5。该结果定位了图片输出差距，尚未证明差异全部
+  由 Sprite 裁切造成。详细账本在 Endaxis 工作树 `tmp/hybrid-full-image-audit-20260903.json`，
+  来源策略仍以 Endaxis 编译器 README 为唯一依据。
+
 ## 能力
 
 - 按 `Effective`、`Persistent`、`StreamingAssets` 和 `All Sources` 浏览 VFS 逻辑路径。
@@ -259,6 +288,8 @@ GET /api/endaxis-data/ProjectileData/manifest.json
 GET /api/endaxis-data/ProjectileData/projectile_chr_0004_example.json
 GET /api/endaxis-data/AbilityEntityData/manifest.json
 GET /api/endaxis-data/AbilityEntityData/abilityentity_chr_0004_example.json
+GET /api/endaxis-data/CharacterData/manifest.json
+GET /api/endaxis-data/CharacterData/chr_0004_pelica.runtime-template.json
 GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
 GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
@@ -271,11 +302,20 @@ GET /api/manifest-asset/model-animations?manifestId=123&assetIndex=456&q=pelica
 GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
 
+`CharacterData` 集合从当前 Manifest 的精确 `gamedata/characterdata` 目录枚举角色模板，文件接口
+复用 Unity worker `decodeCharacterTemplate`（worker 0.15.0 起）。二进制布局仍只有
+`CharacterTemplateDecoder` 一份实现；输出保持 `character-template-prefix-v1`，总体始终 `partial`，
+未知引用与后缀原样保留。不存在的角色返回 404，歧义/损坏载荷返回 422，缺少 VFS/worker 能力返回
+503；不会回退本机研究脚本、旧 JSON 或其他项目。详见
+[有界字段导出](docs/research/character-template-prefix.md)。
+
 `/api/endaxis-data/` 是给 Endaxis 下载器使用的精确资源接口，不做模糊搜索。TableCfg 名称映射到
 `Table/Data/TableCfg/<name>.bytes`，集合文件映射到
 `JsonData/Data/Json/<collection>/<file>.json`；两者都只读取 Effective 逻辑文件。TableCfg 经
-SparkBuffer 解码，SkillData/BuffData 经 MemoryPack schema 完整解码，存在未消费字节时返回 `422`，
-不会输出不完整 JSON。集合 manifest 只枚举该集合的直接文件。
+SparkBuffer 解码，SkillData/BuffData 经 MemoryPack schema 完整解码，存在未消费字节时返回 `422`。
+binary32 字段在读取边界规范化为仍能重编码回相同 4 字节的最短十进制，避免 Python/JSON 扩宽产生
+`0.05000000074505806` 一类表示噪声；binary64 不经过该转换。该规范化只改变 JSON 表示，不改变原始
+float32 位模式。解码器不会输出不完整 JSON。集合 manifest 只枚举该集合的直接文件。
 
 接口边界是“Endaxis 可用稳定逻辑路径和 source schema 消费当前本地游戏资源”。响应包含
 `X-Endaxis-Source: vfs-index-browser`，供下载器拒绝其他隐式提供者并记录逐文件来源。

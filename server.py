@@ -47,6 +47,7 @@ from ability_entity_data import (
     normalize_ability_entity_id,
 )
 from ability_entity_service import AbilityEntityService
+from character_template_service import CharacterTemplateService, CharacterTemplateError
 from endaxis_data_route import (
     EndaxisDataRouteError,
     resolve_endaxis_data_route,
@@ -904,6 +905,31 @@ class BrowserHandler(BaseHTTPRequestHandler):
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
+    def character_template_service(self) -> CharacterTemplateService:
+        return CharacterTemplateService(
+            self.resolve_installed_manifest_index,
+            self.resolve_index_asset_bundle,
+            self.ensure_manifest_monobehaviour_raw,
+            UNITY_WORKER.decode_character_template,
+            unity_worker_is_unavailable,
+        )
+
+    def handle_endaxis_data_character_manifest(self) -> None:
+        try:
+            document = self.character_template_service().manifest()
+        except CharacterTemplateError as error:
+            self.send_error_json(error.status, str(error))
+            return
+        self.send_json(document, extra_headers={"X-Endaxis-Source": "vfs-index-browser"})
+
+    def handle_endaxis_data_character_file(self, character_id: str) -> None:
+        try:
+            document = self.character_template_service().build(character_id)
+        except CharacterTemplateError as error:
+            self.send_error_json(error.status, str(error))
+            return
+        self.send_json(document, extra_headers={"X-Endaxis-Source": "vfs-index-browser"})
+
     def build_ability_entity_document(self, entity_id: str) -> dict:
         return AbilityEntityService(
             self.resolve_logical_file_source,
@@ -1235,7 +1261,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def manifest_asset_service(self) -> ManifestAssetService:
         return ManifestAssetService(self.db_path, self.manifest_index, source_rank)
 
-    def memorypack_value_decoder(self) -> MemoryPackValueDecoder:
+    def memorypack_value_decoder(self, *, enum_names: bool = False) -> MemoryPackValueDecoder:
         decode_error_type = DecodeError if isinstance(DecodeError, type) else None
         return MemoryPackValueDecoder(
             infer_class,
@@ -1244,6 +1270,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             MemoryPackReader,
             Decoder,
             decode_error_type,
+            enum_names=enum_names,
         )
 
     def memorypack_preview_service(self) -> MemoryPackPreviewService:
@@ -1254,7 +1281,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.db_path,
             self.resolve_logical_file_source,
             self.parse_tablecfg_file,
-            self.memorypack_value_decoder(),
+            self.memorypack_value_decoder(enum_names=True),
             self.read_file_slice,
         )
 

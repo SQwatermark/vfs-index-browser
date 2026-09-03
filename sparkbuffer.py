@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import Any
 
+from float32_value import canonical_float32
+
 
 class SparkBufferError(Exception):
     pass
@@ -114,7 +116,7 @@ class SparkReader:
         return struct.unpack("<q", self._read(8))[0]
 
     def read_float(self) -> float:
-        return struct.unpack("<f", self._read(4))[0]
+        return canonical_float32(struct.unpack("<f", self._read(4))[0])
 
     def read_double(self) -> float:
         return struct.unpack("<d", self._read(8))[0]

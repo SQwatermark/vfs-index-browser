@@ -13,7 +13,7 @@ public static class WorkerProtocol
 {
     public const string ProtocolName = "vfs-unity-worker";
     public const string ProtocolVersion = "1.0.0";
-    public const string WorkerVersion = "0.14.0";
+    public const string WorkerVersion = "0.15.0";
     public const string AnimeStudioUpstreamCommit =
         "8cdec963c4e187ea0a4a339b8969844a9574638b";
 
@@ -40,6 +40,7 @@ public static class WorkerProtocol
                     "exportMonoBehaviourRaw",
                     "exportMonoBehaviourTypeTreeDump",
                     "decodeProjectileComponent",
+                    "decodeCharacterTemplate",
                     "buildAssetMap",
                     "buildCabMap",
                     "exportObjectSnapshots",
@@ -84,6 +85,7 @@ public static class WorkerProtocol
                 "exportMonoBehaviourRaw" => HandleMonoBehaviourRawExport(request),
                 "exportMonoBehaviourTypeTreeDump" => HandleMonoBehaviourTypeTreeDumpExport(request),
                 "decodeProjectileComponent" => HandleProjectileComponentExport(request),
+                "decodeCharacterTemplate" => HandleCharacterTemplateDecode(request),
                 "buildAssetMap" => HandleAssetMapExport(request),
                 "buildCabMap" => HandleCabMapExport(request),
                 "exportObjectSnapshots" => HandleObjectSnapshotExport(request),
@@ -152,6 +154,27 @@ public static class WorkerProtocol
         return WorkerResponse.Success(result, request.RequestId);
     }
 
+    private static WorkerResponse HandleCharacterTemplateDecode(WorkerRequest request)
+    {
+        var arguments = request.Arguments.Deserialize<CharacterTemplateDecodeRequest>(JsonOptions)
+            ?? throw new JsonException("decodeCharacterTemplate 缺少 arguments。");
+        ArgumentException.ThrowIfNullOrWhiteSpace(arguments.InputPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(arguments.ExpectedId);
+        if (!File.Exists(arguments.InputPath))
+            throw new MonoBehaviourExportException("input_not_found", "角色原始 MonoBehaviour 文件不存在。");
+        try
+        {
+            // 协议只负责输入输出，字段布局、归属校验及 partial 边界全部由唯一解码器维护。
+            var result = CharacterTemplateDecoder.Decode(
+                File.ReadAllBytes(arguments.InputPath), arguments.ExpectedId);
+            return WorkerResponse.Success(result, request.RequestId);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new MonoBehaviourExportException("character_template_decode_failed", exception.Message);
+        }
+    }
+
     private static WorkerResponse HandleAssetMapExport(WorkerRequest request)
     {
         var arguments = request.Arguments.Deserialize<AssetMapExportRequest>(JsonOptions)
@@ -208,6 +231,8 @@ public static class WorkerProtocol
         return WorkerResponse.Success(result, request.RequestId);
     }
 }
+
+public sealed record CharacterTemplateDecodeRequest(string InputPath, string ExpectedId);
 
 public sealed record WorkerResponse(string? RequestId, bool Ok, object? Result, WorkerError? Error)
 {

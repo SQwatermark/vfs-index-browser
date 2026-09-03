@@ -33,6 +33,10 @@ class EndaxisDataRouteTests(unittest.TestCase):
                 "handle_endaxis_data_ability_entity_file",
                 ("abilityentity_sample",),
             ),
+            "CharacterData/manifest.json": ("handle_endaxis_data_character_manifest", ()),
+            "CharacterData/chr_0004_pelica.runtime-template.json": (
+                "handle_endaxis_data_character_file", ("chr_0004_pelica",),
+            ),
         }
         prefix = "/api/endaxis-data/"
         for suffix, expected in cases.items():

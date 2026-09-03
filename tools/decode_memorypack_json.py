@@ -26,6 +26,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from float32_value import canonical_float32
+from native_enum_catalog import NativeEnumCatalog
+
 DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"
 DEFAULT_SCHEMA = PROJECT_ROOT / "data" / "reports" / "memorypack-core-schema-x64-release.json"
 
@@ -247,7 +250,7 @@ class MemoryPackReader:
         return struct.unpack("<Q", self.read(8))[0]
 
     def read_f32(self) -> float:
-        return struct.unpack("<f", self.read(4))[0]
+        return canonical_float32(struct.unpack("<f", self.read(4))[0])
 
     def read_f64(self) -> float:
         return struct.unpack("<d", self.read(8))[0]
@@ -286,6 +289,7 @@ class SchemaIndex:
     def __init__(self, payload: dict):
         self.payload = payload
         self.classes = {item["class"]: item for item in payload["classes"] if item.get("class")}
+        self.enums = NativeEnumCatalog(payload.get("enumCatalog"))
 
     @classmethod
     def load(cls, path: Path) -> "SchemaIndex":
@@ -302,6 +306,7 @@ class Decoder:
         union_map: dict[str, dict[int, str]] | None = None,
         reference_types: dict[str, str] | None = None,
         trace_enabled: bool = False,
+        enum_names: bool = False,
     ):
         self.schema = schema
         self.union_map = union_map or {}
@@ -309,6 +314,7 @@ class Decoder:
         self.discovered_unions: dict[str, dict[int, str]] = {}
         self.trace_enabled = trace_enabled
         self.trace: list[dict] = []
+        self.enum_names = enum_names
 
     def decode(self, reader: MemoryPackReader, class_name: str) -> Any:
         return self.read_object(reader, class_name, "$")
@@ -332,6 +338,21 @@ class Decoder:
         type_name = MEMBER_TYPE_OVERRIDES.get((class_name, member), type_name)
         type_name = type_name.strip()
         type_name = TYPE_ALIASES.get(type_name, type_name)
+        # 在底层存储类型覆盖之前查询，避免 Byte 等枚举丢失其原生类型身份。
+        enum = self.schema.enums.get(type_name)
+        if enum is not None:
+            reader_name = SCALAR_READERS.get(enum["underlyingType"])
+            if reader_name is None:
+                raise DecodeError(f"unsupported enum underlying type {type_name}", reader.tell(), path)
+            value = getattr(reader, reader_name)()
+            if not self.enum_names:
+                return value
+            try:
+                return self.schema.enums.name(type_name, value)
+            except ValueError as error:
+                raise DecodeError(str(error), reader.tell(), path) from error
+        if self.enum_names and type_name in TYPE_OVERRIDES:
+            raise DecodeError(f"missing enum metadata for {type_name}", reader.tell(), path)
         type_name = TYPE_OVERRIDES.get(type_name, type_name)
 
         if (class_name, member) == ("Beyond.Gameplay.Core.BuffData", "tagsAfterTriggerExtendBuffAction"):
@@ -394,6 +415,8 @@ class Decoder:
             return self.read_object(reader, type_name, path)
 
         if type_name.startswith(INT32_ENUM_PREFIXES):
+            if self.enum_names:
+                raise DecodeError(f"missing enum metadata for {type_name}", reader.tell(), path)
             return reader.read_i32()
 
         raise DecodeError(f"unsupported type {type_name}", reader.tell(), path)

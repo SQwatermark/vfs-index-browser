@@ -1,10 +1,12 @@
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import Mock
 from contextlib import closing
 from pathlib import Path
 
 from server import BrowserHandler
+from character_template_service import CharacterTemplateError
 
 
 class EndaxisDataApiTests(unittest.TestCase):
@@ -19,6 +21,26 @@ class EndaxisDataApiTests(unittest.TestCase):
             (status, {"error": message}, {})
         )
         return handler, responses
+
+    def test_character_routes_preserve_document_boundary_and_error_status(self):
+        handler, responses = self.make_handler()
+        service = Mock()
+        handler.character_template_service = lambda: service
+        document = {"format": "character-template-prefix-v1", "decodeStatus": "partial"}
+        service.build.return_value = document
+        service.manifest.return_value = [
+            {"contentFile": "/api/endaxis-data/CharacterData/chr_0004_pelica.runtime-template.json"}
+        ]
+        handler.handle_endaxis_data("/api/endaxis-data/CharacterData/manifest.json")
+        handler.handle_endaxis_data("/api/endaxis-data/CharacterData/chr_0004_pelica.runtime-template.json")
+        self.assertEqual(service.manifest.return_value, responses[0][1])
+        self.assertIs(document, responses[1][1])
+        self.assertEqual("vfs-index-browser", responses[1][2]["extra_headers"]["X-Endaxis-Source"])
+        service.build.assert_called_once_with("chr_0004_pelica")
+        for status in [404, 422, 503]:
+            service.build.side_effect = CharacterTemplateError(status, "blocked")
+            handler.handle_endaxis_data("/api/endaxis-data/CharacterData/chr_0004_pelica.runtime-template.json")
+            self.assertEqual(status, responses[-1][0])
 
     def test_table_route_resolves_exact_vfs_logical_id(self):
         handler, responses = self.make_handler()

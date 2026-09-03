@@ -206,6 +206,21 @@ class UnityWorkerClient:
             )
         return self._parse_response(completed, expected_request_id=request_id)["result"]
 
+    def decode_character_template(
+        self,
+        *,
+        input_path: Path,
+        expected_id: str,
+        request_id: str,
+        cancel_event: object | None = None,
+    ) -> dict:
+        return self.request(
+            "decodeCharacterTemplate",
+            {"inputPath": str(input_path.resolve()), "expectedId": expected_id},
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def decode_projectile_component(
         self,
         *,
