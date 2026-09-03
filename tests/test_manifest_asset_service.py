@@ -16,6 +16,9 @@ class FakeIndex:
     def assets_by_name(self, name):
         return self.assets.get(name, [])
 
+    def assets_in_directory(self, path):
+        return self.assets.get(path, [])
+
 
 class ManifestAssetServiceTests(unittest.TestCase):
     def test_resolves_manifest_fallback_and_readable_bundle(self):
@@ -173,6 +176,29 @@ class ManifestAssetServiceTests(unittest.TestCase):
         with self.assertRaises(ManifestAssetResolutionError) as missing:
             service.candidates_by_name("manifest", "icon.png")
         self.assertEqual(503, missing.exception.status)
+
+    def test_lists_exact_manifest_directory_assets(self):
+        service = object.__new__(ManifestAssetService)
+        service.resolve_installed = lambda _logical_id: (
+            FakeIndex({
+                "assets/config": [
+                    {"assetIndex": 31, "path": "assets/config/a.asset"},
+                    {"assetIndex": 32, "path": "assets/config/b.asset"},
+                ]
+            }),
+            {"id": 7},
+            Path("manifest.chk"),
+        )
+
+        document = service.assets_in_directory("manifest", " /assets/config/ ")
+
+        self.assertEqual("assets/config", document["path"])
+        self.assertEqual([31, 32], [x["assetIndex"] for x in document["assets"]])
+        self.assertIn("manifestId=7&assetIndex=31", document["assets"][0]["previewUrl"])
+
+        with self.assertRaises(ManifestAssetResolutionError) as invalid:
+            service.assets_in_directory("manifest", "assets/../config")
+        self.assertEqual(400, invalid.exception.status)
 
     def test_directory_asset_count_has_no_error_side_effect(self):
         with TemporaryDirectory() as directory:

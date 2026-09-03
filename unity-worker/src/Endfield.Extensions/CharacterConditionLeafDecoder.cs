@@ -46,10 +46,13 @@ public static class CharacterConditionLeafDecoder
             && entry.Namespace == "Beyond.Gameplay.Core";
         var ifElse = entry.ClassName == "IfElseAction/IfElseActionData"
             && entry.Namespace == "Beyond.Gameplay.Core";
+        var comboSkillPending = entry.ClassName == "CheckComboSkillPending/Data"
+            && entry.Namespace == "Beyond.Gameplay.Core";
         if (!spell && !compare && !objectType && !tagStack && !debug && !damageDecorate
             && !targetsEqual && !advancedStack && !advancedBuffId && !modifyBlackboard && !physical
             && !mainCharacter && !contextBuff && !tagMatch && !notNext && !hp && !buffStack
-            && !createBuff && !storeBuffCount && !returnFalse && !ifElse) return null;
+            && !createBuff && !storeBuffCount && !returnFalse && !ifElse && !comboSkillPending)
+            return null;
         var r = new ManagedReferencePayloadReader(raw, entry.DataOffset, entry.DataLength);
         var data = new Dictionary<string, object?>
         {
@@ -112,6 +115,11 @@ public static class CharacterConditionLeafDecoder
         else if (mainCharacter)
         {
             data["checkTarget"] = UnityTargetSettingsDecoder.Read(r, "checkTarget");
+        }
+        else if (comboSkillPending)
+        {
+            // 1.4.4 Typhoeus CharacterTemplate：唯一自有字段是检查待定连携所属实体。
+            data["owner"] = UnityTargetSettingsDecoder.Read(r, "owner");
         }
         else if (contextBuff)
         {

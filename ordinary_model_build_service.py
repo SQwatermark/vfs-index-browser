@@ -94,7 +94,10 @@ class OrdinaryModelBuildService:
             primary_input_id="manifest:primary",
             selection_input_ids=[item["inputId"] for item in staged],
             included_types=self._snapshot_types,
-            containers=[],
+            # A manifest asset identifies one exact object container.  Exporting the
+            # whole Bundle makes unrelated prefab roots indistinguishable and also
+            # defeats the worker's explicit-container validation boundary.
+            containers=[str(asset["path"])],
             cancel_event=cancel_event,
         )
         session.add_step("buildCABMap", cab_result)

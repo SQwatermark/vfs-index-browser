@@ -38,8 +38,20 @@ public static class ProjectileComponentPrefixDecoder
             ["finishDuration"] = ReadBlackboardDouble(reader, "projectileComponent.finishDuration"),
             ["finishDistance"] = ReadBlackboardDouble(reader, "projectileComponent.finishDistance"),
             ["finishOnReach"] = reader.ReadBool32("projectileComponent.finishOnReach"),
+            ["finishOnBlock"] = reader.ReadBool32("projectileComponent.finishOnBlock"),
+            ["allowRepeatBlock"] = reader.ReadBool32("projectileComponent.allowRepeatBlock"),
+            ["useHitBlockReachOrder"] = reader.ReadBool32(
+                "projectileComponent.useHitBlockReachOrder"),
             ["hitOnReach"] = reader.ReadBool32("projectileComponent.hitOnReach"),
             ["colliderShapeData"] = ReadShapeData(reader, "projectileComponent.colliderShapeData"),
+            ["separateHitAndBlockCollider"] = reader.ReadBool32(
+                "projectileComponent.separateHitAndBlockCollider"),
+            ["blockColliderShapeData"] = ReadShapeData(
+                reader,
+                "projectileComponent.blockColliderShapeData"),
+            ["zAxisRotationAngle"] = ReadBlackboardDouble(
+                reader,
+                "projectileComponent.zAxisRotationAngle"),
             ["blockLayerDef"] = DecodeProjectileBlockLayerDef(
                 reader.ReadInt32("projectileComponent.blockLayerDef")),
             ["blockLayer"] = Hash32(reader.ReadInt32("projectileComponent.blockLayer")),

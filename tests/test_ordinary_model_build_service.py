@@ -19,11 +19,14 @@ class FakeRuns:
 
 
 class FakeWorker:
+    def __init__(self):
+        self.export_objects_kwargs = None
     def stage_inputs(self, _root, sources):
         return [{"inputId": item.input_id, "inputPath": item.file_name} for item in sources]
     def build_cab_map(self, *_args, **_kwargs):
         return {"artifactCount": 1}
     def export_objects(self, *_args, **_kwargs):
+        self.export_objects_kwargs = _kwargs
         return {"artifactCount": 2}
     def export_textures(self, *_args, **_kwargs):
         return {"artifactCount": 1, "artifacts": []}
@@ -41,8 +44,10 @@ class FakeDocuments:
 
 class OrdinaryModelBuildServiceTests(unittest.TestCase):
     def options(self, root, runs, documents):
+        worker = FakeWorker()
+        self.worker = worker
         return OrdinaryModelBuildService(
-            runs, FakeWorker(), documents, lambda: [{"worker": 1}],
+            runs, worker, documents, lambda: [{"worker": 1}],
             version=3, snapshot_types=["GameObject", "Transform"],
         )
 
@@ -72,6 +77,7 @@ class OrdinaryModelBuildServiceTests(unittest.TestCase):
             )
             self.assertEqual({"nodes": []}, document)
             self.assertEqual(["buildCABMap", "exportObjectSnapshots"], [x["name"] for x in meta["steps"]])
+            self.assertEqual(["assets/a.prefab"], self.worker.export_objects_kwargs["containers"])
             self.assertTrue(documents.finalized)
             self.assertIsNotNone(runs.published)
             runs.published[1]["before_pointer"]()

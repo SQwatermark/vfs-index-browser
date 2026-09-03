@@ -47,13 +47,14 @@ from ability_entity_data import (
     normalize_ability_entity_id,
 )
 from ability_entity_service import AbilityEntityService
-from akedb_compatible_route import (
-    AkedbCompatibleRouteError,
-    resolve_akedb_compatible_route,
+from endaxis_data_route import (
+    EndaxisDataRouteError,
+    resolve_endaxis_data_route,
 )
-from akedb_compatible_data_service import (
-    AkedbCompatibleDataError,
-    AkedbCompatibleDataService,
+from endaxis_data_service import (
+    EndaxisDataError,
+    EndaxisDataService,
+    make_endaxis_json_value,
 )
 from memorypack_value_decoder import MemoryPackValueDecoder
 from memorypack_preview_service import MemoryPackPreviewService
@@ -783,19 +784,19 @@ class BrowserHandler(BaseHTTPRequestHandler):
             ignore_disconnect=True,
         )
 
-    def handle_akedb_compatible(self, request_path: str) -> None:
-        """按 Endaxis 资源下载器约定输出与 AKEDB 同构的 JSON。"""
+    def handle_endaxis_data(self, request_path: str) -> None:
+        """从当前有效 VFS 输出 Endaxis 编译器所需的完整源数据。"""
         try:
-            route = resolve_akedb_compatible_route(request_path)
-        except AkedbCompatibleRouteError as error:
+            route = resolve_endaxis_data_route(request_path)
+        except EndaxisDataRouteError as error:
             self.send_error_json(error.status, str(error))
             return
         getattr(self, route.handler_name)(*route.arguments)
 
-    def handle_akedb_compatible_table(self, table_name: str) -> None:
+    def handle_endaxis_data_table(self, table_name: str) -> None:
         try:
-            value = self.akedb_compatible_data_service().table(table_name)
-        except AkedbCompatibleDataError as error:
+            value = self.endaxis_data_service().table(table_name)
+        except EndaxisDataError as error:
             self.send_error_json(error.status, str(error))
             return
         self.send_json(
@@ -803,20 +804,20 @@ class BrowserHandler(BaseHTTPRequestHandler):
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
-    def handle_akedb_compatible_collection_manifest(self, collection: str) -> None:
+    def handle_endaxis_data_collection_manifest(self, collection: str) -> None:
         try:
-            value = self.akedb_compatible_data_service().collection_manifest(collection)
-        except AkedbCompatibleDataError as error:
+            value = self.endaxis_data_service().collection_manifest(collection)
+        except EndaxisDataError as error:
             self.send_error_json(error.status, str(error))
             return
         self.send_json(value, extra_headers={"X-Endaxis-Source": "vfs-index-browser"})
 
-    def handle_akedb_compatible_collection_file(self, collection: str, file_name: str) -> None:
+    def handle_endaxis_data_collection_file(self, collection: str, file_name: str) -> None:
         try:
-            value = self.akedb_compatible_data_service().collection_file(
+            value = self.endaxis_data_service().collection_file(
                 collection, file_name
             )
-        except AkedbCompatibleDataError as error:
+        except EndaxisDataError as error:
             self.send_error_json(error.status, str(error))
             return
         self.send_json(
@@ -852,7 +853,23 @@ class BrowserHandler(BaseHTTPRequestHandler):
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
-    def handle_akedb_compatible_projectile_manifest(self) -> None:
+    def handle_manifest_assets_in_directory(self, query: dict[str, list[str]]) -> None:
+        """Return every direct asset in one exact current-manifest directory."""
+
+        try:
+            document = self.manifest_asset_service().assets_in_directory(
+                MANIFEST_LOGICAL_ID,
+                query.get("path", [""])[0],
+            )
+        except ManifestAssetResolutionError as error:
+            self.send_error_json(error.status, str(error))
+            return
+        self.send_json(
+            document,
+            extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
+        )
+
+    def handle_endaxis_data_projectile_manifest(self) -> None:
         try:
             projectile_ids = list_projectile_ids(self.resolve_installed_manifest_index())
         except (ProjectileDecodeError, OSError, sqlite3.Error) as error:
@@ -862,7 +879,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             [
                 {
                     "contentFile": (
-                        f"/api/akedb-compatible/ProjectileData/{projectile_id}.json"
+                        f"/api/endaxis-data/ProjectileData/{projectile_id}.json"
                     ),
                 }
                 for projectile_id in projectile_ids
@@ -870,7 +887,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
-    def handle_akedb_compatible_projectile_file(self, projectile_id: str) -> None:
+    def handle_endaxis_data_projectile_file(self, projectile_id: str) -> None:
         try:
             document = self.build_projectile_document(projectile_id)
         except ProjectileNotFoundError as error:
@@ -883,7 +900,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(503, str(error))
             return
         self.send_json(
-            document["projectileComponentData"],
+            make_endaxis_json_value(document["projectileComponentData"]),
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
@@ -897,7 +914,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             manifest_logical_id=MANIFEST_LOGICAL_ID,
         ).build(entity_id)
 
-    def handle_akedb_compatible_ability_entity_manifest(self) -> None:
+    def handle_endaxis_data_ability_entity_manifest(self) -> None:
         try:
             entity_ids = list_ability_entity_ids(self.resolve_installed_manifest_index())
         except (AbilityEntityDecodeError, OSError, sqlite3.Error) as error:
@@ -907,7 +924,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             [
                 {
                     "contentFile": (
-                        f"/api/akedb-compatible/AbilityEntityData/{entity_id}.json"
+                        f"/api/endaxis-data/AbilityEntityData/{entity_id}.json"
                     ),
                 }
                 for entity_id in entity_ids
@@ -915,7 +932,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
-    def handle_akedb_compatible_ability_entity_file(self, entity_id: str) -> None:
+    def handle_endaxis_data_ability_entity_file(self, entity_id: str) -> None:
         try:
             document = self.build_ability_entity_document(entity_id)
         except AbilityEntityNotFoundError as error:
@@ -928,7 +945,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.send_error_json(503, str(error))
             return
         self.send_json(
-            document["abilityEntityTemplateData"],
+            make_endaxis_json_value(document["abilityEntityTemplateData"]),
             extra_headers={"X-Endaxis-Source": "vfs-index-browser"},
         )
 
@@ -1232,12 +1249,13 @@ class BrowserHandler(BaseHTTPRequestHandler):
     def memorypack_preview_service(self) -> MemoryPackPreviewService:
         return MemoryPackPreviewService(self.memorypack_value_decoder().decode)
 
-    def akedb_compatible_data_service(self) -> AkedbCompatibleDataService:
-        return AkedbCompatibleDataService(
+    def endaxis_data_service(self) -> EndaxisDataService:
+        return EndaxisDataService(
             self.db_path,
             self.resolve_logical_file_source,
             self.parse_tablecfg_file,
             self.memorypack_value_decoder(),
+            self.read_file_slice,
         )
 
     def read_file_range(self, record: dict, chunk_path: Path, relative_offset: int, length: int) -> bytes:

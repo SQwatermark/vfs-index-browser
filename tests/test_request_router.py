@@ -47,6 +47,23 @@ class RequestRouterTests(unittest.TestCase):
         self.assertTrue(dispatch_get(Handler(), "/api/memorypack/json", query))
         self.assertEqual(["gate", query], calls)
 
+    def test_manifest_directory_route_runs_after_index_gate(self):
+        calls = []
+
+        class Handler:
+            def require_current_index(self):
+                calls.append("gate")
+                return True
+
+            def handle_manifest_assets_in_directory(self, query):
+                calls.append(query)
+
+        query = {"path": ["assets/config"]}
+        self.assertTrue(
+            dispatch_get(Handler(), "/api/manifest-assets/in-directory", query)
+        )
+        self.assertEqual(["gate", query], calls)
+
     def test_static_path_is_not_consumed(self):
         self.assertFalse(dispatch_get(object(), "/index.html", {}))
 

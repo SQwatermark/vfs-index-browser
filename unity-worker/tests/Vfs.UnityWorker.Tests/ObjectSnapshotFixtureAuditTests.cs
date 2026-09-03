@@ -50,7 +50,7 @@ public sealed class ObjectSnapshotFixtureAuditTests
                 "fixture:primary",
                 inputs.Select(value => value.InputId).ToArray(),
                 [
-                    "GameObject", "Transform", "MeshFilter", "MeshRenderer",
+                    "GameObject", "Transform", "MonoBehaviour", "MeshFilter", "MeshRenderer",
                     "SkinnedMeshRenderer", "Mesh", "Material", "Animator", "Avatar",
                     "LODGroup",
                 ],

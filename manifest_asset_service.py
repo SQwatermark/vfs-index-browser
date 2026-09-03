@@ -148,6 +148,40 @@ class ManifestAssetService:
             ],
         }
 
+    def assets_in_directory(self, logical_id: str, path: str) -> dict:
+        """完整返回一个精确 Manifest 目录的直接子资源。"""
+
+        normalized_path = path.strip().replace("\\", "/").strip("/")
+        if not normalized_path or any(part in ("", ".", "..") for part in normalized_path.split("/")):
+            raise ManifestAssetResolutionError(400, "path must be one exact manifest directory")
+        try:
+            index, record, _ = self.resolve_installed(logical_id)
+            assets = index.assets_in_directory(normalized_path)
+        except FileNotFoundError as error:
+            raise ManifestAssetResolutionError(503, str(error)) from error
+        except (OSError, sqlite3.Error, ValueError) as error:
+            raise ManifestAssetResolutionError(503, str(error)) from error
+
+        manifest_id = int(record["id"])
+        return {
+            "path": normalized_path,
+            "manifestId": manifest_id,
+            "assets": [
+                {
+                    **asset,
+                    "previewUrl": (
+                        "/api/manifest-asset/preview?"
+                        f"manifestId={manifest_id}&assetIndex={asset['assetIndex']}"
+                    ),
+                    "rawUrl": (
+                        "/api/manifest-asset/raw?"
+                        f"manifestId={manifest_id}&assetIndex={asset['assetIndex']}"
+                    ),
+                }
+                for asset in assets
+            ],
+        }
+
     def asset_count(
         self,
         connection: sqlite3.Connection,

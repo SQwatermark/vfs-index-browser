@@ -250,15 +250,15 @@ GET /api/internal/preview?id=123&path=Texture2D/example.png
 GET /api/internal/raw?id=123&path=Texture2D/example.png
 GET /api/tablecfg/json?id=123
 GET /api/memorypack/json?id=123&download=1
-GET /api/akedb-compatible/TableCfg-1.4.4@9433094-12/CharacterTable.json
-GET /api/akedb-compatible/SkillData/manifest.json
-GET /api/akedb-compatible/SkillData/chr_0004_pelica_attack1.json
-GET /api/akedb-compatible/BuffData/manifest.json
-GET /api/akedb-compatible/BuffData/buff_chr_0004_example.json
-GET /api/akedb-compatible/ProjectileData/manifest.json
-GET /api/akedb-compatible/ProjectileData/projectile_chr_0004_example.json
-GET /api/akedb-compatible/AbilityEntityData/manifest.json
-GET /api/akedb-compatible/AbilityEntityData/abilityentity_chr_0004_example.json
+GET /api/endaxis-data/TableCfg-current/CharacterTable.json
+GET /api/endaxis-data/SkillData/manifest.json
+GET /api/endaxis-data/SkillData/chr_0004_pelica_attack1.json
+GET /api/endaxis-data/BuffData/manifest.json
+GET /api/endaxis-data/BuffData/buff_chr_0004_example.json
+GET /api/endaxis-data/ProjectileData/manifest.json
+GET /api/endaxis-data/ProjectileData/projectile_chr_0004_example.json
+GET /api/endaxis-data/AbilityEntityData/manifest.json
+GET /api/endaxis-data/AbilityEntityData/abilityentity_chr_0004_example.json
 GET /api/manifest-asset/preview?manifestId=123&assetIndex=456
 GET /api/manifest-asset/raw?manifestId=123&assetIndex=456
 GET /api/manifest-asset/model?manifestId=123&assetIndex=456
@@ -271,19 +271,18 @@ GET /api/manifest-asset/model-animations?manifestId=123&assetIndex=456&q=pelica
 GET /api/manifest-asset/model-blend?manifestId=123&assetIndex=456&animationAssetIndex=789
 ```
 
-`/api/akedb-compatible/` 是给 Endaxis 下载器使用的精确资源接口，不做模糊搜索。TableCfg 名称映射到
+`/api/endaxis-data/` 是给 Endaxis 下载器使用的精确资源接口，不做模糊搜索。TableCfg 名称映射到
 `Table/Data/TableCfg/<name>.bytes`，集合文件映射到
 `JsonData/Data/Json/<collection>/<file>.json`；两者都只读取 Effective 逻辑文件。TableCfg 经
 SparkBuffer 解码，SkillData/BuffData 经 MemoryPack schema 完整解码，存在未消费字节时返回 `422`，
 不会输出不完整 JSON。集合 manifest 只枚举该集合的直接文件。
 
-兼容边界是“Endaxis 可用同一个逻辑路径和 source schema 消费解码结果”，并非与 AKEDB 的 JSON 文本
-逐字节相同；空白、字段顺序以及已知的新旧曲线表示可以不同。响应包含
-`X-Endaxis-Source: vfs-index-browser`，供下载器记录逐文件来源。AKEDB 仍由 Endaxis 作为首选提供者，
-此接口只在其资源尚未更新或不可用时补齐。
+接口边界是“Endaxis 可用稳定逻辑路径和 source schema 消费当前本地游戏资源”。响应包含
+`X-Endaxis-Source: vfs-index-browser`，供下载器拒绝其他隐式提供者并记录逐文件来源。
 
-ProjectileData 和 AbilityEntityData 不是 AKEDB 当前已有的数据集，而是为同一批量下载协议提供的
-VFS-only 集合。两者的 manifest 只枚举 canonical Unity asset 目录的直接子项。ProjectileData
+ProjectileData 和 AbilityEntityData 是 VFS 自有批量下载协议提供的生产集合；其覆盖范围只由
+当前客户端资源和本仓库的索引、解码、闭包导出能力决定，不以任何外部数据服务为边界。两者的
+manifest 只枚举 canonical Unity asset 目录的直接子项。ProjectileData
 通过精确 projectile asset path 导出 `ProjectileComponentData`；AbilityEntityData 通过精确
 abilityentity asset path 的 Raw MonoBehaviour，只解析已由静态证据和样本共同确认的
 `AbilityEntityTemplateData` 前缀。未知组件字段不会被猜测或静默解释为“无行为”。
@@ -351,6 +350,7 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
   `--metadata`，严格核对类型名、token 和索引。复现与边界见
   [诀资源解码记录](docs/research/memorypack-arcane-2026-08-26.md)。
 - `tools/decode_memorypack_json.py`：使用已知 schema 解码二进制配置。
+- `tools/inspect_ifix_patch.py`：读取 VFS 导出的 InjectFix patch，列出当前版本实际替换的原始方法。
 - `tools/blender_import_model.py`：在 Blender 4.3 中导入模型 GLB，根据
   `endfieldSourceMaterial` 与 `endfieldPreview` 自动建立 Eevee CharacterNPR
   预览材质、相机、灯光和可选轮廓。

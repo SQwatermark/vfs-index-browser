@@ -16,6 +16,7 @@ GET_WITH_INDEX = {
     "/api/list": ("handle_list", True),
     "/api/search": ("handle_search", True),
     "/api/manifest-assets/by-name": ("handle_manifest_assets_by_name", True),
+    "/api/manifest-assets/in-directory": ("handle_manifest_assets_in_directory", True),
     "/api/projectile": ("handle_projectile", True),
     "/api/audio-dialog/list": ("handle_audio_dialog_list", True),
     "/api/audio-dialog/entry": ("handle_audio_dialog_entry", True),
@@ -72,8 +73,8 @@ def dispatch_get(
 
     if path.startswith("/api/") and not handler.require_current_index():
         return True
-    if path.startswith("/api/akedb-compatible/"):
-        handler.handle_akedb_compatible(path)
+    if path.startswith("/api/endaxis-data/"):
+        handler.handle_endaxis_data(path)
         return True
 
     route = GET_WITH_INDEX.get(path)

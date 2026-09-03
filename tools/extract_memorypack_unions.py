@@ -31,6 +31,7 @@ from capstone.x86_const import X86_REG_RIP
 try:
     from tools.extract_memorypack_schema import (
         extract_wrapper_from_block,
+        extract_wrappers,
         iter_class_blocks,
         read_memorypack_dump_file,
         wrapper_name,
@@ -38,6 +39,7 @@ try:
 except ModuleNotFoundError:
     from extract_memorypack_schema import (
         extract_wrapper_from_block,
+        extract_wrappers,
         iter_class_blocks,
         read_memorypack_dump_file,
         wrapper_name,
@@ -55,6 +57,14 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--union-map", type=Path, required=True, help="Existing union map used as calibration anchors")
     parser.add_argument("--output", type=Path, required=True, help="Updated union map output")
     parser.add_argument("--metadata", type=Path, help="Same-build global-metadata.dat for unresolved type slots")
+    parser.add_argument(
+        "--allow-stale-union-map",
+        action="store_true",
+        help=(
+            "Allow current runtime registrations to replace stale tag mappings after "
+            "the old map has still supplied enough consistent layout anchors"
+        ),
+    )
     parser.add_argument("--base-class", default=DEFAULT_BASE_CLASS, help="Runtime union base class")
     parser.add_argument(
         "--max-cctor-bytes",
@@ -251,6 +261,76 @@ def infer_type_definition_layout(
     return type_definition_base, type_definition_size
 
 
+def infer_type_definition_layout_from_union(
+    handles: dict[int, int],
+    base_class: str,
+    lines: list[str],
+    token_to_type: dict[int, str],
+    type_to_token: dict[str, int],
+) -> tuple[int, int]:
+    """Calibrate the type-definition table from current-build union inheritance.
+
+    Union tags may be renumbered when the game adds formatter registrations, so an
+    older tag map is not a safe layout oracle during an update.  The generated
+    wrappers do preserve exact inheritance, however: every registered slot must
+    resolve to a wrapper transitively derived from the requested union base.
+    """
+
+    wrappers = extract_wrappers(lines)
+    wrapper_by_name = {value["wrapper"]: value for value in wrappers.values()}
+    base_record = wrappers.get(base_class)
+    if base_record is None:
+        raise SystemExit(f"union base wrapper is missing: {base_class}")
+    base_wrapper = base_record["wrapper"]
+
+    def derives_from_base(value: dict) -> bool:
+        seen: set[str] = set()
+        current = value.get("extendsWrapper")
+        while isinstance(current, str) and current and current not in seen:
+            if current == base_wrapper:
+                return True
+            seen.add(current)
+            parent = wrapper_by_name.get(current)
+            current = parent.get("extendsWrapper") if parent else None
+        return False
+
+    allowed_types = {
+        runtime_type
+        for runtime_type, value in wrappers.items()
+        if derives_from_base(value) and runtime_type in type_to_token
+    }
+    if len(allowed_types) < 3:
+        raise SystemExit(f"union {base_class} has insufficient derived wrapper types")
+
+    candidates: Counter[tuple[int, int]] = Counter()
+    for size in (88, 92):
+        for handle in handles.values():
+            for runtime_type in allowed_types:
+                token_index = type_to_token[runtime_type] - TYPE_DEFINITION_TOKEN_BASE
+                candidates[(handle - token_index * size, size)] += 1
+    if not candidates:
+        raise SystemExit(f"cannot infer current type-definition layout for {base_class}")
+
+    scored = []
+    for (base, size), support in candidates.most_common(64):
+        try:
+            resolved = recover_mapping(handles, token_to_type, base, size)
+        except SystemExit:
+            continue
+        valid = sum(runtime_type in allowed_types for runtime_type in resolved.values())
+        scored.append((valid, support, base, size, resolved))
+    if not scored:
+        raise SystemExit(f"no aligned current type-definition layout for {base_class}")
+    valid, support, base, size, resolved = max(scored)
+    if valid != len(handles):
+        raise SystemExit(
+            f"current union inheritance calibrated only {valid}/{len(handles)} slots for {base_class}"
+        )
+    if support < 3:
+        raise SystemExit(f"current union inheritance has insufficient layout support for {base_class}")
+    return base, size
+
+
 def recover_mapping(
     handles: dict[int, int],
     token_to_type: dict[int, str],
@@ -369,24 +449,35 @@ def main(argv: Iterable[str]) -> int:
         }
     handles = read_type_definition_handles(image, module_base, initialized_slots)
     token_to_type, type_to_token = extract_wrapper_tokens(lines)
-    anchor_handles, anchor_mapping = handles, known_mapping
-    if args.metadata and args.base_class != DEFAULT_BASE_CLASS:
-        anchor_slots = extract_tag_slots(image, find_formatter_cctor(lines, DEFAULT_BASE_CLASS), args.max_cctor_bytes)
+    try:
+        type_definition_base, type_definition_size = infer_type_definition_layout_from_union(
+            handles,
+            args.base_class,
+            lines,
+            token_to_type,
+            type_to_token,
+        )
+    except SystemExit as error:
+        if "insufficient derived wrapper types" not in str(error) or args.base_class == DEFAULT_BASE_CLASS:
+            raise
+        anchor_slots = extract_tag_slots(
+            image,
+            find_formatter_cctor(lines, DEFAULT_BASE_CLASS),
+            args.max_cctor_bytes,
+        )
         anchor_slots = {
-            tag: slot for tag, slot in anchor_slots.items()
+            tag: slot
+            for tag, slot in anchor_slots.items()
             if module_base <= read_qword(image, slot) <= module_base + len(image) - 12
         }
         anchor_handles = read_type_definition_handles(image, module_base, anchor_slots)
-        anchor_mapping = {int(tag): value for tag, value in union_map.get(DEFAULT_BASE_CLASS, {}).items()}
-    type_definition_base, type_definition_size = infer_type_definition_layout(
-        anchor_handles,
-        anchor_mapping,
-        type_to_token,
-    )
-    checked_anchors = recover_mapping(anchor_handles, token_to_type, type_definition_base, type_definition_size)
-    for tag, expected in anchor_mapping.items():
-        if tag in checked_anchors and checked_anchors[tag] != expected:
-            raise SystemExit(f"calibration conflicts with existing tag {tag}: {expected}")
+        type_definition_base, type_definition_size = infer_type_definition_layout_from_union(
+            anchor_handles,
+            DEFAULT_BASE_CLASS,
+            lines,
+            token_to_type,
+            type_to_token,
+        )
     recovered = recover_mapping(
         handles,
         token_to_type,
@@ -398,9 +489,14 @@ def main(argv: Iterable[str]) -> int:
         recovered.update(recover_encoded_mapping(
             image, {tag: slot for tag, slot in tag_slots.items() if tag not in initialized_slots}, metadata_types,
         ))
-    for tag, expected in known_mapping.items():
-        if recovered.get(tag) != expected:
-            raise SystemExit(f"recovered union conflicts with existing tag {tag}: {expected}")
+    recovered_conflicts = {
+        tag: (expected, recovered.get(tag))
+        for tag, expected in known_mapping.items()
+        if recovered.get(tag) != expected
+    }
+    if recovered_conflicts and not args.allow_stale_union_map:
+        tag, (expected, _actual) = next(iter(sorted(recovered_conflicts.items())))
+        raise SystemExit(f"recovered union conflicts with existing tag {tag}: {expected}")
     union_map[args.base_class] = {str(tag): runtime_type for tag, runtime_type in sorted(recovered.items())}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(union_map, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -408,6 +504,8 @@ def main(argv: Iterable[str]) -> int:
         f"Recovered {len(recovered)} tags for {args.base_class}; "
         f"Il2CppTypeDefinition size={type_definition_size:#x}."
     )
+    for tag, (previous, current) in sorted(recovered_conflicts.items()):
+        print(f"Replaced stale tag {tag}: {previous} -> {current}")
     return 0
 
 

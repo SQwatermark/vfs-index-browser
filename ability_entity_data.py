@@ -213,12 +213,16 @@ def parse_ability_entity_template(data: bytes, expected_id: str) -> dict:
     duration, offset = _read_f32(data, offset)
     duration_bb, offset = _parse_blackboard_double(data, offset)
     max_duration_for_server, _ = _read_f32(data, offset)
-    if game_id != expected_id or name != expected_id:
+    # GameDataWithId.id is the stable asset identity. BaseTemplateData.name is a
+    # separate template label and may intentionally be shared by multiple assets
+    # (Typhoea's floating-arrow variants are the first current-game example).
+    if game_id != expected_id:
         raise AbilityEntityDecodeError(
             f"template identity mismatch: expected {expected_id!r}, got {game_id!r}/{name!r}"
         )
     return {
         "gameId": game_id,
+        "name": name,
         "factionNativeValue": faction,
         "bornTagIds": born_tags,
         "lifeTypeNativeValue": life_type,

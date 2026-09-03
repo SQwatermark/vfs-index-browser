@@ -41,7 +41,7 @@ OperatorSheet 自动生成。
 | Buff 生命周期动作可同步嵌套 | `_ExecuteBuffAction` 顺序同步执行且不逐项复查状态；`MarkFinish.isFinishing` 只防重复结束 | 已确认主干，跨 AbilitySystem 事件待展开 |
 | 驱散先执行专用事件再统一结束 Buff | 先按可驱散开关、等级及可选 `applyTags` 查询筛选，再执行 `OnBuffDispelled`，最后以 `Dispelled` 原因调用 `MarkFinish` | 已确认；返回值不表示实际命中数量 |
 | AbilitySystem 事件存在四层同步消费者 | EventDispatcher 回调、优先 SequenceAction、Skill 实例、BattleManager 连携桥接依次执行 | 已确认主序；同优先级和递归边界待验证 |
-| 伤害计算与落血事件是两层管线 | `OnBeforeCalculateDamage`、前后 DamageProcessor、公式计算、Modifier 前后事件、受击前/输出前、护盾、生命变化、受击后/输出后的主序已定位 | 已确认普通生命伤害主干；特殊目标与 IFix 待补 |
+| 伤害计算与落血事件是两层管线 | `OnBeforeCalculateDamage`、前后 DamageProcessor、公式计算、Modifier 前后事件、受击前/输出前、护盾、生命变化、受击后/输出后的主序已定位 | 已确认普通生命伤害主干；特殊目标与相关 IFix 方法成员需按当前 patch 逐项核对 |
 | 伤害倍率采用配置化区间 | 攻防双方区间数组以 1 初始化；`ProdCalcZone` 逐项乘算，其余六区同侧逐项加算；攻防两侧及七个区间最终相乘 | 算法与实际 `allZones` 顺序、开关均已确认 |
 | 格挡显示与实际减伤相互独立 | `DamageTextProcessor(Block)` 只写 `isBlocked`；本地 BuffData 的减伤另由 DamageScale 或属性倍率完成 | 已确认原生主线和 5 个配置样本；全量数据与 IFix 待补 |
 | 防御与暴击主公式已恢复 | 防御系数读取 `BattleConst.efficiencyOfDEF = 0.01` 并使用正负分段曲线；暴击率按 `[0,1]` 与确定性随机流比较 | 防御公式已闭环；随机播种待补 |

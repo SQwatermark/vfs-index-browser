@@ -7,7 +7,7 @@ from pathlib import Path
 from server import BrowserHandler
 
 
-class AkedbCompatibleApiTests(unittest.TestCase):
+class EndaxisDataApiTests(unittest.TestCase):
     def make_handler(self):
         handler = object.__new__(BrowserHandler)
         handler.db_path = Path("unused.sqlite")
@@ -32,7 +32,7 @@ class AkedbCompatibleApiTests(unittest.TestCase):
             b"unused",
         )
 
-        handler.handle_akedb_compatible("/api/akedb-compatible/TableCfg-1.0@1/SampleTable.json")
+        handler.handle_endaxis_data("/api/endaxis-data/TableCfg-current/SampleTable.json")
 
         self.assertEqual(["Table/Data/TableCfg/SampleTable.bytes"], requested)
         self.assertEqual(200, responses[0][0])
@@ -63,23 +63,23 @@ class AkedbCompatibleApiTests(unittest.TestCase):
                 connection.commit()
             handler.db_path = database
 
-            handler.handle_akedb_compatible(
-                "/api/akedb-compatible/SkillData/manifest.json"
+            handler.handle_endaxis_data(
+                "/api/endaxis-data/SkillData/manifest.json"
             )
 
         self.assertEqual(
             [
-                {"contentFile": "/api/akedb-compatible/SkillData/a.json"},
-                {"contentFile": "/api/akedb-compatible/SkillData/b.json"},
+                {"contentFile": "/api/endaxis-data/SkillData/a.json"},
+                {"contentFile": "/api/endaxis-data/SkillData/b.json"},
             ],
             responses[0][1],
         )
 
-    def test_rejects_path_traversal_in_compatibility_route(self):
+    def test_rejects_path_traversal(self):
         handler, responses = self.make_handler()
 
-        handler.handle_akedb_compatible(
-            "/api/akedb-compatible/SkillData/%2E%2E%2Fsecret.json"
+        handler.handle_endaxis_data(
+            "/api/endaxis-data/SkillData/%2E%2E%2Fsecret.json"
         )
 
         self.assertEqual(404, responses[0][0])
@@ -99,18 +99,18 @@ class AkedbCompatibleApiTests(unittest.TestCase):
             "projectileComponentData": {"id": projectile_id, "speed": 12},
         }
 
-        handler.handle_akedb_compatible(
-            "/api/akedb-compatible/ProjectileData/manifest.json"
+        handler.handle_endaxis_data(
+            "/api/endaxis-data/ProjectileData/manifest.json"
         )
-        handler.handle_akedb_compatible(
-            "/api/akedb-compatible/ProjectileData/projectile_sample.json"
+        handler.handle_endaxis_data(
+            "/api/endaxis-data/ProjectileData/projectile_sample.json"
         )
 
         self.assertEqual(
             [
                 {
                     "contentFile": (
-                        "/api/akedb-compatible/ProjectileData/projectile_sample.json"
+                        "/api/endaxis-data/ProjectileData/projectile_sample.json"
                     ),
                 }
             ],
@@ -136,18 +136,18 @@ class AkedbCompatibleApiTests(unittest.TestCase):
             "abilityEntityTemplateData": {"gameId": entity_id, "durationSeconds": 3},
         }
 
-        handler.handle_akedb_compatible(
-            "/api/akedb-compatible/AbilityEntityData/manifest.json"
+        handler.handle_endaxis_data(
+            "/api/endaxis-data/AbilityEntityData/manifest.json"
         )
-        handler.handle_akedb_compatible(
-            "/api/akedb-compatible/AbilityEntityData/abilityentity_sample.json"
+        handler.handle_endaxis_data(
+            "/api/endaxis-data/AbilityEntityData/abilityentity_sample.json"
         )
 
         self.assertEqual(
             [
                 {
                     "contentFile": (
-                        "/api/akedb-compatible/AbilityEntityData/"
+                        "/api/endaxis-data/AbilityEntityData/"
                         "abilityentity_sample.json"
                     ),
                 }

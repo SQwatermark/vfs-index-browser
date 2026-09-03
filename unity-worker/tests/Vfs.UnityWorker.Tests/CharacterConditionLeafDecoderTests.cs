@@ -232,6 +232,21 @@ public sealed class CharacterConditionLeafDecoderTests
     }
 
     [TestMethod]
+    public void DecodesRealComboSkillPendingOwner()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA7AMAAAQAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAD+/////////wAAAAAAAAAAAAAAAAAAAAD+//////////7/////////AAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAA=");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckComboSkillPending/Data", raw.Length))!;
+        var owner = (Dictionary<string, object?>)data["owner"]!;
+        Assert.AreEqual(4, owner["targetSource"]);
+        Assert.AreEqual("", owner["targetGroupKey"]);
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterConditionLeafDecoder.Decode(raw,
+                Entry("CheckComboSkillPending/Data", raw.Length - 4)));
+    }
+
+    [TestMethod]
     public void DecodesRealComboCreateBuffActionWithoutDroppingLifecycleFields()
     {
         var raw = Convert.FromBase64String(

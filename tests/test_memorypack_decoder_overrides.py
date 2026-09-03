@@ -7,6 +7,31 @@ from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader,
 
 
 class MemoryPackDecoderOverrideTests(unittest.TestCase):
+    def test_animation_curve_keyframe_field_order_matches_unity_layout(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        keys = [
+            (0.0, 0.0, 0.0, 0.0, 0, 0.0, 1.0 / 3.0),
+            (1.0, 0.0, 0.0, 0.0, 0, 1.0 / 3.0, 0.0),
+        ]
+        payload = (
+            b"\x03"
+            + struct.pack("<ii", 8, 8)
+            + struct.pack("<i", len(keys))
+            + b"".join(struct.pack("<ffffiff", *key) for key in keys)
+            + b"\xbe"
+        )
+        reader = MemoryPackReader(payload)
+
+        value = decoder.read_value(reader, "UnityEngine.AnimationCurve", "$.curve")
+
+        self.assertEqual(0, value["keys"][0]["weightedMode"])
+        self.assertAlmostEqual(0.0, value["keys"][0]["inWeight"])
+        self.assertAlmostEqual(1.0 / 3.0, value["keys"][0]["outWeight"])
+        self.assertEqual(0, value["keys"][1]["weightedMode"])
+        self.assertAlmostEqual(1.0 / 3.0, value["keys"][1]["inWeight"])
+        self.assertAlmostEqual(0.0, value["keys"][1]["outWeight"])
+        self.assertEqual(0xBE, reader.read_u8())
+
     def test_buff_apply_tags_are_raw_signed_int32_and_preserve_next_field(self):
         decoder = Decoder(SchemaIndex({"classes": []}))
         for tags in ([], [0], [-1480463572, 226, 2147483647, -2147483648]):
@@ -66,6 +91,34 @@ class MemoryPackDecoderOverrideTests(unittest.TestCase):
         self.assertEqual("buff", value)
         self.assertEqual(8, reader.tell())
 
+    def test_plain_check_buff_id_list_keeps_plain_buff_id_schema(self):
+        plain_buff_id = "Beyond.Gameplay.Core.BuffId"
+        plain_check = "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContext.Data"
+        schema = SchemaIndex({"classes": [
+            {
+                "class": plain_buff_id,
+                "memberDetails": [{"name": "buffId", "type": "System.String"}],
+            },
+        ]})
+        decoder = Decoder(schema)
+        encoded_string = b"buff_common_affixes_enhance_pulse"
+        reader = MemoryPackReader(
+            struct.pack("<iB", 1, 1)
+            + struct.pack("<i", len(encoded_string))
+            + encoded_string
+        )
+
+        value = decoder.read_value(
+            reader,
+            f"System.Collections.Generic.List<{plain_buff_id}>",
+            "$.buffIdList",
+            plain_check,
+            "buffIdList",
+        )
+
+        self.assertEqual([{"buffId": encoded_string.decode("ascii")}], value)
+        self.assertEqual(len(reader.data), reader.tell())
+
     def test_obtain_cost_recovery_tag_is_inline_int32(self):
         decoder = Decoder(SchemaIndex({"classes": []}))
         reader = MemoryPackReader(struct.pack("<i", 1234))
@@ -114,7 +167,7 @@ class MemoryPackDecoderOverrideTests(unittest.TestCase):
         value = decoder.read_value(reader, base_type, "$.value")
 
         self.assertEqual(derived_type, value["$type"])
-        self.assertEqual(0, value["$tag"])
+        self.assertNotIn("$tag", value)
         self.assertEqual(2, reader.tell())
 
     def test_generated_schema_covers_every_known_union_variant(self):

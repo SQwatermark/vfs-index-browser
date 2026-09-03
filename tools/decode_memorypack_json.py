@@ -60,13 +60,31 @@ MEMBER_TYPE_OVERRIDES = {
     ("Beyond.Blackboard.BlackboardInt", "value"): "System.Int32",
     ("Beyond.Blackboard.BlackboardString", "value"): "System.String",
     ("Beyond.Gameplay.Core.BlackboardImpactValue", "value"): "System.Int32",
+    # 当前同版本继承链明确为 BlackboardCustomWithDropdownIntValue ->
+    # BlackboardInt；生成 wrapper 保留了泛型占位名，实际序列化值仍为 Int32。
+    (
+        "Beyond.Gameplay.Core.BlowOffCharacterAction.BlackboardCharBlowOffPriorityValue",
+        "value",
+    ): "System.Int32",
+    # ShapeFinderData 自身没有字段，三个成员定义在同命名空间的抽象基类 Data；
+    # 当前 AI dump 的短类名消歧无法自动连接这条继承边，因此保留精确字段覆盖。
+    ("Beyond.Gameplay.Core.Selector.ShapeFinder.ShapeFinderData", "angle"): "System.Single",
+    ("Beyond.Gameplay.Core.Selector.ShapeFinder.ShapeFinderData", "maxHeight"): "System.Single",
+    (
+        "Beyond.Gameplay.Core.Selector.ShapeFinder.ShapeFinderData",
+        "shapeData",
+    ): "Beyond.Gameplay.ColliderShapeData",
+    ("Beyond.Gameplay.Core.CrushAction.Data", "damageMultiplier"): "Beyond.Blackboard.BlackboardDouble",
+    ("Beyond.Gameplay.Core.CrushAction.Data", "ignoreHitEffect"): "System.Boolean",
+    ("Beyond.Gameplay.Core.CrushAction.Data", "immobilizedTime"): "System.Single",
+    ("Beyond.Gameplay.Core.FractureAction.Data", "immobilizedTime"): "System.Single",
+    (
+        "Beyond.Gameplay.Core.Selector.InteractiveShapeFinder.Data",
+        "checkIntUnSelectableTag",
+    ): "System.Boolean",
     # 反编译泛型实参和三份本地技能文件的完整消费均确认该值为 Int32。
     ("Beyond.Gameplay.Core.BlackboardSuperArmorValue", "value"): "System.Int32",
     ("Beyond.Gameplay.Core.Conditions.BlackboardBuffId", "value"): "System.String",
-    (
-        "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContext.Data",
-        "buffIdList",
-    ): "System.Collections.Generic.List<Beyond.Gameplay.Core.Conditions.BlackboardBuffId>",
     (
         "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContextAdvanced.Data",
         "buffIdList",
@@ -79,6 +97,7 @@ TYPE_OVERRIDES = {
     "Beyond.Gameplay.Core.BuffStackingSettings.StackingType": "System.Byte",
     "Beyond.Gameplay.Core.EnemyHurtShakeIntensity": "System.Byte",
     "UnityEngine.AnimatorControllerParameterType": "System.Int32",
+    "UnityEngine.QueryTriggerInteraction": "System.Int32",
 }
 
 TYPE_ALIASES = {}
@@ -87,10 +106,18 @@ RAW_GAMEPLAY_TAG_FIELDS = {
     # 1.4.4 ObtainCost wrapper Deserialize (RVA 0x03E61583):
     # one bool + one inline int32, no GameplayTag object header.
     ("Beyond.Gameplay.Core.ObtainCostAction.Data", "uspRecoverTag"),
+    # 当前同版本 ObtainCost wrapper 对 ATB tag 使用相同的内联 int32 布局；
+    # 全对象读取会少消费 3 字节并在后续 source/target 处错位。
+    ("Beyond.Gameplay.Core.ObtainCostAction.Data", "atbGainTag"),
     ("Beyond.Gameplay.Core.HitStopAction.Data", "timeDilationPriority"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "slot"),
     ("Beyond.Gameplay.Core.TimeDilationAction.Data", "timeDilationPriority"),
     ("Beyond.Gameplay.Core.UltimateTimeAction.Data", "timeDilationPriority"),
+    # 当前 AddAIMarker wrapper 把 marker 直接写成 GameplayTag 的 int32 值；
+    # eny_0018_lbtough_skill05 的后续 markerOwner 对齐和整文件消费共同验证该布局。
+    ("Beyond.Gameplay.Core.AddAIMarkerAction.Data", "marker"),
+    # RemoveAIMarker 与 AddAIMarker 使用相同的内联 GameplayTag 表示。
+    ("Beyond.Gameplay.Core.RemoveAIMarkerAction.Data", "marker"),
     ("Beyond.Gameplay.AI.EnemyCheckAIMarker.EnemyCheckAIMarkerInfo", "marker"),
 }
 
@@ -98,6 +125,8 @@ RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
     # BuffData.Deserialize 0x0387B803 -> raw count * 4 reader 0x03A0EC30;
     # result is stored in BuffData.applyTags (+0x68) at 0x0387BBB5.
     ("Beyond.Gameplay.Core.BuffData", "applyTags"),
+    # BuffData 的两个 GameplayTag[] 字段共用 MemoryPack 的原始 int32 数组布局。
+    ("Beyond.Gameplay.Core.BuffData", "tagsAfterTriggerExtendBuffAction"),
     ("Beyond.Gameplay.Core.GameplayTagQuery", "tags"),
 }
 
@@ -321,6 +350,11 @@ class Decoder:
         if type_name.startswith("System.Collections.Generic.Dictionary<"):
             key_type, value_type = generic_args(type_name)
             return self.read_dictionary(reader, key_type, value_type, path)
+        if type_name.startswith("Beyond.SerializeFieldDictionary<"):
+            key_type, value_type = generic_args(type_name)
+            return self.read_serialize_field_dictionary(
+                reader, key_type, value_type, path
+            )
         if type_name == "UnityEngine.Vector3":
             return {
                 "x": reader.read_f32(),
@@ -386,7 +420,7 @@ class Decoder:
             for index in range(member_count):
                 member = members[index]
                 name = member["name"]
-                member_type = member.get("type")
+                member_type = member.get("type") or MEMBER_TYPE_OVERRIDES.get((class_name, name))
                 if not member_type:
                     raise DecodeError(f"missing runtime type for member {name}", reader.tell(), f"{path}.{name}")
                 field_path = f"{path}.{name}"
@@ -417,11 +451,18 @@ class Decoder:
         return result
 
     def read_buff_tags_after_trigger(self, reader: MemoryPackReader, path: str, type_name: str) -> list[Any]:
-        start = reader.tell()
-        if reader.data[start : start + 5] == b"\x00\x00\x00\x00\x00":
-            reader.read(5)
-            return []
-        return self.read_collection(reader, "Beyond.Gameplay.Core.GameplayTag", path)
+        # 当前 BuffData formatter 在 raw int32 tag 数组前写入一个分支字节；
+        # 已验证值 0/1 后都紧跟 int32 count，再跟 count * int32。旧解码器把
+        # `01 00000000` 误读成一个 tagId=null 的对象；它实际表示空数组。
+        prefix_offset = reader.tell()
+        prefix = reader.read_u8()
+        if prefix not in (0, 1):
+            raise DecodeError(
+                f"unexpected BuffData tag collection prefix {prefix}",
+                prefix_offset,
+                path,
+            )
+        return self.read_raw_gameplay_tag_collection(reader)
 
     def read_raw_gameplay_tag_collection(self, reader: MemoryPackReader) -> list[dict[str, int]] | None:
         length = reader.read_collection_header()
@@ -433,7 +474,9 @@ class Decoder:
         layout = UNMANAGED_STRUCT_LAYOUTS[type_name]
         start = reader.tell()
         raw = reader.read(layout["size"])
-        result = {"$encoding": "unmanagedStruct"}
+        # 这是游戏原生的内联 unmanaged struct，不是多态联合；不要把解码器的
+        # 实现标记混入交付给下游的游戏数据。字段布局已经由 schema/本函数约束。
+        result = {}
         for field in layout["fields"]:
             field_reader = MemoryPackReader(raw)
             field_reader.pos = field["offset"]
@@ -478,6 +521,26 @@ class Decoder:
             result[str(key)] = value
         return result
 
+    def read_serialize_field_dictionary(
+        self,
+        reader: MemoryPackReader,
+        key_type: str,
+        value_type: str,
+        path: str,
+    ) -> dict[str, Any] | None:
+        # SerializeFieldDictionary.DeserializeV2 uses a leading format byte.
+        # Current ChangeMoveGaitMultiplier payloads use version 1, followed by
+        # the ordinary MemoryPack dictionary count/key/value representation.
+        version_offset = reader.tell()
+        version = reader.read_u8()
+        if version != 1:
+            raise DecodeError(
+                f"unsupported SerializeFieldDictionary version {version}",
+                version_offset,
+                path,
+            )
+        return self.read_dictionary(reader, key_type, value_type, path)
+
     def read_animation_curve(self, reader: MemoryPackReader, path: str) -> dict[str, Any] | None:
         start = reader.tell()
         member_count = reader.read_compact_header()
@@ -496,10 +559,12 @@ class Decoder:
                     "value": reader.read_f32(),
                     "inTangent": reader.read_f32(),
                     "outTangent": reader.read_f32(),
-                    "tangentMode": reader.read_i32(),
+                    # 当前 Unity Keyframe 的原生结构只保存 weightedMode；
+                    # tangentMode 是兼容属性，旧 JSON 导出恒为 0，并不占用流中字段。
+                    "tangentMode": 0,
                     "weightedMode": reader.read_i32(),
                     "inWeight": reader.read_f32(),
-                    "outWeight": 0.0,
+                    "outWeight": reader.read_f32(),
                 }
                 for _ in range(key_count)
             ]
@@ -536,7 +601,8 @@ class Decoder:
         value = self.read_object(reader, derived_type, path)
         if isinstance(value, dict):
             value["$type"] = derived_type
-            value["$tag"] = tag
+            # tag 只是 MemoryPack 的传输层判别值；成功解码后派生类型已经完整
+            # 表达语义，不应让下游协议额外依赖解码器实现细节。
         return value
 
 

@@ -42,7 +42,7 @@ public static class AbilitySystemDataPrefixDecoder
         Add(data, Fields(r, path, "b:overrideMoveSpeed f:moveSpeed b:overrideRotateRate f:rotateRate " +
             "b:isStrafing b:moveInterruptAttack b:overrideNormalAttackList"));
         data["normalAttackList"] = Strings(r, path + ".normalAttackList");
-        Add(data, Fields(r, path, "b:applyAnimBool s:animBoolName b:overrideStateClip"));
+        Add(data, Fields(r, path, "f:blownStartHeight b:applyAnimBool s:animBoolName b:overrideStateClip"));
         data["overrideClipMapping"] = IntStringDictionary(r, path + ".overrideClipMapping");
         Add(data, Fields(r, path, "b:overrideAnimCfg s:animCfgPath b:overrideModelKey s:modelKey " +
             "i:mountPointDefIndex b:overrideWeaponVisibilityProfile"));

@@ -62,6 +62,7 @@ public static class ObjectSnapshotExporter
     [
         ClassIDType.GameObject,
         ClassIDType.Transform,
+        ClassIDType.MonoBehaviour,
         ClassIDType.MeshFilter,
         ClassIDType.MeshRenderer,
         ClassIDType.SkinnedMeshRenderer,
@@ -281,7 +282,16 @@ public static class ObjectSnapshotExporter
             Converters = { new StringEnumConverter() },
         });
         object value = asset;
-        if (asset is Animator && asset.ToType() is { } animatorValue)
+        if (asset is MonoBehaviour monoBehaviour)
+        {
+            // The CLR shell only contains Unity's base fields.  Endfield prefab
+            // semantics live in the serialized TypeTree and must be retained.
+            value = monoBehaviour.ToType()
+                ?? throw new MonoBehaviourExportException(
+                    "object_type_tree_missing",
+                    $"MonoBehaviour 缺少可用于快照的内嵌 TypeTree：{asset.assetsFile.fileName} / {asset.m_PathID}");
+        }
+        else if (asset is Animator && asset.ToType() is { } animatorValue)
         {
             value = animatorValue;
         }

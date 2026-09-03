@@ -68,6 +68,11 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dump-root", type=Path, required=True, help="Il2CppDumper AI-friendly dump directory")
     parser.add_argument("--output", type=Path, required=True, help="JSON output path")
+    parser.add_argument(
+        "--merge-into",
+        type=Path,
+        help="Merge generated classes into an existing schema instead of replacing unrelated roots",
+    )
     parser.add_argument("--union-map", type=Path, help="Also include all recovered concrete union types as schema roots")
     parser.add_argument(
         "--class",
@@ -711,6 +716,20 @@ def main(argv: Iterable[str]) -> int:
             "runtime field types and offsets are matched by member name from AI-friendly class dumps"
         ),
     }
+    if args.merge_into:
+        existing = json.loads(args.merge_into.read_text(encoding="utf-8"))
+        existing_classes = {
+            value["class"]: value for value in existing.get("classes", [])
+        }
+        for value in schemas:
+            existing_classes[value["class"]] = value
+        report["rootClasses"] = list(
+            dict.fromkeys([*existing.get("rootClasses", []), *classes])
+        )
+        report["classes"] = sorted(
+            existing_classes.values(), key=lambda value: value["class"]
+        )
+        report["note"] += "; incrementally merged with the prior schema"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return 0

@@ -4,9 +4,10 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 
-from akedb_compatible_data_service import (
-    AkedbCompatibleDataError,
-    AkedbCompatibleDataService,
+from endaxis_data_service import (
+    EndaxisDataError,
+    EndaxisDataService,
+    make_endaxis_json_value,
 )
 from memorypack_value_decoder import MemoryPackValueDecoder
 
@@ -29,7 +30,15 @@ class FakeDecoder:
         return {"class": class_name, "value": 7}
 
 
-class AkedbCompatibleDataServiceTests(unittest.TestCase):
+class EndaxisDataServiceTests(unittest.TestCase):
+    def test_non_finite_unity_values_use_strict_json_strings(self):
+        self.assertEqual(
+            {"values": ["Infinity", "-Infinity", "NaN", 1.5]},
+            make_endaxis_json_value(
+                {"values": [float("inf"), float("-inf"), float("nan"), 1.5]}
+            ),
+        )
+
     def memorypack(self, *, decoder_type=FakeDecoder):
         return MemoryPackValueDecoder(
             lambda logical_id: "SampleData" if logical_id.endswith("sample.json") else None,
@@ -42,7 +51,7 @@ class AkedbCompatibleDataServiceTests(unittest.TestCase):
 
     def test_table_uses_exact_logical_id_and_returns_data(self):
         requested = []
-        service = AkedbCompatibleDataService(
+        service = EndaxisDataService(
             Path("unused.sqlite"),
             lambda logical_id: (
                 requested.append(logical_id)
@@ -50,6 +59,7 @@ class AkedbCompatibleDataServiceTests(unittest.TestCase):
             ),
             lambda _record, _chunk: ({"data": {"rows": [1, 2]}}, b"raw"),
             self.memorypack(),
+            lambda _record, _chunk: b"binary",
         )
 
         value = service.table("SampleTable")
@@ -74,16 +84,20 @@ class AkedbCompatibleDataServiceTests(unittest.TestCase):
                     ],
                 )
                 connection.commit()
-            service = AkedbCompatibleDataService(
-                database, lambda _logical_id: None, lambda *_args: None, self.memorypack()
+            service = EndaxisDataService(
+                database,
+                lambda _logical_id: None,
+                lambda *_args: None,
+                self.memorypack(),
+                lambda _record, _chunk: b"binary",
             )
 
             result = service.collection_manifest("SkillData")
 
         self.assertEqual(
             [
-                {"contentFile": "/api/akedb-compatible/SkillData/a.json"},
-                {"contentFile": "/api/akedb-compatible/SkillData/b.json"},
+                {"contentFile": "/api/endaxis-data/SkillData/a.json"},
+                {"contentFile": "/api/endaxis-data/SkillData/b.json"},
             ],
             result,
         )
@@ -92,11 +106,12 @@ class AkedbCompatibleDataServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             chunk = Path(directory) / "sample.json"
             chunk.write_bytes(b"abc")
-            service = AkedbCompatibleDataService(
+            service = EndaxisDataService(
                 Path("unused.sqlite"),
                 lambda _logical_id: ({"id": 7}, chunk),
                 lambda *_args: None,
                 self.memorypack(),
+                lambda _record, _chunk: b"binary",
             )
 
             value = service.collection_file("SkillData", "sample.json")
@@ -108,28 +123,47 @@ class AkedbCompatibleDataServiceTests(unittest.TestCase):
                     reader.position = 1
                     return {"class": class_name}
 
-            partial = AkedbCompatibleDataService(
+            partial = EndaxisDataService(
                 Path("unused.sqlite"),
                 lambda _logical_id: ({"id": 7}, chunk),
                 lambda *_args: None,
                 self.memorypack(decoder_type=PartialDecoder),
+                lambda _record, _chunk: b"binary",
             )
-            with self.assertRaises(AkedbCompatibleDataError) as raised:
+            with self.assertRaises(EndaxisDataError) as raised:
                 partial.collection_file("SkillData", "sample.json")
 
         self.assertEqual(422, raised.exception.status)
         self.assertIn("consumed 1 / 3", str(raised.exception))
 
     def test_missing_resource_is_not_found(self):
-        service = AkedbCompatibleDataService(
+        service = EndaxisDataService(
             Path("unused.sqlite"),
             lambda _logical_id: None,
             lambda *_args: None,
             self.memorypack(),
+            lambda _record, _chunk: b"binary",
         )
-        with self.assertRaises(AkedbCompatibleDataError) as raised:
+        with self.assertRaises(EndaxisDataError) as raised:
             service.collection_file("SkillData", "sample.json")
         self.assertEqual(404, raised.exception.status)
+
+    def test_collection_file_reads_plain_json_without_memorypack_schema(self):
+        with tempfile.TemporaryDirectory() as directory:
+            chunk = Path(directory) / "plain.json"
+            chunk.write_bytes(b'{"value": 9}')
+            service = EndaxisDataService(
+                Path("unused.sqlite"),
+                lambda _logical_id: ({"id": 7}, chunk),
+                lambda *_args: None,
+                self.memorypack(),
+                lambda _record, path: path.read_bytes(),
+            )
+
+            self.assertEqual(
+                {"value": 9},
+                service.collection_file("GameplayConfig", "plain.json"),
+            )
 
 
 if __name__ == "__main__":
