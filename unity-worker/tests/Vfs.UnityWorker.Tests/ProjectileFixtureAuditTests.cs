@@ -80,6 +80,7 @@ public sealed class ProjectileFixtureAuditTests
             var complete = ProjectileComponentDecoder.Decode(
                 rawData,
                 (string)prefix.Data["id"]!);
+            Assert.IsTrue(complete.Component.ContainsKey("entityBlackboard"), path);
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {

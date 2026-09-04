@@ -114,10 +114,9 @@ public static class ProjectileComponentDecoder
         var abilitySystem = AbilitySystemDataPrefixDecoder.Decode(rawData, abilitySystemEntries[0]);
         var entityBlackboard = (IReadOnlyList<Dictionary<string, object?>>)
             abilitySystem.Data["entityBlackboard"]!;
-        if (entityBlackboard.Count > 0)
-        {
-            component["entityBlackboard"] = entityBlackboard;
-        }
+        // 显式空数组也是来源证据：它表示精确 AbilitySystemData 前缀已走到该字段且原生模板
+        // 没有声明初值，不能与“当前 worker 尚未解出实体黑板”共用字段缺失这一表示。
+        component["entityBlackboard"] = entityBlackboard;
         return new ProjectileComponentDecodeResult(
             component,
             entry.DataOffset,

@@ -100,6 +100,10 @@ record、chunk 修改时间、assetIndex、asset path，以及 AnimeStudio EXE/C
 枚举和哈希含义仍是诊断表示，因此返回的组件通常带 `$partial: true`，API 对应报告
 `decode.status = "partial"`，不会把它伪装成完全语义化结果。
 
+伴随 `AbilitySystemData` 的确定前缀会始终输出 `entityBlackboard`：非空时保留完整 DataPair，
+为空时输出显式 `[]`。字段缺失因此只表示旧 worker 或未贯通的解码路径，不能再与“已证明原生
+空黑板”混淆；下游也无需为新投射物手写空模板证据。
+
 早期会话中索引指向的 `D:\Hypergryph Launcher\games\Endfield Game` chunk 路径一度不在
 当前主机，因此当时无法对庄方易两个 AB 做实时端到端导出。当前嵌入式 worker 已可通过服务
 按需恢复并解码实际资源；实现与测试覆盖精确身份查询、按需资源链、managed-reference 选择、
