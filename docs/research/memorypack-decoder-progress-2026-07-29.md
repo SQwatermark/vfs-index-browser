@@ -37,7 +37,8 @@
 - 字段级特殊编码：
   - `GameplayTagQuery.tags[]` 使用 raw int32 tag。
   - `TimeDilationAction` / `HitStopAction` / `UltimateTimeAction` 的部分 `GameplayTag` 字段使用 raw int32 tag。
-  - `BuffData.tagsAfterTriggerExtendBuffAction` 存在特殊空 tag 编码。
+  - 当前版本 `BuffData.tagsAfterTriggerExtendBuffAction` 与 `applyTags` 相同，均为
+    `int32 count + count * raw int32 tag`；旧版曾观察到的额外分支字节不能沿用到当前包体。
 - 已知 byte enum 覆盖，例如 `Buff.LifeType`、`BuffStackingSettings` 的部分 enum、`EnemyHurtShakeIntensity`。
 
 ### 服务端预览接入

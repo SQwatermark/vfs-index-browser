@@ -32,18 +32,19 @@ class MemoryPackDecoderOverrideTests(unittest.TestCase):
         self.assertAlmostEqual(0.0, value["keys"][1]["outWeight"])
         self.assertEqual(0xBE, reader.read_u8())
 
-    def test_buff_apply_tags_are_raw_signed_int32_and_preserve_next_field(self):
+    def test_buff_tag_arrays_are_raw_signed_int32_and_preserve_next_field(self):
         decoder = Decoder(SchemaIndex({"classes": []}))
-        for tags in ([], [0], [-1480463572, 226, 2147483647, -2147483648]):
-            with self.subTest(tags=tags):
-                reader = MemoryPackReader(struct.pack("<i", len(tags)) + b"".join(
-                    struct.pack("<i", tag) for tag in tags
-                ) + b"\xbe")
-                self.assertEqual([{"tagId": tag} for tag in tags], decoder.read_value(
-                    reader, "Beyond.Gameplay.Core.GameplayTag[]", "$.applyTags",
-                    "Beyond.Gameplay.Core.BuffData", "applyTags",
-                ))
-                self.assertEqual(0xBE, reader.read_u8())
+        for field in ("applyTags", "tagsAfterTriggerExtendBuffAction"):
+            for tags in ([], [0], [-1480463572, 226, 2147483647, -2147483648]):
+                with self.subTest(field=field, tags=tags):
+                    reader = MemoryPackReader(struct.pack("<i", len(tags)) + b"".join(
+                        struct.pack("<i", tag) for tag in tags
+                    ) + b"\xbe")
+                    self.assertEqual([{"tagId": tag} for tag in tags], decoder.read_value(
+                        reader, "Beyond.Gameplay.Core.GameplayTag[]", f"$.{field}",
+                        "Beyond.Gameplay.Core.BuffData", field,
+                    ))
+                    self.assertEqual(0xBE, reader.read_u8())
 
     def test_buff_apply_tags_null_is_not_empty(self):
         decoder = Decoder(SchemaIndex({"classes": []}))

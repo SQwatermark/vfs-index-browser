@@ -89534,5 +89534,6892 @@
       "depth": 2
     }
   ],
-  "note": "member order is extracted from generated __field__ setters in *ForMemoryPack wrappers; runtime field types and offsets are matched by member name from AI-friendly class dumps; incrementally merged with the prior schema"
+  "note": "member order is extracted from generated __field__ setters in *ForMemoryPack wrappers; runtime field types and offsets are matched by member name from AI-friendly class dumps; incrementally merged with the prior schema",
+  "enumCatalog": {
+    "format": "VfsNativeEnumCatalog",
+    "version": 1,
+    "metadataSha256": "0076743397acadf03d3b0064343a963c7c88863b8160526d397e4b3efb96f02e",
+    "dumpSha256": {
+      "__Generated.cs": "a3815e2e9d8627090ccc1198e516682e0089a8a9eb6a2e054c82aaacc0b4d54e",
+      "AbilityUnsafe.Gameplay.Beyond.dll.cs": "f2db4bcf741d543e88284574eb65adc3a548417d91fcfc644c47b84b347966ae",
+      "ACESDK_WIN.dll.cs": "77c1129c0b9209e0534ab2775b20aa8b880ac44256218df0ff75400bcd87f29e",
+      "AK.Wwise.Unity.API.dll.cs": "d395a74488e0074e517fd54a9f452b9854a6f296271eb34691b45e2d58a1abae",
+      "AmazingAssets.TerrainToMesh.dll.cs": "c8430f264e9d4d93daa3bebf6d98683ca55bb8ba992365658dbee64e2c57094a",
+      "AntiSDK.dll.cs": "63d124d7cc018958d52030c650f2f401dc183b0b66d4d465dea8bbd3e5536d26",
+      "Assembly-CSharp.dll.cs": "cf586a0a75db7c1ac4ff3bcc5e960d1c612c464b05cbcd5d04221f94c11fe9f1",
+      "AstarPathfindingProject.dll.cs": "c79d4f0afc090f8535a5d8d92b4d51fdbaed39136140ca262d050c3793899047",
+      "Audio.Beyond.dll.cs": "45a3a71314784a7528d6a2e109cf697102a33259139b4e21f810ccc37b70ef55",
+      "Base.Beyond.dll.cs": "a4939ae58123b7a99b4fdddc9d7b2642fa0d79b03a56056fba9a6a5bba8f35da",
+      "Beyond.Byte.dll.cs": "db0feb8a77df9ff34a2358450795c402574a147ddc1c7bafbeddb3c729769067",
+      "Beyond.Dlogger.Runtime.dll.cs": "afc81a9cdba5ccdd13d862f354af106b92cfaf8abab8887475485d364fc8bee3",
+      "Beyond.HGNetLogger.Proto.dll.cs": "04c633d8b9c6a25a68c0ccf6941f7540bd3425e54ae79fbe02aa43f6307bcc43",
+      "Beyond.Native.dll.cs": "66b69b4114e5c556f5184307d3d0abbc985ad085d048d28340c4dc61980d262b",
+      "Beyond.NativeSDK.dll.cs": "e4550ec61cdb9a22063b89720dfc57b330ef5734ce78e051857384a858f922b7",
+      "Beyond.Network.Proto.dll.cs": "47c5947688180c1452fee29e6e597d6f98caa9ce0169c45c56f4d40ce3eb07e2",
+      "BeyondDynamicBone.dll.cs": "73c724d8bca707d0fc13d4689e33b69f457d696aa4476e1277b0f979a90c3134",
+      "Cinemachine.dll.cs": "b65b3f07a84b1f8efca920fd57a7324c8732ef977c488be4f65fbdbf49dcd49a",
+      "clipper_library.dll.cs": "35fd59be0502cb9d2e083f8a0f86b1e0226444e3ff38ff90629f24e81677a5df",
+      "Common.Beyond.Cyptor.dll.cs": "1c90b3530295aa611ec84203406bc7fac4dd407c1cb6354f1899fd580797ef0b",
+      "Common.Beyond.dll.cs": "83c5b48b3ef83afa51e9c2eecd89594e4af78f89624f746737b75b81a0d007ea",
+      "Common.Beyond.XXEnc.dll.cs": "d702f41c7459d0701b85dd3bba0acbd1898d9e29ab3643f36e9f3588603d5dd0",
+      "CriMw.CriWare.Runtime.dll.cs": "b12b61a1456991e4e3824f0b78626a313afbe81961b241cc3c988ccaa0cc256d",
+      "CriMw.CriWare.Vp9.Runtime.dll.cs": "cb06a40498e12cad67a21e43e2e5a8babbbd5c3efca7f43507f7275efb09cade",
+      "CW.Common.dll.cs": "0b8154a60c8d07a989f9ee17f3ec1f04d8e7d67a687181b6ac334f0606bb1407",
+      "DestMath.dll.cs": "2e8c50f0ff00782cb2b1f78bc77a490ec3e00652c8e459ed89eed719cccaa325",
+      "DOTween.dll.cs": "4ac5fab785c91e59307f734ebd41646b03fafe7c9dfa00659ed6eb535608d357",
+      "DOTween.Modules.dll.cs": "869eb9a8b436cfadd9e568142e05029920e467d26fc818e945c91ffee9828c78",
+      "DOTweenPro.dll.cs": "99e75427979de284618c537353bd4c15eaa9d4212714c2c6237492c45c516894",
+      "DOTweenPro.Runtime.dll.cs": "a4af5cea12e5eedff74cb21894aa2d20ccdf28cc608e348ce202f663d7e92940",
+      "DynamicSceneUnsafe.Gameplay.Beyond.dll.cs": "da2bde89d9078e955c2b18b88e4e95cb4cb9ed624dc4b45b8a1034d74cfd8fdd",
+      "Entry.Beyond.dll.cs": "899a7284f580c631f64c6c643ad91bef87f9adf75c590c5e8bcc008e3cd52c35",
+      "FactoryUnsafe.Gameplay.Beyond.dll.cs": "ce03786021040fc1de418d9bf74ebea1eb510b6fdf903eb5b32c8018ff18dbfa",
+      "Gameplay.Beyond.dll.cs": "43e0700130beb2aed179d499a794fb051f790ce16667301d5d9758836fef2947",
+      "GCAllocStatusEditorWindow.Editor.dll.cs": "6f6ed88ed55d2f88854849e32ad3e0ea3487c613d90bf59b0388e79eb0c721cc",
+      "Google.FlatBuffers.dll.cs": "b9ae352bb3261719bf03fb4457a3c41d0d9af61f7079e0546f1a886e27e0fbb4",
+      "Google.Protobuf.dll.cs": "1d373321dd5a8bbe66ca51bbbd26c6ca254a33ff28ee7f85fde8f286f0f15233",
+      "HG.RenderPipelines.Logger.dll.cs": "93b82b314e1c752f8e5c3ab8a2e4ada2a23a32397408f1762bd9d256bb3954ff",
+      "HG.RenderPipelines.Runtime.dll.cs": "fc57c5cab279ef91ac3c94ec07f3a6a71eafeb2009a51a95c6c66732f1317f52",
+      "HG.RenderPipelines.ScriptBridge.dll.cs": "2162618b87a0e718511b1232f83c692122e75e58d1bd47ee51ab9543ebc12d29",
+      "HGSDKInterfaces.dll.cs": "7eca5939af1b7c32b950ffddbd1e763f0d7b8becd197d567e0c69c37cdbf51e8",
+      "HoudiniEngineUnity.dll.cs": "d5ac538b7fbc300453215d41fdbd7439c7e1410d2fb122112e7cda2415466baf",
+      "HoudiniEngineUnity.VisualScripting.dll.cs": "31e44f0f9c7bc00ae26e875726acaa843b471df362d09c38426558898fd3d65b",
+      "Hypergryph.Browser.dll.cs": "fd59e443f3bf8c6a06b9faa7621ca806b8edb799be3e4e84cbcdcbadaf877c34",
+      "Hypergryph.CloudClientBridge.dll.cs": "a8d93ce31abe69d68bf8d053b0a7f257d9010753ca1c4632752ef971ac7fcc59",
+      "Hypergryph.DownloadSDK.dll.cs": "5376c7024b2c1f9d7b9c4b9f3223c622571739c4618f7842fb69ea7847a89d03",
+      "Hypergryph.EventLogSDK.dll.cs": "0640fcceb62774da75f6d67674bc3a7303929d1ded98fc713c58cca5c47208d2",
+      "Hypergryph.GameUpdate.dll.cs": "d7009064c6c0969425127eea13c383f8cf0b4f39c9577e870e637b51b07a6e2e",
+      "Hypergryph.OneChannel.dll.cs": "398833511aea9f94cb87fb65bf36d8f75d1588f805841afff55085ff31d97458",
+      "Hypergryph.SpeedTest.dll.cs": "bdc477a2b6f016011abbae3f837e10be0d0cb7f474255a0b9491d0eef976f73f",
+      "IFix.Core.dll.cs": "fcb5a09f238c5d9370eeba7c15bdeb7e9eed4b34505d67732a2d40d147e81220",
+      "IFix.Define.dll.cs": "bb30ab4be5d6c579b2e8137ae6f5a1188412a936d8b19e4556d722fdc6ead1d2",
+      "IFix.Editor.dll.cs": "1a4b3bb5b1d40cb00304ee55f50765f4a344fd822c2d7fe2acb5bf51acb6b05d",
+      "IFixRuntime.Beyond.dll.cs": "a12a4c3e7256c7c845b7ad95cee4e8d90467e8acfeff1cf97a8f8abab79ff648",
+      "InfinityCode.MeshToTerrain.dll.cs": "0c4f57bbe8326d4aece96476825eb8d757fd18391cdb9615147ec1f8437e2616",
+      "Input.Beyond.dll.cs": "c9724f61782d62ec9783371cf3d6e21730e3fc78c164cdd9fa9c1384fcf6a20e",
+      "LibScePad.Runtime.dll.cs": "f7aa67e26d68c721e827830f636d3fdaa360c142c52bfecb4d7e0e06bafd81fb",
+      "Lua.Beyond.dll.cs": "8e8dfc2f05b13a265825f314442ddc97182d51acd44e091673524c334be16b43",
+      "MagicaCloth.dll.cs": "674fb6a076b5c77a6f668bf6dfe95d44f62e1b4474bbdeef0d3293ebe34859c0",
+      "ManifestDataBinary.dll.cs": "0ee9b280b7ba39a280e3f4895df70b2db86e55f6b7b55f9b47c98c09482eab5e",
+      "MemoryPack.Beyond.dll.cs": "4fd2c0a90571dd8fdce482d2159e9dd7a08fcdd174ce7cb69d732d219c164517",
+      "MemoryPack.dll.cs": "ff400ea727046f40f0e455349b8c060af9e1a09ec721495f3fe5b66d633ccc5b",
+      "Mono.Security.dll.cs": "617f3620f7bca0419514826b117dab0eded2cc06c0b7c534a33b3dfc01c92da8",
+      "mscorlib.dll.cs": "33b4f30080236d2eeb4fc6a47f469c5494b27659a659f0e3edb478d65b67d6f3",
+      "NavMeshComponents.dll.cs": "d75dadccb0bd71221e312dc900d1619ccdeb49648cae02dfc77ad44fbcd8b3b8",
+      "Network.Beyond.dll.cs": "598e7e00c8b9d8e750da930e6ddad960875d40eae9b27e8435a8972ff36d0c79",
+      "Newtonsoft.Json.dll.cs": "6e2eff123f6ec83e4c5cdfa9617a55ad26fa843233f0aadd2c6e6fe7ac9cd9fb",
+      "Obfuscator.Attribute.dll.cs": "a612106f45f8c405efa38d857a6a0de4852cf4fed3abaf24fcdfed119ca213e3",
+      "OverdrawForURP.dll.cs": "52647cc22d541a06d86c2eb68f916a9999869d770bcde7e2d4cee4a0b15fba20",
+      "PaintIn3D.dll.cs": "5674c84a074f1b69df750eeffcf1cb56a2b5f1105b914adce0b89f2125d9069c",
+      "ParadoxNotion.dll.cs": "1f367aabac9a1412210f32312ccd0c966654e8bd616cbc2bfa3e7203d7e190e3",
+      "Priority Queue.dll.cs": "b9ab27316c8bd8501f73ab218246208c6415c4d4b5db99f2f9b19fd6ae71ff3e",
+      "Rendering.Beyond.dll.cs": "ee4eebf32a7cd182a151f1a561a1dfadd35b7edcf565a7f1fb9bfbc32b615761",
+      "Rewired.dll.cs": "79ef0b8de9fec56a85dee12c9a783a3ff4ad654d1d4b2c1dd4599dc0aba768d7",
+      "Rewired_Core.dll.cs": "793551a9580ac798472548054c3b84413869c39f9c3291f2b27c160aa0abb3cd",
+      "Rewired_Windows.dll.cs": "ac2d85d7e71e1107add18ec82dd4a6ff550a99bac52395f617c5e2fff9001ecd",
+      "Rewired_Windows_Functions.dll.cs": "b1465c1b612da401f61c16595b5c8c3a0f341939fc7b45c9495080985a74a90d",
+      "RootMotion.dll.cs": "4722de5f94047f44ae31a3513272e6b6375bf22d0e1d8ce949fa25ee63ee5524",
+      "RoslynAnalyzers.dll.cs": "9d892b4bd8d991452960263e816d4ab21c93cb184fe9070aeb23510744a8c454",
+      "RuntimeQuality.dll.cs": "279dc8bfdd7ef286951a11d909e2ffbfefc2c48a29c95c4954cddbd454ee6d79",
+      "Sirenix.OdinInspector.Attributes.dll.cs": "df680085a7ec2a440275138c857995876d20fecbf1e909c67750350abe64f18d",
+      "Sirenix.Serialization.Config.dll.cs": "d6adf76eb96aeb63256aefdc0bb61835546f7ca59b5e7e13e0e3720f04e9db2c",
+      "Sirenix.Utilities.dll.cs": "68aefead0f9bf00a6e4b615bde14188a6377f420b8c0d2dc3831f38c975a4efc",
+      "SkeletalUnsafe.Gameplay.Beyond.dll.cs": "4f9fbd928b888aba6c45ddcdc14fcb7ed791ffcfe547da1b1d8c993d2bd54e53",
+      "Slate.dll.cs": "237e8e92a84d2ee340073234915c267ddf4682f0d35422d8f9145203cd55a204",
+      "SRSA.dll.cs": "ce88439b0bb1d13988914a0ea2a50775451f09839ad1e6db31dc3c1bedf507a0",
+      "StompyRobot.SRDebugger.dll.cs": "94e708ec872cd3a5fd955ebfe1250d0c5385b3e9b2dab3d830d9ed8375a770f4",
+      "StompyRobot.SRF.dll.cs": "8efc34335cf1e816b7ad99e0743ec485d403720e124ada027734b4eda7948357",
+      "System.Configuration.dll.cs": "ef932a5b7b8c7774ea83114f32c2440d74e639f5b3b5fabfc2ff61a374f97d80",
+      "System.Core.dll.cs": "00987d39a98cac11fb366ba8c4d15b689a59addbb01ecb5f8b14d8194c09153a",
+      "System.Data.dll.cs": "140389b0f61df32e39aebaa0a855c0175a6ab3144918ab869fdac6e6e216a08b",
+      "System.dll.cs": "80b9b38a0ca5b39708d2025bd60f761f3577f54425f0c73bcada2132d3698db0",
+      "System.Drawing.dll.cs": "c5730c1af7e2fe17b3ada1f64ccba7d7c63ef6bd43781c231208af2067720e1f",
+      "System.IO.Compression.dll.cs": "a812bde862f7180841da41019988955812f7c5cdae78dbc6d8b014cd9ba70108",
+      "System.Net.Http.dll.cs": "e58941c195b162c4868aa18f6c78d4058d9eac51c725737b23b321441f22e38c",
+      "System.Numerics.dll.cs": "922fe6742c21a6b7daea2a65ec527a3bbe88ace221ce1b204595643f2d9ae552",
+      "System.Runtime.CompilerServices.Unsafe.dll.cs": "7868d2ffe576cca2fca212ad8a7ac638993b8b1ae35518b2ba7c412061ee9d50",
+      "System.Runtime.Serialization.dll.cs": "2f3c3c40f7dd28dd3da86064fa3c0ba2e6d72d5d64f082081099bd65a4197bdb",
+      "System.Xml.dll.cs": "b142f9a08f51792afb30d0f5b84995c75d21722ce2670a6b983d040b14b9a889",
+      "System.Xml.Linq.dll.cs": "e9284898f7a4a6e98f303bf80e83e1d5e31412eba0148d35b955b6d1f20bb273",
+      "UI.Beyond.dll.cs": "e385b8859a5c30982013bf3f3aa9cd1e0db481e0e21072888afc07bbd80eff8e",
+      "UI.Gameplay.Beyond.dll.cs": "43b5bdd69b3cba28c349a220dfb0f06c8c8d56d37aba8099cf6e065e52aa5c47",
+      "Unity.Animation.Rigging.dll.cs": "df5c4f33784a6f71f0a906aa9196cdae666dbbcbd82285f3891bc46b6f60d40c",
+      "Unity.Burst.dll.cs": "9efd42dcc4462c02b239fefce39594d635b06447df18f271968b625ab914008f",
+      "Unity.Burst.Unsafe.dll.cs": "9b49d369738f933e136320488b05bf874b51a10cd3f59c09e38bd5f6d6c3e501",
+      "Unity.Collections.dll.cs": "dd0a50777483aff2abc28c42793eedcbd50c8c6f72f3a35b3264df15b73db129",
+      "Unity.Collections.LowLevel.ILSupport.dll.cs": "363d8b0a15890872f08e45c2b89f57473bb810ee3402973501a69c1cd728119d",
+      "Unity.Formats.USD.Common.dll.cs": "4d9db1f84c89893aeedc224e356dbcc16ded4e805b56fc5ee5d9a1123bf3e7ca",
+      "Unity.Formats.USD.Runtime.dll.cs": "809811e8ca403ba75bb5ada3035e85cd51d7b02a4fb7ffd6cc7378d4829d4de7",
+      "Unity.InputSystem.dll.cs": "ff6dd3f761eaca5092503dd580664181f6c76e33fbe8e80c259e7e4a3ab3ef5a",
+      "Unity.Mathematics.dll.cs": "575370c0ac7dfa9b8e749c7ff8ad199aeb675fdd791d1ba6842aa9ab48fe74d9",
+      "Unity.RenderPipelines.Core.Runtime.dll.cs": "b74b71d7d93a0274481c58613291090a5b2160e4bd872266933cdd037c44847d",
+      "Unity.Splines.dll.cs": "cac01cff893e6d07ccc1cd5075d8724e1d719747e8934252d47492cbc5f02da3",
+      "Unity.TextMeshPro.dll.cs": "5e2907102d453754e6b034566f8bd68df27eb2b5d35fb975ef67b48d8a65abb0",
+      "Unity.Timeline.dll.cs": "b4a2aad21d6af7810edbd570761e62441b7b73160b9a102a3f43c5363cee81fe",
+      "Unity.VisualScripting.Core.dll.cs": "b7a7b1e93b0c00d3f381b4ba8d921d539ffb4071bfa7a358ed622f6402576fb2",
+      "Unity.VisualScripting.Flow.dll.cs": "68ac8ec3018d3d68eb5f2cab36350014249761ef80a9c810864447d161d5d291",
+      "UnityEngine.AIModule.dll.cs": "71923a09142e514c65ed159c144604acd0ea37277267d13923eeef80e366b741",
+      "UnityEngine.AndroidJNIModule.dll.cs": "f1d2ef5c5c41cedf7e472989540a104f6b9124669fd857c637af4834050800de",
+      "UnityEngine.AnimationModule.dll.cs": "e9e2ff042a63bf51b14dec0ea6e7e18d2a36df5b5b67bf06f92e0a1a8513c917",
+      "UnityEngine.AssetBundleModule.dll.cs": "619d3ba2259cc7ae9f857a047a072a607ca08fd0d626cf738dcca540973536af",
+      "UnityEngine.AudioModule.dll.cs": "688de6eabd7caa35d8649f7188af875c2d42cd96bca3f752cb5ac3dd6ecef160",
+      "UnityEngine.CoreModule.dll.cs": "2cd180c4b151b25fb4e75ff1cd5db9ca8931dd1c79495ae607f24ae3425a3eac",
+      "UnityEngine.DirectorModule.dll.cs": "e2c06b5084afe90e6e977656f0577c05dd9542bf5a6e89a18b10100afe10b796",
+      "UnityEngine.dll.cs": "29e57e9c41ecb45fcd34f6cb3f2c867df9db5d1934f344149bc965d70c80e9f4",
+      "UnityEngine.GridModule.dll.cs": "12f4ac44a631132fb3f5c1f3f07024e3b6f4560f11745d488ead56f20f571f3f",
+      "UnityEngine.HGGraphicsCPPModule.dll.cs": "02bfbc454902ffaa73c16fa3699f95adafec1dc32eef5dc55e0a4753df65d1d2",
+      "UnityEngine.HGGraphicsModule.dll.cs": "8df7df2a47eef2a659ebc51585d989ae3af28d64e2343c3558434008ac84fdb3",
+      "UnityEngine.ImageConversionModule.dll.cs": "e3f2adf392c32ce3844ec8d435f16130e9dc684e79b9abf571edf71559f5aeb6",
+      "UnityEngine.IMGUIModule.dll.cs": "94cf87698228031ee2e020b8c303fcc447266d92cfb5ff2ef77ef60bfca83614",
+      "UnityEngine.InputLegacyModule.dll.cs": "1973f4621091f2ea2dae011c33c0f9dcffd0f56b421ca589606896fa0516c530",
+      "UnityEngine.InputModule.dll.cs": "f998106b62f19033de9a9b7b3443c5a96916c9fda31e1dcc603926ebf2ed6004",
+      "UnityEngine.JSONSerializeModule.dll.cs": "568687c1e92ba611960a594ca11323d237ad83dfc38f4502f9d676916fd64c96",
+      "UnityEngine.ParticleSystemModule.dll.cs": "17bc08b404c579c3b7b1d503d4c1ceae442798b8982178ba9977eda01be74d09",
+      "UnityEngine.Physics2DModule.dll.cs": "c888e45f2e04f39fb76ef8076aa8ef305217dcef06d4f1e08bea89510c3cfc84",
+      "UnityEngine.PhysicsModule.dll.cs": "9c6581b3ac1d5b044c348343179c3646bbe1d51aef396d5bdf5e6b643d24beb9",
+      "UnityEngine.SharedInternalsModule.dll.cs": "976b74456a0841b8cd73096fcb8483885990093a4a0e79006f2b38a773935b3c",
+      "UnityEngine.SpriteShapeModule.dll.cs": "32fda7f634731c8f4144d46c5584eb0a2c463d30585d8778a87ce3e916b11b28",
+      "UnityEngine.StreamingModule.dll.cs": "bba1c5c7c9190c681508fd2fc0d4ad6b04a9bdb03d8980c9e4e09389a3ef0b5c",
+      "UnityEngine.SubsystemsModule.dll.cs": "0b41addd63c6f5cb91947a4ebcfd2f90f5a93a45d4b7292d683cfa3286f81a97",
+      "UnityEngine.TerrainModule.dll.cs": "19f7d0ef3c10cfd36610f28332ba1cb43f12f684f32280d464ab29b34857b73e",
+      "UnityEngine.TerrainPhysicsModule.dll.cs": "a73c2235ed47204da24a60719c92e8aecfda060cb82fe809146753861c961123",
+      "UnityEngine.TextCoreFontEngineModule.dll.cs": "f58ec31f46ef28a7c581cec91ab657ae86d3bfa37f378e85eb9c27f897326cf8",
+      "UnityEngine.TextCoreTextEngineModule.dll.cs": "b2873509db7688ead5dd222f9eb533e434000d6106f21985e53afc0d95dfa9cc",
+      "UnityEngine.TextRenderingModule.dll.cs": "fe94abd783b6472f11e0836c8ea03c2a12dd6e8f50b77eb6ed3c0db5a54acfec",
+      "UnityEngine.TilemapModule.dll.cs": "f82b0d932f464f3ebe97b6bd0b6bfc3cb91ba0029e6aa85f1a69bd571c1c5945",
+      "UnityEngine.UI.dll.cs": "6faf39ed26640bacd9ca174b4731f53fab941fd69d64c8a0695dd8714c1aac51",
+      "UnityEngine.UIElementsModule.dll.cs": "eb2087d7f33651804f09a81237ce4723f0a683edb309239bd4594d7c7a782b3d",
+      "UnityEngine.UIElementsNativeModule.dll.cs": "d9f1e54c0a0574d22a221657fa2527f6299563b4978af3e4b471b0b7640a9ecf",
+      "UnityEngine.UIModule.dll.cs": "aee45da76d1ea67866f0750b0d728d3d8a2f1880f27e13bcdd90d27d71b8ffe5",
+      "UnityEngine.UnityAnalyticsModule.dll.cs": "f7e98530762f1b30f4f18676c6be4cf2ed704d8e883c41e17d3d87e2dfc8cab7",
+      "UnityEngine.UnityWebRequestModule.dll.cs": "42b0611c8015aa0a42660f9a9b61a3cf64e72eb5f98871b6ee282be58ad2aa41",
+      "UnityEngine.VFXModule.dll.cs": "f6d76ad1472bd24260fe9373dd72b9b0d6e4c37670181c8fed6f735613715a44",
+      "UnityEngine.VideoModule.dll.cs": "1a4f22d302fd4a867f2f68382b0f5dc2269e5a7526ab9f305bd696e6830d19a7",
+      "UnityEngine.VRModule.dll.cs": "68d32cedfc0601cb442752fd63f3fdc352bc29d5accd28ed9e047bacfc2ad9ec",
+      "UnityEngine.WindModule.dll.cs": "5e75add590a9bc7fa7b005732c9502e5524ffc70485160a589ada58530eb7ce6",
+      "UnityEngine.XRModule.dll.cs": "c6f579d2d0dd2ac2ce0b454c1ed8daf2472b0dc7fe7dfbcdc35147ae4d206e70",
+      "UnityWebSocket.Runtime.dll.cs": "6c75c336c0f7a3e80651cfdd46bc2566a8f67ef7831bcfa58a6e776a94aac2bc",
+      "Unsafe.Beyond.dll.cs": "e8707c4752019cfcb0f1b02f124fc5984ffafcf62da0d99a96c5587a90d3338b",
+      "Unsafe.SceneGrid.dll.cs": "8fd4a2c9b846a9e31e85d2e2b91bf8521a2dc5574ba84db8cac34d17baa35d9b",
+      "Unsafe.Streaming.dll.cs": "91f23c00fb651b53cc1c9576f1305b14026d9b84fef933f45238b4e5788dff04",
+      "Unsafe.VFS.dll.cs": "bf8e33471b1556136cbb848b29a61e580307bb7b7fac419a51234456a9422041",
+      "USD.NET.dll.cs": "00d10b8e6d84986af1ece72eccb34b07d75193546de7b8e0bde288cc939fd0d0",
+      "USD.NET.Unity.dll.cs": "20fdf9b7a91942cf42bc0f10ef6c0acc03d273c69c8632c283614ce33ce73970",
+      "VFSEditor.dll.cs": "f6283bc0104802c3b8e6b25b68fb46416b75d43c5eeb33c6bf863fd0f29fd450",
+      "VolumetricLightBeam.dll.cs": "ffbd246c00902deb7b6d5dadd912a0f2d8146844cbb5bfe2a5666bf5e31cee6e",
+      "VWKDTree.dll.cs": "6107035b4203cc717bfaf2c8c988b452b907e185155dbdbf23eb40bfd0ef6d7c",
+      "XLua.Runtime.dll.cs": "6807da67a6b42a4bdc1711e86fbb415aa5891e1b2d057ae589e029ff33688f49",
+      "ZSimpleJSON.dll.cs": "7c9fdbfe681a16c80eb2dcb50ab10fb8ce1edb651a1a934f62012e45a96187ff",
+      "ZString.dll.cs": "91a27fc79114fc6a1303817b894483034d71e720f351ce65be9dc714ef08af2c"
+    },
+    "enums": [
+      {
+        "type": "Beyond.Blackboard.DataPair.ValueType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33554603,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Numeric",
+            "value": 0
+          },
+          {
+            "name": "String",
+            "value": 1
+          },
+          {
+            "name": "Any",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Shape",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33554980,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Circle",
+            "value": 0
+          },
+          {
+            "name": "Sector",
+            "value": 1
+          },
+          {
+            "name": "Rect",
+            "value": 2
+          },
+          {
+            "name": "SphereSurface",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.PlayerCommandConfig.CmdType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555693,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "StartMove",
+            "value": 0
+          },
+          {
+            "name": "Jump",
+            "value": 1
+          },
+          {
+            "name": "Attack",
+            "value": 2
+          },
+          {
+            "name": "Skill",
+            "value": 3
+          },
+          {
+            "name": "Dash",
+            "value": 4
+          },
+          {
+            "name": "MoveAxis",
+            "value": 5
+          },
+          {
+            "name": "Enum",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.ColliderShape",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555738,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Box",
+            "value": 0
+          },
+          {
+            "name": "Capsule",
+            "value": 1
+          },
+          {
+            "name": "Sphere",
+            "value": 2
+          },
+          {
+            "name": "Point",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.DamageDecorateType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555802,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": -1
+          },
+          {
+            "name": "PoiseBreak",
+            "value": 0
+          },
+          {
+            "name": "IgnoreGuardDodge",
+            "value": 1
+          },
+          {
+            "name": "PowerAttack",
+            "value": 2
+          },
+          {
+            "name": "FireAbnormalInitial",
+            "value": 3
+          },
+          {
+            "name": "PulseAbnormalInitial",
+            "value": 4
+          },
+          {
+            "name": "CrystAbnormalInitial",
+            "value": 5
+          },
+          {
+            "name": "IgniteByMud",
+            "value": 6
+          },
+          {
+            "name": "NormalAttack",
+            "value": 7
+          },
+          {
+            "name": "NormalSkill",
+            "value": 8
+          },
+          {
+            "name": "UltimateSkill",
+            "value": 9
+          },
+          {
+            "name": "PlungingAttack",
+            "value": 10
+          },
+          {
+            "name": "Bomb",
+            "value": 11
+          },
+          {
+            "name": "CanBreakWeakness",
+            "value": 12
+          },
+          {
+            "name": "ComboSkill",
+            "value": 13
+          },
+          {
+            "name": "Crush",
+            "value": 14
+          },
+          {
+            "name": "Airborne",
+            "value": 15
+          },
+          {
+            "name": "KnockDown",
+            "value": 16
+          },
+          {
+            "name": "DashAttack",
+            "value": 17
+          },
+          {
+            "name": "IgnoreDodgeImmune",
+            "value": 18
+          },
+          {
+            "name": "IgnoreSkillImmune",
+            "value": 19
+          },
+          {
+            "name": "NaturalAbnormalInitial",
+            "value": 20
+          },
+          {
+            "name": "NormalAttackLastCombo",
+            "value": 21
+          },
+          {
+            "name": "FireBurst",
+            "value": 22
+          },
+          {
+            "name": "CrystBurst",
+            "value": 23
+          },
+          {
+            "name": "PulseBurst",
+            "value": 24
+          },
+          {
+            "name": "NaturalBurst",
+            "value": 25
+          },
+          {
+            "name": "Burning",
+            "value": 26
+          },
+          {
+            "name": "Shatter",
+            "value": 27
+          },
+          {
+            "name": "Dot",
+            "value": 28
+          },
+          {
+            "name": "RemainArea",
+            "value": 29
+          },
+          {
+            "name": "Fracture",
+            "value": 30
+          },
+          {
+            "name": "TalentDamage",
+            "value": 31
+          },
+          {
+            "name": "Max",
+            "value": 32
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.ProjectileIgnoreImmuneLevel",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555811,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "IgnorePerfectDodgeListener",
+            "value": 5
+          },
+          {
+            "name": "IgnoreDashImmune",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.ProjectileTargetFilterMode",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555812,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "OnlyHit",
+            "value": 1
+          },
+          {
+            "name": "NeverHit",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.HealType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555815,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Normal",
+            "value": 0
+          },
+          {
+            "name": "Medical",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.GainAtbType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555816,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "NormalAttack",
+            "value": 1
+          },
+          {
+            "name": "PowerAttack",
+            "value": 2
+          },
+          {
+            "name": "Skill",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.GainAtbMethod",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555817,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Gain",
+            "value": 0
+          },
+          {
+            "name": "Return",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.DamageAttributeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555820,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Hp",
+            "value": 0
+          },
+          {
+            "name": "Poise",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.TargetSource",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555821,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Target",
+            "value": 0
+          },
+          {
+            "name": "Source",
+            "value": 1
+          },
+          {
+            "name": "Context",
+            "value": 2
+          },
+          {
+            "name": "InstantSearch",
+            "value": 3
+          },
+          {
+            "name": "Owner",
+            "value": 4
+          },
+          {
+            "name": "MainCharacter",
+            "value": 5
+          },
+          {
+            "name": "MainTarget",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.AttackRangeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555822,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Melee",
+            "value": 0
+          },
+          {
+            "name": "Ranged",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SkillType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555823,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "PassiveSkill",
+            "value": -1
+          },
+          {
+            "name": "Attack",
+            "value": 0
+          },
+          {
+            "name": "BreakingAttack",
+            "value": 1
+          },
+          {
+            "name": "NormalSkill",
+            "value": 2
+          },
+          {
+            "name": "AttachSkill",
+            "value": 3
+          },
+          {
+            "name": "Dodge",
+            "value": 5
+          },
+          {
+            "name": "ComboSkill",
+            "value": 6
+          },
+          {
+            "name": "UltimateSkill",
+            "value": 7
+          },
+          {
+            "name": "ExtraActiveSkill",
+            "value": 8
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SkillTypeMask",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555824,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "All",
+            "value": -1
+          },
+          {
+            "name": "Attack",
+            "value": 1
+          },
+          {
+            "name": "BreakingAttack",
+            "value": 2
+          },
+          {
+            "name": "NormalSkill",
+            "value": 4
+          },
+          {
+            "name": "AttachSkill",
+            "value": 8
+          },
+          {
+            "name": "Dodge",
+            "value": 32
+          },
+          {
+            "name": "ComboSkill",
+            "value": 64
+          },
+          {
+            "name": "UltimateSkill",
+            "value": 128
+          },
+          {
+            "name": "ExtraActiveSkill",
+            "value": 256
+          }
+        ],
+        "isFlags": true
+      },
+      {
+        "type": "Beyond.Gameplay.SkillSpecification",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555825,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "CharacterNormalAttack",
+            "value": 1
+          },
+          {
+            "name": "CharacterDodge",
+            "value": 2
+          },
+          {
+            "name": "CharacterNormalSkill",
+            "value": 3
+          },
+          {
+            "name": "CharacterComboSkill",
+            "value": 4
+          },
+          {
+            "name": "CharacterUltimateSkill",
+            "value": 5
+          },
+          {
+            "name": "CharacterPlungingAttack",
+            "value": 6
+          },
+          {
+            "name": "CharacterDashAttack",
+            "value": 7
+          },
+          {
+            "name": "CharacterPowerAttack",
+            "value": 8
+          },
+          {
+            "name": "EnemyMobSkill",
+            "value": 9
+          },
+          {
+            "name": "EnemyEliteSkill",
+            "value": 10
+          },
+          {
+            "name": "EnemyBossSkill",
+            "value": 11
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.CastType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555827,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Active",
+            "value": 0
+          },
+          {
+            "name": "Passive",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.PassiveSkillType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555828,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AddBuff",
+            "value": 0
+          },
+          {
+            "name": "ToggleBuff",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.CheckCastDistanceType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555829,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "NotCheck",
+            "value": 0
+          },
+          {
+            "name": "FromLeader",
+            "value": 1
+          },
+          {
+            "name": "FromCaster",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SelectStrategy",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555830,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "SelectObject",
+            "value": 0
+          },
+          {
+            "name": "SelectPosition",
+            "value": 1
+          },
+          {
+            "name": "NoTarget",
+            "value": 2
+          },
+          {
+            "name": "SelectDirection",
+            "value": 3
+          },
+          {
+            "name": "SelectSmartObject",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SmartTargetSelectStrategy",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555831,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "SelectComboSkillTarget",
+            "value": 0
+          },
+          {
+            "name": "SelectComboSkillTrigger",
+            "value": 1
+          },
+          {
+            "name": "SelectByBuff",
+            "value": 2
+          },
+          {
+            "name": "SelectByTag",
+            "value": 3
+          },
+          {
+            "name": "SelectByBuffStackNum",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.CastRotateType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555832,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "RotateToTarget",
+            "value": 1
+          },
+          {
+            "name": "RotateToCameraForward",
+            "value": 2
+          },
+          {
+            "name": "NoRotate",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.PredefinedQuery",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555834,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "InPull",
+            "value": 1
+          },
+          {
+            "name": "CantSwitchToCenter",
+            "value": 2
+          },
+          {
+            "name": "CantMainCharSwitched",
+            "value": 3
+          },
+          {
+            "name": "CantCastAnySkill",
+            "value": 4
+          },
+          {
+            "name": "InSilence",
+            "value": 5
+          },
+          {
+            "name": "InDisarmed",
+            "value": 6
+          },
+          {
+            "name": "InImmobilized",
+            "value": 7
+          },
+          {
+            "name": "InUnmovable",
+            "value": 8
+          },
+          {
+            "name": "CantJump",
+            "value": 9
+          },
+          {
+            "name": "IsUnMarkable",
+            "value": 10
+          },
+          {
+            "name": "IsDamageImmuneByLevel",
+            "value": 11
+          },
+          {
+            "name": "InForbiddenUsingItem",
+            "value": 12
+          },
+          {
+            "name": "InDisableFaceToAttacker",
+            "value": 13
+          },
+          {
+            "name": "InDisableDash",
+            "value": 14
+          },
+          {
+            "name": "CanInterruptInteraction",
+            "value": 15
+          },
+          {
+            "name": "CantLock",
+            "value": 16
+          },
+          {
+            "name": "IsInvisible",
+            "value": 17
+          },
+          {
+            "name": "CantPlayEnemyHurtAnim",
+            "value": 18
+          },
+          {
+            "name": "LimitEffectTimeScaleOne",
+            "value": 19
+          },
+          {
+            "name": "DisableInteract",
+            "value": 20
+          },
+          {
+            "name": "DisablePickUp",
+            "value": 21
+          },
+          {
+            "name": "DisableCollide",
+            "value": 22
+          },
+          {
+            "name": "DisableScan",
+            "value": 23
+          },
+          {
+            "name": "ForceIdle",
+            "value": 24
+          },
+          {
+            "name": "IsHoldingBomb",
+            "value": 25
+          },
+          {
+            "name": "DisableNormalSkill",
+            "value": 26
+          },
+          {
+            "name": "DisableBoxGame",
+            "value": 27
+          },
+          {
+            "name": "InterruptBoxGame",
+            "value": 28
+          },
+          {
+            "name": "NpcDisableInteract",
+            "value": 29
+          },
+          {
+            "name": "DisableAIBark",
+            "value": 30
+          },
+          {
+            "name": "DisableTeleport",
+            "value": 31
+          },
+          {
+            "name": "MuteEntityAudio",
+            "value": 32
+          },
+          {
+            "name": "DisableUseCampfire",
+            "value": 33
+          },
+          {
+            "name": "DisableBomb",
+            "value": 34
+          },
+          {
+            "name": "DisableFluidInteract",
+            "value": 35
+          },
+          {
+            "name": "ForcePlayRadio",
+            "value": 36
+          },
+          {
+            "name": "DisableWaterDrone",
+            "value": 37
+          },
+          {
+            "name": "DisableRootMotionRotate",
+            "value": 38
+          },
+          {
+            "name": "DisableConnectHydrant",
+            "value": 39
+          },
+          {
+            "name": "DisableCastComboSkill",
+            "value": 40
+          },
+          {
+            "name": "ForceNotInWater",
+            "value": 41
+          },
+          {
+            "name": "AchievementBeControlled",
+            "value": 42
+          },
+          {
+            "name": "InUnmovableCanNotDash",
+            "value": 43
+          },
+          {
+            "name": "IsSpPerformForbidden",
+            "value": 44
+          },
+          {
+            "name": "DisableInteractiveHintPerform",
+            "value": 45
+          },
+          {
+            "name": "DisableXiraniteNexusVisible",
+            "value": 46
+          },
+          {
+            "name": "DisableChairInteract",
+            "value": 47
+          },
+          {
+            "name": "DisableXiraniteNexusVisibleWithAnim",
+            "value": 48
+          },
+          {
+            "name": "DisableBlightMiasma",
+            "value": 49
+          },
+          {
+            "name": "DisableKickable",
+            "value": 50
+          },
+          {
+            "name": "BlockRepatriating",
+            "value": 51
+          },
+          {
+            "name": "BlightMiasmaUndeadable",
+            "value": 52
+          },
+          {
+            "name": "ForceStationaryPerform",
+            "value": 60
+          },
+          {
+            "name": "PauseGameTimeInPerformance",
+            "value": 70
+          },
+          {
+            "name": "IsUnMarkableAnti",
+            "value": 1000
+          },
+          {
+            "name": "IsUnMarkableAlly",
+            "value": 1001
+          },
+          {
+            "name": "InterruptHenshin",
+            "value": 1200
+          },
+          {
+            "name": "DontInterruptSkillBySwitchIn",
+            "value": 1400
+          },
+          {
+            "name": "CantPushBySquad",
+            "value": 1401
+          },
+          {
+            "name": "DisablePivot",
+            "value": 1402
+          },
+          {
+            "name": "DisableTeammateAIInteraction",
+            "value": 1300
+          },
+          {
+            "name": "CanAIBarkPlayerIdle",
+            "value": 1301
+          },
+          {
+            "name": "ForceAIStopFollow",
+            "value": 1302
+          },
+          {
+            "name": "CanPlayerBeDetected",
+            "value": 1303
+          },
+          {
+            "name": "InMediumOrHigherWater",
+            "value": 1500
+          },
+          {
+            "name": "NotInTyphoeaArcheryLevel",
+            "value": 1501
+          },
+          {
+            "name": "InTyphoeaArcheryLevel",
+            "value": 1502
+          },
+          {
+            "name": "DisableUltimateSkill",
+            "value": 1503
+          },
+          {
+            "name": "IgnoreEnemyCollision",
+            "value": 1504
+          },
+          {
+            "name": "DisableTyphoeaArchery",
+            "value": 1505
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.PhysicalInflictionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555835,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Airborne",
+            "value": 0
+          },
+          {
+            "name": "KnockDown",
+            "value": 1
+          },
+          {
+            "name": "Fracture",
+            "value": 2
+          },
+          {
+            "name": "Crush",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SpellAbnormalType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555836,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": -1
+          },
+          {
+            "name": "Fire",
+            "value": 0
+          },
+          {
+            "name": "Pulse",
+            "value": 1
+          },
+          {
+            "name": "Cryst",
+            "value": 2
+          },
+          {
+            "name": "Natural",
+            "value": 3
+          },
+          {
+            "name": "Burst",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SpellInflictionIgnoreImmuneLevel",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555837,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "IgnoreWeakImmune",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.DirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555838,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "SourceForward",
+            "value": 0
+          },
+          {
+            "name": "TargetForward",
+            "value": 1
+          },
+          {
+            "name": "SourceToTarget",
+            "value": 2
+          },
+          {
+            "name": "TargetToSource",
+            "value": 3
+          },
+          {
+            "name": "CameraForward",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.ActionTargetType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555839,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "ActionSource",
+            "value": 0
+          },
+          {
+            "name": "ActionOwner",
+            "value": 1
+          },
+          {
+            "name": "InputTarget",
+            "value": 2
+          },
+          {
+            "name": "CurrentTarget",
+            "value": 3
+          },
+          {
+            "name": "ContextTarget",
+            "value": 4
+          },
+          {
+            "name": "MainCharacter",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.MountPoint",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555841,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "HeadBar",
+            "value": 1
+          },
+          {
+            "name": "FootBar",
+            "value": 2
+          },
+          {
+            "name": "LockPoint",
+            "value": 3
+          },
+          {
+            "name": "HeadStatus",
+            "value": 4
+          },
+          {
+            "name": "DmgTxtSpawnPoint",
+            "value": 5
+          },
+          {
+            "name": "AirborneEffect",
+            "value": 6
+          },
+          {
+            "name": "ModelStart",
+            "value": 50
+          },
+          {
+            "name": "Head",
+            "value": 51
+          },
+          {
+            "name": "VBHit",
+            "value": 52
+          },
+          {
+            "name": "Muzzle",
+            "value": 53
+          },
+          {
+            "name": "Foot",
+            "value": 54
+          },
+          {
+            "name": "Hip",
+            "value": 55
+          },
+          {
+            "name": "HipL",
+            "value": 56
+          },
+          {
+            "name": "HipR",
+            "value": 57
+          },
+          {
+            "name": "Spine1",
+            "value": 58
+          },
+          {
+            "name": "Spine2",
+            "value": 59
+          },
+          {
+            "name": "Spine3",
+            "value": 60
+          },
+          {
+            "name": "WepM",
+            "value": 61
+          },
+          {
+            "name": "WepL",
+            "value": 62
+          },
+          {
+            "name": "WepR",
+            "value": 63
+          },
+          {
+            "name": "KneeL",
+            "value": 64
+          },
+          {
+            "name": "KneeR",
+            "value": 65
+          },
+          {
+            "name": "AnkleL",
+            "value": 66
+          },
+          {
+            "name": "AnkleR",
+            "value": 67
+          },
+          {
+            "name": "ToesL",
+            "value": 68
+          },
+          {
+            "name": "ToesR",
+            "value": 69
+          },
+          {
+            "name": "Chest",
+            "value": 70
+          },
+          {
+            "name": "Neck",
+            "value": 71
+          },
+          {
+            "name": "ScapulaL",
+            "value": 72
+          },
+          {
+            "name": "ScapulaR",
+            "value": 73
+          },
+          {
+            "name": "ShoulderL",
+            "value": 74
+          },
+          {
+            "name": "ShoulderR",
+            "value": 75
+          },
+          {
+            "name": "WristL",
+            "value": 76
+          },
+          {
+            "name": "WristR",
+            "value": 77
+          },
+          {
+            "name": "FingerL",
+            "value": 78
+          },
+          {
+            "name": "FingerR",
+            "value": 79
+          },
+          {
+            "name": "LookAtPoint",
+            "value": 80
+          },
+          {
+            "name": "ModelRoot",
+            "value": 81
+          },
+          {
+            "name": "RootM",
+            "value": 82
+          },
+          {
+            "name": "ThrowPoint",
+            "value": 83
+          },
+          {
+            "name": "IKWepL",
+            "value": 84
+          },
+          {
+            "name": "IKWepR",
+            "value": 85
+          },
+          {
+            "name": "NarrativeFx",
+            "value": 86
+          },
+          {
+            "name": "GoldCoinPoint",
+            "value": 87
+          },
+          {
+            "name": "Custom1",
+            "value": 151
+          },
+          {
+            "name": "Custom2",
+            "value": 152
+          },
+          {
+            "name": "Custom3",
+            "value": 153
+          },
+          {
+            "name": "Custom4",
+            "value": 154
+          },
+          {
+            "name": "Custom5",
+            "value": 155
+          },
+          {
+            "name": "Custom6",
+            "value": 156
+          },
+          {
+            "name": "Custom7",
+            "value": 157
+          },
+          {
+            "name": "Custom8",
+            "value": 158
+          },
+          {
+            "name": "Custom9",
+            "value": 159
+          },
+          {
+            "name": "Custom10",
+            "value": 160
+          },
+          {
+            "name": "Custom11",
+            "value": 161
+          },
+          {
+            "name": "Custom12",
+            "value": 162
+          },
+          {
+            "name": "Custom13",
+            "value": 163
+          },
+          {
+            "name": "Custom14",
+            "value": 164
+          },
+          {
+            "name": "Custom15",
+            "value": 165
+          },
+          {
+            "name": "Custom16",
+            "value": 166
+          },
+          {
+            "name": "Custom17",
+            "value": 167
+          },
+          {
+            "name": "Custom18",
+            "value": 168
+          },
+          {
+            "name": "Custom19",
+            "value": 169
+          },
+          {
+            "name": "Custom20",
+            "value": 170
+          },
+          {
+            "name": "Custom21",
+            "value": 171
+          },
+          {
+            "name": "Custom22",
+            "value": 172
+          },
+          {
+            "name": "Custom23",
+            "value": 173
+          },
+          {
+            "name": "Custom24",
+            "value": 174
+          },
+          {
+            "name": "Custom25",
+            "value": 175
+          },
+          {
+            "name": "Custom26",
+            "value": 176
+          },
+          {
+            "name": "Custom27",
+            "value": 177
+          },
+          {
+            "name": "Custom28",
+            "value": 178
+          },
+          {
+            "name": "Custom29",
+            "value": 179
+          },
+          {
+            "name": "Custom30",
+            "value": 180
+          },
+          {
+            "name": "Custom31",
+            "value": 181
+          },
+          {
+            "name": "Custom32",
+            "value": 182
+          },
+          {
+            "name": "Custom33",
+            "value": 183
+          },
+          {
+            "name": "Custom34",
+            "value": 184
+          },
+          {
+            "name": "Custom35",
+            "value": 185
+          },
+          {
+            "name": "Custom36",
+            "value": 186
+          },
+          {
+            "name": "Custom37",
+            "value": 187
+          },
+          {
+            "name": "Custom38",
+            "value": 188
+          },
+          {
+            "name": "Custom39",
+            "value": 189
+          },
+          {
+            "name": "Custom40",
+            "value": 190
+          },
+          {
+            "name": "Custom41",
+            "value": 191
+          },
+          {
+            "name": "Custom42",
+            "value": 192
+          },
+          {
+            "name": "Custom43",
+            "value": 193
+          },
+          {
+            "name": "Custom44",
+            "value": 194
+          },
+          {
+            "name": "Custom45",
+            "value": 195
+          },
+          {
+            "name": "Custom46",
+            "value": 196
+          },
+          {
+            "name": "Custom47",
+            "value": 197
+          },
+          {
+            "name": "Custom48",
+            "value": 198
+          },
+          {
+            "name": "Custom49",
+            "value": 199
+          },
+          {
+            "name": "Custom50",
+            "value": 200
+          },
+          {
+            "name": "HeadLabel",
+            "value": 1000
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.WeaponMountPoint",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555842,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Root",
+            "value": 0
+          },
+          {
+            "name": "Muzzle",
+            "value": 1
+          },
+          {
+            "name": "Custom0",
+            "value": 100
+          },
+          {
+            "name": "Custom1",
+            "value": 101
+          },
+          {
+            "name": "Custom2",
+            "value": 102
+          },
+          {
+            "name": "Custom3",
+            "value": 103
+          },
+          {
+            "name": "Custom4",
+            "value": 104
+          },
+          {
+            "name": "Custom5",
+            "value": 105
+          },
+          {
+            "name": "Custom6",
+            "value": 106
+          },
+          {
+            "name": "Custom7",
+            "value": 107
+          },
+          {
+            "name": "Custom8",
+            "value": 108
+          },
+          {
+            "name": "Custom9",
+            "value": 109
+          },
+          {
+            "name": "Custom10",
+            "value": 110
+          },
+          {
+            "name": "Custom11",
+            "value": 111
+          },
+          {
+            "name": "Custom12",
+            "value": 112
+          },
+          {
+            "name": "Custom13",
+            "value": 113
+          },
+          {
+            "name": "Custom14",
+            "value": 114
+          },
+          {
+            "name": "Custom15",
+            "value": 115
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.ModelPartEnum",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33555921,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "MeshGroup1",
+            "value": 1
+          },
+          {
+            "name": "MeshGroup2",
+            "value": 2
+          },
+          {
+            "name": "MeshGroup3",
+            "value": 3
+          },
+          {
+            "name": "MeshGroup4",
+            "value": 4
+          },
+          {
+            "name": "MeshGroup5",
+            "value": 5
+          },
+          {
+            "name": "MeshGroup6",
+            "value": 6
+          },
+          {
+            "name": "MeshGroup7",
+            "value": 7
+          },
+          {
+            "name": "MeshGroup8",
+            "value": 8
+          },
+          {
+            "name": "MeshGroup9",
+            "value": 9
+          },
+          {
+            "name": "MeshGroup10",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.BoneAttachAction.RotateAnchor",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33556034,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Owner",
+            "value": 1
+          },
+          {
+            "name": "Target",
+            "value": 2
+          },
+          {
+            "name": "AnchorSlot",
+            "value": 3
+          },
+          {
+            "name": "SubSlot",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.SkillHintShape",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33556040,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Point",
+            "value": 0
+          },
+          {
+            "name": "Rectangle",
+            "value": 1
+          },
+          {
+            "name": "Circle",
+            "value": 2
+          },
+          {
+            "name": "Sector",
+            "value": 3
+          },
+          {
+            "name": "Arrow",
+            "value": 4
+          },
+          {
+            "name": "VirtualArrow",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.ControlledStateDeadOption",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33556596,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AllValid",
+            "value": 0
+          },
+          {
+            "name": "OnlyAlive",
+            "value": 1
+          },
+          {
+            "name": "OnlyDead",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.DynamicBattleShapeComponent.DynamicBattleShapeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33556648,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Capsule",
+            "value": 0
+          },
+          {
+            "name": "SimplifiedBox",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.GeneralAbilitySystem.TempAbilityActiveState",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33557665,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "NotAvailableUse",
+            "value": 0
+          },
+          {
+            "name": "AvailableUse",
+            "value": 1
+          },
+          {
+            "name": "HighlyRecommendedUse",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.BattleEffectType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558039,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Normal",
+            "value": 0
+          },
+          {
+            "name": "Alert",
+            "value": 1
+          },
+          {
+            "name": "BottomScreen",
+            "value": 2
+          },
+          {
+            "name": "WeaponVfx",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.EffectMoveType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558040,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Stationary",
+            "value": 0
+          },
+          {
+            "name": "FollowTarget",
+            "value": 1
+          },
+          {
+            "name": "FollowCamera",
+            "value": 2
+          },
+          {
+            "name": "FollowSlot",
+            "value": 3
+          },
+          {
+            "name": "FollowSource",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.CameraScreenSizeScaleMode",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558041,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "VerticalUniform",
+            "value": 1
+          },
+          {
+            "name": "SeparateXY",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.EffectRotType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558042,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Stationary",
+            "value": 0
+          },
+          {
+            "name": "FollowTarget",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.EffectDirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558043,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": -1
+          },
+          {
+            "name": "Target",
+            "value": 0
+          },
+          {
+            "name": "Source",
+            "value": 1
+          },
+          {
+            "name": "SourceToTarget",
+            "value": 2
+          },
+          {
+            "name": "TargetToSource",
+            "value": 3
+          },
+          {
+            "name": "CurrentPosToTarget",
+            "value": 4
+          },
+          {
+            "name": "CurrentPosToInputTarget",
+            "value": 5
+          },
+          {
+            "name": "CurPosToCamera",
+            "value": 6
+          },
+          {
+            "name": "CameraForward",
+            "value": 7
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.PositionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558044,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Target",
+            "value": 0
+          },
+          {
+            "name": "Source",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.AlertType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558045,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Decal",
+            "value": 0
+          },
+          {
+            "name": "Particle",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.OffsetDir",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558046,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Self",
+            "value": 0
+          },
+          {
+            "name": "Source",
+            "value": 1
+          },
+          {
+            "name": "Target",
+            "value": 2
+          },
+          {
+            "name": "SelfToSource",
+            "value": 3
+          },
+          {
+            "name": "SelfToTarget",
+            "value": 4
+          },
+          {
+            "name": "SourceToTarget",
+            "value": 5
+          },
+          {
+            "name": "Camera",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.EffectEntityType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558047,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Source",
+            "value": 0
+          },
+          {
+            "name": "Target",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.EffectType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33558067,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Unknown",
+            "value": 0
+          },
+          {
+            "name": "NormalEffect",
+            "value": 1
+          },
+          {
+            "name": "BattleNormal",
+            "value": 2
+          },
+          {
+            "name": "BattleAlert",
+            "value": 3
+          },
+          {
+            "name": "BattleBottomScreenEffect",
+            "value": 4
+          },
+          {
+            "name": "Scene",
+            "value": 5
+          },
+          {
+            "name": "BaseFac",
+            "value": 6
+          },
+          {
+            "name": "Factory",
+            "value": 7
+          },
+          {
+            "name": "Unmanaged",
+            "value": 8
+          },
+          {
+            "name": "Capture",
+            "value": 9
+          },
+          {
+            "name": "EffectAttachToEntity",
+            "value": 10
+          },
+          {
+            "name": "StainEffect",
+            "value": 11
+          },
+          {
+            "name": "Max",
+            "value": 12
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.AI.SkillMoveTargetType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33561823,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "EnemyCenter",
+            "value": 0
+          },
+          {
+            "name": "SelectTarget",
+            "value": 1
+          },
+          {
+            "name": "TargetInOutRange",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.AI.CharacterCommandSystem.CommandType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33562482,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "MoveToSafeArea",
+            "value": 0
+          },
+          {
+            "name": "DirectionMove",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.AI.CharacterCommandSystem.DirectionMoveType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33562483,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AwayFromTarget",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.View.CameraControlOneTimeRotateConfig.InputConflictStrategy",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33562907,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Additive",
+            "value": 0
+          },
+          {
+            "name": "InputBreakRotation",
+            "value": 1
+          },
+          {
+            "name": "IgnoreInput",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.View.CameraControlConditionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33562929,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "InFight",
+            "value": 1
+          },
+          {
+            "name": "InFightAndHasTarget",
+            "value": 2
+          },
+          {
+            "name": "LockEnemy",
+            "value": 3
+          },
+          {
+            "name": "InSprint",
+            "value": 4
+          },
+          {
+            "name": "InAir",
+            "value": 5
+          },
+          {
+            "name": "Moving",
+            "value": 6
+          },
+          {
+            "name": "AttackThisFrame",
+            "value": 7
+          },
+          {
+            "name": "RecenterPressed",
+            "value": 8
+          },
+          {
+            "name": "CameraInput",
+            "value": 9
+          },
+          {
+            "name": "BeHitThisFrame",
+            "value": 10
+          },
+          {
+            "name": "EnableCameraFar",
+            "value": 11
+          },
+          {
+            "name": "Debug",
+            "value": 999
+          },
+          {
+            "name": "True",
+            "value": 1000
+          },
+          {
+            "name": "False",
+            "value": 1001
+          },
+          {
+            "name": "Bool_End",
+            "value": 2000
+          },
+          {
+            "name": "Duration",
+            "value": 2001
+          },
+          {
+            "name": "MainTargetDistance",
+            "value": 2002
+          },
+          {
+            "name": "BreakingAttackAngle",
+            "value": 2003
+          },
+          {
+            "name": "Float_End",
+            "value": 3000
+          },
+          {
+            "name": "Has_Buff",
+            "value": 3001
+          },
+          {
+            "name": "Not_Has_Buff",
+            "value": 3002
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.View.CameraControlConditionComparator",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33562930,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Equal",
+            "value": 0
+          },
+          {
+            "name": "NotEqual",
+            "value": 1
+          },
+          {
+            "name": "Greater",
+            "value": 2
+          },
+          {
+            "name": "GreaterEqual",
+            "value": 3
+          },
+          {
+            "name": "Less",
+            "value": 4
+          },
+          {
+            "name": "LessEqual",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.View.ParticleEffectHelper.ModifyType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563056,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "StartLifeTime",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.View.Animation.AimOffsetType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563273,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "HeadToTarget",
+            "value": 1
+          },
+          {
+            "name": "StrafeMovement",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Skill.InterruptReason",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563483,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "EnterFreeState",
+            "value": 1
+          },
+          {
+            "name": "AIManual",
+            "value": 2
+          },
+          {
+            "name": "Mud",
+            "value": 3
+          },
+          {
+            "name": "DetachSkill",
+            "value": 4
+          },
+          {
+            "name": "InterruptAction",
+            "value": 5
+          },
+          {
+            "name": "Dash",
+            "value": 6
+          },
+          {
+            "name": "CastNextSkill",
+            "value": 7
+          },
+          {
+            "name": "LevelScript",
+            "value": 8
+          },
+          {
+            "name": "Narrative",
+            "value": 9
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ChargePriority",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563503,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Normal",
+            "value": 0
+          },
+          {
+            "name": "High",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AbilitySystem.ComboController.BattleCommandType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563526,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Attack",
+            "value": 0
+          },
+          {
+            "name": "Dash",
+            "value": 1
+          },
+          {
+            "name": "Jump",
+            "value": 2
+          },
+          {
+            "name": "NormalSkill",
+            "value": 3
+          },
+          {
+            "name": "ComboSkill",
+            "value": 4
+          },
+          {
+            "name": "UltimateSkill",
+            "value": 5
+          },
+          {
+            "name": "Count",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AbilitySystem.Event",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563535,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "OnOwnerHpZero",
+            "value": 1
+          },
+          {
+            "name": "OnOwnerSwitchToCenter",
+            "value": 2
+          },
+          {
+            "name": "OnOwnerSwitchToGuard",
+            "value": 3
+          },
+          {
+            "name": "OnAttributeChanged",
+            "value": 4
+          },
+          {
+            "name": "OnCustomAbilityEvent",
+            "value": 5
+          },
+          {
+            "name": "OnEnterFight",
+            "value": 6
+          },
+          {
+            "name": "OnExitFight",
+            "value": 7
+          },
+          {
+            "name": "OnOwnerDead",
+            "value": 8
+          },
+          {
+            "name": "OnAddedBuff",
+            "value": 9
+          },
+          {
+            "name": "OnBeforeApplyModifier",
+            "value": 10
+          },
+          {
+            "name": "OnAfterApplyModifier",
+            "value": 11
+          },
+          {
+            "name": "OnTakeDamage",
+            "value": 12
+          },
+          {
+            "name": "OnOutputDamage",
+            "value": 13
+          },
+          {
+            "name": "OnBeforeTakeAirborne",
+            "value": 14
+          },
+          {
+            "name": "OnAfterTakeAirborne",
+            "value": 15
+          },
+          {
+            "name": "OnBeforeTakeKnockDown",
+            "value": 17
+          },
+          {
+            "name": "OnAfterTakeKnockDown",
+            "value": 18
+          },
+          {
+            "name": "OnPoiseZero",
+            "value": 21
+          },
+          {
+            "name": "OnPoiseRecover",
+            "value": 22
+          },
+          {
+            "name": "OnCollideAgainstWall",
+            "value": 23
+          },
+          {
+            "name": "OnBeforeApplyPull",
+            "value": 24
+          },
+          {
+            "name": "OnAfterApplyPull",
+            "value": 25
+          },
+          {
+            "name": "OnApplyKnockDownInAirborne",
+            "value": 26
+          },
+          {
+            "name": "OnTriggerUndeadFeature",
+            "value": 27
+          },
+          {
+            "name": "BeforeApplyDamageModifier",
+            "value": 28
+          },
+          {
+            "name": "BeforeApplyHealModifier",
+            "value": 29
+          },
+          {
+            "name": "OnBeforeCastSkill",
+            "value": 30
+          },
+          {
+            "name": "OnSkillEnd",
+            "value": 31
+          },
+          {
+            "name": "OnSkillInterrupted",
+            "value": 32
+          },
+          {
+            "name": "OnInterruptActionSuccess",
+            "value": 33
+          },
+          {
+            "name": "OnBeforeOutputKnockDown",
+            "value": 40
+          },
+          {
+            "name": "OnAfterOutputKnockDown",
+            "value": 41
+          },
+          {
+            "name": "OnBeforeApplyPoiseModifier",
+            "value": 42
+          },
+          {
+            "name": "OnTakeCriticalDamage",
+            "value": 43
+          },
+          {
+            "name": "OnOutputCriticalDamage",
+            "value": 44
+          },
+          {
+            "name": "OnReceiveHeal",
+            "value": 45
+          },
+          {
+            "name": "OnBeforeCharacterTakeBlowOff",
+            "value": 46
+          },
+          {
+            "name": "OnAfterCharacterTakeBlowOff",
+            "value": 47
+          },
+          {
+            "name": "OnBeforeTakeBlowOff",
+            "value": 48
+          },
+          {
+            "name": "OnAfterTakeBlowOff",
+            "value": 49
+          },
+          {
+            "name": "OnOutputHeal",
+            "value": 50
+          },
+          {
+            "name": "OnBeforeApplyPhysics",
+            "value": 51
+          },
+          {
+            "name": "OnAfterApplyPhysics",
+            "value": 52
+          },
+          {
+            "name": "OnBeforeOutputAirborne",
+            "value": 55
+          },
+          {
+            "name": "OnAfterOutputAirborne",
+            "value": 56
+          },
+          {
+            "name": "OnBeforeOutputBlowOff",
+            "value": 57
+          },
+          {
+            "name": "OnAfterOutputBlowOff",
+            "value": 58
+          },
+          {
+            "name": "OnBeforeTakePhysicalInfliction",
+            "value": 59
+          },
+          {
+            "name": "OnAfterTakePhysicalInfliction",
+            "value": 60
+          },
+          {
+            "name": "OnAtbMax",
+            "value": 61
+          },
+          {
+            "name": "OnSquadHpChange",
+            "value": 62
+          },
+          {
+            "name": "OnSquadUspChange",
+            "value": 63
+          },
+          {
+            "name": "OnSquadTakeDamage",
+            "value": 64
+          },
+          {
+            "name": "OnSquadFinishedBuff",
+            "value": 65
+          },
+          {
+            "name": "OnSquadMemberDie",
+            "value": 67
+          },
+          {
+            "name": "OnSquadTakeSpellAbnormal",
+            "value": 68
+          },
+          {
+            "name": "OnPartsEnable",
+            "value": 80
+          },
+          {
+            "name": "OnPartsDisable",
+            "value": 81
+          },
+          {
+            "name": "OnPartsBeHit",
+            "value": 82
+          },
+          {
+            "name": "OnPartsPoiseBreak",
+            "value": 83
+          },
+          {
+            "name": "OnBeforeTakeDamage",
+            "value": 101
+          },
+          {
+            "name": "OnOutputBuff",
+            "value": 102
+          },
+          {
+            "name": "OnBeforeOutputPoiseDamage",
+            "value": 103
+          },
+          {
+            "name": "OnBeforeDamageAction",
+            "value": 104
+          },
+          {
+            "name": "OnEnemyBeforeTakeSpellInfliction",
+            "value": 121
+          },
+          {
+            "name": "OnCharBeforeTakeSpellInfliction",
+            "value": 122
+          },
+          {
+            "name": "OnCharAfterTakeSpellInfliction",
+            "value": 123
+          },
+          {
+            "name": "OnCharBeforeTakeSpellAbnormal",
+            "value": 124
+          },
+          {
+            "name": "OnCharAfterTakeSpellAbnormal",
+            "value": 125
+          },
+          {
+            "name": "OnCharBeforeOutputSpellInfliction",
+            "value": 126
+          },
+          {
+            "name": "OnCharBeforeOutputSpellBurst",
+            "value": 127
+          },
+          {
+            "name": "OnEnemyBeforeTakeSpellBurst",
+            "value": 128
+          },
+          {
+            "name": "OnCharAfterOutputSpellInfliction",
+            "value": 129
+          },
+          {
+            "name": "OnEnemyAfterTakeSpellInfliction",
+            "value": 130
+          },
+          {
+            "name": "OnAfterOutputWeaknessTriggered",
+            "value": 141
+          },
+          {
+            "name": "OnObtainAtb",
+            "value": 142
+          },
+          {
+            "name": "OnAfterSkillApplyCost",
+            "value": 143
+          },
+          {
+            "name": "OnForceTriggerWeakness",
+            "value": 144
+          },
+          {
+            "name": "OnPerfectDodge",
+            "value": 145
+          },
+          {
+            "name": "OnBeforeAddedShield",
+            "value": 146
+          },
+          {
+            "name": "OnAfterAddedShield",
+            "value": 147
+          },
+          {
+            "name": "OnShieldBlockDamage",
+            "value": 148
+          },
+          {
+            "name": "OnTeleportationPointRest",
+            "value": 149
+          },
+          {
+            "name": "OnTrulyExitFight",
+            "value": 150
+          },
+          {
+            "name": "OnSetWeakness",
+            "value": 151
+          },
+          {
+            "name": "OnCharLanded",
+            "value": 152
+          },
+          {
+            "name": "OnEnemyEnterFight",
+            "value": 153
+          },
+          {
+            "name": "OnForceInFight",
+            "value": 154
+          },
+          {
+            "name": "OnCharDeckAttrChanged",
+            "value": 155
+          },
+          {
+            "name": "OnCostAtb",
+            "value": 156
+          },
+          {
+            "name": "OnBeforeHitByProjectile",
+            "value": 161
+          },
+          {
+            "name": "OnAfterHitByProjectile",
+            "value": 162
+          },
+          {
+            "name": "OnProjectileLaunched",
+            "value": 163
+          },
+          {
+            "name": "OnProjectileFinished",
+            "value": 164
+          },
+          {
+            "name": "OnBeforeProjectileHitEntity",
+            "value": 165
+          },
+          {
+            "name": "OnAfterProjectileHitEntity",
+            "value": 166
+          },
+          {
+            "name": "OnTriggerDodge",
+            "value": 181
+          },
+          {
+            "name": "OnCollectAddedBuffBbValue",
+            "value": 201
+          },
+          {
+            "name": "OnCollectOutputBuffBbValue",
+            "value": 202
+          },
+          {
+            "name": "OnFinishedBuff",
+            "value": 203
+          },
+          {
+            "name": "OnBuffEndsEarly",
+            "value": 204
+          },
+          {
+            "name": "OnBeforeAddedBuff",
+            "value": 205
+          },
+          {
+            "name": "OnBeforeOutputBuff",
+            "value": 206
+          },
+          {
+            "name": "OnConsumeBuff",
+            "value": 208
+          },
+          {
+            "name": "OnBuffEnhanceChanged",
+            "value": 209
+          },
+          {
+            "name": "OnBuffAbsorbed",
+            "value": 210
+          },
+          {
+            "name": "OnAbsorbBuff",
+            "value": 211
+          },
+          {
+            "name": "OnBeforeKillEntity",
+            "value": 221
+          },
+          {
+            "name": "OnAfterKillEntity",
+            "value": 222
+          },
+          {
+            "name": "OnPoiseKnotBreak",
+            "value": 241
+          },
+          {
+            "name": "OnBeforeTakePoiseDamage",
+            "value": 242
+          },
+          {
+            "name": "OnTakePoiseDamage",
+            "value": 243
+          },
+          {
+            "name": "OnAbilityEntitySpawned",
+            "value": 261
+          },
+          {
+            "name": "OnAbilityEntityFinished",
+            "value": 262
+          },
+          {
+            "name": "OnBeforeCalculateDamage",
+            "value": 301
+          },
+          {
+            "name": "OnBeforeOutputDamage",
+            "value": 302
+          },
+          {
+            "name": "OnHpChange",
+            "value": 303
+          },
+          {
+            "name": "OnOutputHitEnvDamage",
+            "value": 321
+          },
+          {
+            "name": "OnBeforeOutputHitEnvDamage",
+            "value": 322
+          },
+          {
+            "name": "OnBeforeOutputPhysicalInfliction",
+            "value": 401
+          },
+          {
+            "name": "OnAfterOutputPhysicalInfliction",
+            "value": 402
+          },
+          {
+            "name": "OnRemoveAllPendingComboSkill",
+            "value": 1401
+          },
+          {
+            "name": "OnSquadRepatriate",
+            "value": 1402
+          },
+          {
+            "name": "OnBeforePartDisable",
+            "value": 1403
+          },
+          {
+            "name": "OnConvertWeaknessToInterruptible",
+            "value": 1501
+          },
+          {
+            "name": "Enum",
+            "value": 1502
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AbilitySystem.Modifier.DamageVisualImportance",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563584,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Level0",
+            "value": 0
+          },
+          {
+            "name": "Level1",
+            "value": 1
+          },
+          {
+            "name": "Hidden",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AbilityAction.ReturnTrueMethod",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563623,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Always",
+            "value": 0
+          },
+          {
+            "name": "BothSuccessAndInterrupted",
+            "value": 1
+          },
+          {
+            "name": "OnlySuccess",
+            "value": 2
+          },
+          {
+            "name": "OnlyInterrupted",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AbilityAction.AbilityActionData.Priority",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563629,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "High",
+            "value": 100
+          },
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "Low",
+            "value": -100
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AnimatedCameraAction.ParamInheritType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563657,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "PreviousLevelCamera",
+            "value": 0
+          },
+          {
+            "name": "CurrentAnimatedCamera",
+            "value": 1
+          },
+          {
+            "name": "Custom",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AuraAction.AuraType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563670,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "RangedAura",
+            "value": 0
+          },
+          {
+            "name": "GlobalAura",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BreakoutAction.AbnormalState",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563693,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "Hurt",
+            "value": 1
+          },
+          {
+            "name": "ControlledState",
+            "value": 2
+          },
+          {
+            "name": "Frozen",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AlertShape",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563699,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Circle",
+            "value": 0
+          },
+          {
+            "name": "Ray",
+            "value": 1
+          },
+          {
+            "name": "Sector",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.AlertMoveType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563700,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Static",
+            "value": 0
+          },
+          {
+            "name": "FollowTarget",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BroadcastAlertToCharactersAction.BroadcastAlertToCharactersActionData.BroadcastTarget",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563706,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AntiSource",
+            "value": 0
+          },
+          {
+            "name": "Good",
+            "value": 1
+          },
+          {
+            "name": "Bad",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ChangeSkillAction.SkillSlot",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563737,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "NormalSkill",
+            "value": 0
+          },
+          {
+            "name": "ComboSkill",
+            "value": 1
+          },
+          {
+            "name": "UltimateSkill",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ChangeSkillAction.LifeTimeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563738,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "SpecificTime",
+            "value": 0
+          },
+          {
+            "name": "Infinite",
+            "value": 1
+          },
+          {
+            "name": "FinishByAction",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.CharHurtAnim",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563760,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "FullbodyWeak",
+            "value": 1
+          },
+          {
+            "name": "Additive",
+            "value": 3
+          },
+          {
+            "name": "FullbodyHeavyMob",
+            "value": 4
+          },
+          {
+            "name": "FullbodyHeavy",
+            "value": 2
+          },
+          {
+            "name": "FullbodyWhackLeft",
+            "value": 5
+          },
+          {
+            "name": "FullbodyWhackRight",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.CheckPerfectDodgeDirection.DirType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563777,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Forward",
+            "value": 0
+          },
+          {
+            "name": "Backward",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ConvertToTargetContext.Data.OperationType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563796,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "ConvertEntityToPosition",
+            "value": 1
+          },
+          {
+            "name": "TranslatePosition",
+            "value": 2
+          },
+          {
+            "name": "ExcludeTarget",
+            "value": 3
+          },
+          {
+            "name": "ConvertEntityToSlot",
+            "value": 4
+          },
+          {
+            "name": "ConvertSlotToPosition",
+            "value": 5
+          },
+          {
+            "name": "ConvertSlotToTarget",
+            "value": 6
+          },
+          {
+            "name": "ConvertBlackboardValueToPosition",
+            "value": 7
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ConvertToTargetContext.Data.TranslateOperationType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563797,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Rotate180DegAroundRef",
+            "value": 0
+          },
+          {
+            "name": "RotateAroundRefCW",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.DebugPrintAction.Data.LogType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563835,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "TargetSetting",
+            "value": 0
+          },
+          {
+            "name": "BlackboardItem",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.EnemyHurtAnim",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563868,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "LightLeft",
+            "value": 7
+          },
+          {
+            "name": "LightRight",
+            "value": 8
+          },
+          {
+            "name": "LightTurn",
+            "value": 10
+          },
+          {
+            "name": "MiddleLeft",
+            "value": 9
+          },
+          {
+            "name": "MiddleRight",
+            "value": 11
+          },
+          {
+            "name": "MiddleTurn",
+            "value": 15
+          },
+          {
+            "name": "BigStagger",
+            "value": 13
+          },
+          {
+            "name": "BigStaggerUp",
+            "value": 18
+          },
+          {
+            "name": "BigStaggerDown",
+            "value": 19
+          },
+          {
+            "name": "Interrupted",
+            "value": 14
+          },
+          {
+            "name": "MiniPoiseBroken",
+            "value": 16
+          },
+          {
+            "name": "PoiseBreakHurt",
+            "value": 17
+          },
+          {
+            "name": "Count",
+            "value": 20
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.EnemyHurtShakeIntensity",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563870,
+        "underlyingType": "System.Byte",
+        "members": [
+          {
+            "name": "Mild",
+            "value": 0
+          },
+          {
+            "name": "Moderate",
+            "value": 1
+          },
+          {
+            "name": "Strong",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.HitStopAction.AffectType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563930,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "OnlyAttacker",
+            "value": 0
+          },
+          {
+            "name": "OnlyTarget",
+            "value": 1
+          },
+          {
+            "name": "Both",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.HurtAnimAction.HurtType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33563933,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Weak",
+            "value": 0
+          },
+          {
+            "name": "Heavy",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ModifyDynamicBlackboard.Data.OperationType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564013,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Assign",
+            "value": 0
+          },
+          {
+            "name": "Add",
+            "value": 1
+          },
+          {
+            "name": "Multiply",
+            "value": 2
+          },
+          {
+            "name": "Divide",
+            "value": 3
+          },
+          {
+            "name": "Floor",
+            "value": 4
+          },
+          {
+            "name": "Ceil",
+            "value": 5
+          },
+          {
+            "name": "RoundToInt",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ModifyDynamicBlackboard.Data.CalculationType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564014,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "HpRatio",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.MoveToAction.MoveType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564034,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Direction",
+            "value": 0
+          },
+          {
+            "name": "Location",
+            "value": 1
+          },
+          {
+            "name": "Circular",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.MoveToAction.DirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564035,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "UseTargetSettings",
+            "value": 0
+          },
+          {
+            "name": "OwnerForward",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.MoveToAction.SpeedType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564036,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "FixedSpeed",
+            "value": 0
+          },
+          {
+            "name": "SpeedCurve",
+            "value": 1
+          },
+          {
+            "name": "RootMotion",
+            "value": 2
+          },
+          {
+            "name": "AutoFixSpeed",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.MoveToDirectionAction.DirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564040,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "UseTargetSettings",
+            "value": 0
+          },
+          {
+            "name": "OwnerForward",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.OverrideJumpAction.OverrideJumpType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564069,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AddBuff",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.PhysicsCastAction.PhysicsCastPointDirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564098,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "SourceForward",
+            "value": 0
+          },
+          {
+            "name": "SourceToTarget",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.PhysicsCastAction.SourceForwardDirectionSubType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564099,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "MountPointTransformForward",
+            "value": 0
+          },
+          {
+            "name": "SourceMeshForward",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.PullAction.PullTargetType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564124,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Enemy",
+            "value": 0
+          },
+          {
+            "name": "Character",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RandomAction.RandomType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564133,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Int",
+            "value": 0
+          },
+          {
+            "name": "Float",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RayCastEffectAction.RayCastEffectMoveType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564136,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "StraightLine",
+            "value": 1
+          },
+          {
+            "name": "MountPoint",
+            "value": 2
+          },
+          {
+            "name": "Curve",
+            "value": 3
+          },
+          {
+            "name": "PointToPoint",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RayCastEffectAction.RayCastEffectPosType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564137,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Follow",
+            "value": 1
+          },
+          {
+            "name": "Stationary",
+            "value": 2
+          },
+          {
+            "name": "Position",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RayCastEffectAction.RayDirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564138,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Source",
+            "value": 1
+          },
+          {
+            "name": "SourceToTarget",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RayCastEffectAction.RayHitEffectDirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564139,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "LookAtStartPos",
+            "value": 1
+          },
+          {
+            "name": "LookAtNextEndPos",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RayCastEffectAction.RayCastDirection",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564140,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "ZForward",
+            "value": 0
+          },
+          {
+            "name": "ZBackward",
+            "value": 1
+          },
+          {
+            "name": "XForward",
+            "value": 2
+          },
+          {
+            "name": "XBackward",
+            "value": 3
+          },
+          {
+            "name": "YForward",
+            "value": 4
+          },
+          {
+            "name": "YBackward",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ReceiveMoveInputAction.DirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564150,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "BasedCamForward",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ReceiveMoveInputAction.SpeedType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564151,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "FixSpeed",
+            "value": 0
+          },
+          {
+            "name": "SpeedCurve",
+            "value": 1
+          },
+          {
+            "name": "CurrentSpeed",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.RecordBattleDetails.Data.RecordType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564156,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "Dodge",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffStackNumType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564193,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "BuffCount",
+            "value": 0
+          },
+          {
+            "name": "BuffIdCount",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SaveDamageContext.ValueType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564203,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "FinalValue",
+            "value": 0
+          },
+          {
+            "name": "RealValue",
+            "value": 1
+          },
+          {
+            "name": "OverflowingValue",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SaveShieldValueToBB.ValueType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564212,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "GainedValue",
+            "value": 0
+          },
+          {
+            "name": "CurValue",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SaveValueFromAIBlackboard.ValueType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564219,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Float",
+            "value": 0
+          },
+          {
+            "name": "String",
+            "value": 1
+          },
+          {
+            "name": "Vector3",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SelfRotateAction.RotateType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564224,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "ToTarget",
+            "value": 0
+          },
+          {
+            "name": "ToLocation",
+            "value": 1
+          },
+          {
+            "name": "OnlyEntity",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SelfRotateAction.RotateDirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564225,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Free",
+            "value": 0
+          },
+          {
+            "name": "CounterClockwise",
+            "value": -1
+          },
+          {
+            "name": "Clockwise",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SelfRotateAction.RootMotionDirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564226,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "CounterClockwise",
+            "value": -1
+          },
+          {
+            "name": "Clockwise",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SetAbilityEntityDuration.Data.OperationType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564232,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Assign",
+            "value": 0
+          },
+          {
+            "name": "Add",
+            "value": 1
+          },
+          {
+            "name": "Multiply",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SetSkillCdAtOnce.FunctionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564266,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Reduce",
+            "value": 0
+          },
+          {
+            "name": "Set",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ShowHideActorAction.ShowHideType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564285,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "All",
+            "value": 0
+          },
+          {
+            "name": "OnlyModel",
+            "value": 1
+          },
+          {
+            "name": "OnlyEffect",
+            "value": 2
+          },
+          {
+            "name": "ModelPart",
+            "value": 3
+          },
+          {
+            "name": "AllBattle",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SnapToTargetWithRangeAction.MoveType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564303,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "FixedSpeed",
+            "value": 0
+          },
+          {
+            "name": "SpeedCurve",
+            "value": 1
+          },
+          {
+            "name": "PositionCurve",
+            "value": 2
+          },
+          {
+            "name": "ScaledRootMotion",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SpawnAbilityEntity.Data.BornRotation",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564307,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "SelfToActionOwner",
+            "value": 1
+          },
+          {
+            "name": "SelfToActionSource",
+            "value": 2
+          },
+          {
+            "name": "SourceForward",
+            "value": 3
+          },
+          {
+            "name": "CameraForward",
+            "value": 4
+          },
+          {
+            "name": "SelfToContextTarget",
+            "value": 5
+          },
+          {
+            "name": "SourceForwardXYZ",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.SpawnEnemyAction.Data.BornRotation",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564310,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "SelfToActionOwner",
+            "value": 1
+          },
+          {
+            "name": "SelfToActionSource",
+            "value": 2
+          },
+          {
+            "name": "SameWithSource",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.StoreAtbValue.AtbValueType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564320,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "All",
+            "value": 0
+          },
+          {
+            "name": "ReturnedOnly",
+            "value": 1
+          },
+          {
+            "name": "ExcludeReturned",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.StoreAttributeValue.StoreAttributeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564323,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "BaseNonConverted",
+            "value": 0
+          },
+          {
+            "name": "FinalNonConverted",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.StoreEntityProperty.PropertyType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564331,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "CurHp",
+            "value": 0
+          },
+          {
+            "name": "CurPoise",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.TagQueryListenerAction.TagQueryListenerType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564343,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "PredefinedQuery",
+            "value": 0
+          },
+          {
+            "name": "CustomQuery",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.TeleportPosSelectAction.TeleportType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564353,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "FixedDistance",
+            "value": 0
+          },
+          {
+            "name": "Ranged",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.TickIntervalActionV2.TickMode",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564367,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "EachFrame",
+            "value": 0
+          },
+          {
+            "name": "Interval",
+            "value": 1
+          },
+          {
+            "name": "FixedCount",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.TriggerLiinoUIEvent.LiinoEvent",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564384,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Show",
+            "value": 0
+          },
+          {
+            "name": "Close",
+            "value": 1
+          },
+          {
+            "name": "Call",
+            "value": 2
+          },
+          {
+            "name": "Danmaku",
+            "value": 3
+          },
+          {
+            "name": "Like",
+            "value": 4
+          },
+          {
+            "name": "BigLike",
+            "value": 5
+          },
+          {
+            "name": "RandomLike",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Buff.Event",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564466,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "OnBuffStart",
+            "value": 0
+          },
+          {
+            "name": "OnBuffTrigger",
+            "value": 1
+          },
+          {
+            "name": "OnBuffFinish",
+            "value": 2
+          },
+          {
+            "name": "OnBuffEnable",
+            "value": 3
+          },
+          {
+            "name": "OnBuffDisable",
+            "value": 4
+          },
+          {
+            "name": "DuringBuffEnable",
+            "value": 5
+          },
+          {
+            "name": "OnBuffEnhanceChanged",
+            "value": 6
+          },
+          {
+            "name": "OnBuffAfterTryEnhanced",
+            "value": 7
+          },
+          {
+            "name": "OnBuffBeforeTryEnhanced",
+            "value": 8
+          },
+          {
+            "name": "OnBuffDispelled",
+            "value": 9
+          },
+          {
+            "name": "OnBuffFinishedEarlyInterrupted",
+            "value": 10
+          },
+          {
+            "name": "OnBuffReleased",
+            "value": 11
+          },
+          {
+            "name": "Enum",
+            "value": 12
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Buff.LifeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564467,
+        "underlyingType": "System.Byte",
+        "members": [
+          {
+            "name": "Limited",
+            "value": 0
+          },
+          {
+            "name": "Infinity",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Buff.ConsumeProtectionCheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564473,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Id",
+            "value": 0
+          },
+          {
+            "name": "Tag",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffStackingSettings.IdentifierType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564479,
+        "underlyingType": "System.Byte",
+        "members": [
+          {
+            "name": "Id",
+            "value": 0
+          },
+          {
+            "name": "StackingKey",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffStackingSettings.StackingType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564480,
+        "underlyingType": "System.Int16",
+        "members": [
+          {
+            "name": "Unlimited",
+            "value": 0
+          },
+          {
+            "name": "HighPriority",
+            "value": 1
+          },
+          {
+            "name": "Stack",
+            "value": 2
+          },
+          {
+            "name": "Enhance",
+            "value": 3
+          },
+          {
+            "name": "Refresh",
+            "value": 4
+          },
+          {
+            "name": "Extend",
+            "value": 5
+          },
+          {
+            "name": "Modify",
+            "value": 6
+          },
+          {
+            "name": "Unique",
+            "value": 7
+          },
+          {
+            "name": "EnhanceAndRefresh",
+            "value": 8
+          },
+          {
+            "name": "OverwriteDuration",
+            "value": 9
+          },
+          {
+            "name": "EnhanceAndOverwriteDuration",
+            "value": 10
+          },
+          {
+            "name": "HighPriorityWithMaxStack",
+            "value": 11
+          },
+          {
+            "name": "TimedGrowingEnhance",
+            "value": 12
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffIconConfig.BuffIconStyle",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564482,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "Attached",
+            "value": 1
+          },
+          {
+            "name": "LifeTime",
+            "value": 2
+          },
+          {
+            "name": "NoLifeTime",
+            "value": 3
+          },
+          {
+            "name": "SpellAbnormal",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffIconConfig.OrderPriority",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564483,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "CommonCharBuff",
+            "value": 100
+          },
+          {
+            "name": "CommonCharDebuff",
+            "value": 110
+          },
+          {
+            "name": "KeywordBuff",
+            "value": 120
+          },
+          {
+            "name": "KeywordDebuff",
+            "value": 130
+          },
+          {
+            "name": "AttachedAndAbnormal",
+            "value": 150
+          },
+          {
+            "name": "AttentionBuff",
+            "value": 180
+          },
+          {
+            "name": "AttentionDebuff",
+            "value": 200
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.DispelLevel",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564485,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffIconDurationSourceType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564498,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AbilityEntity",
+            "value": 0
+          },
+          {
+            "name": "TimedMarker",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BuffFindSettings.CheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564503,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Id",
+            "value": 0
+          },
+          {
+            "name": "Tag",
+            "value": 1
+          },
+          {
+            "name": "Environment",
+            "value": 2
+          },
+          {
+            "name": "Context",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ValueSource",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564511,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AttackerOrHealer",
+            "value": 0
+          },
+          {
+            "name": "Target",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.DamageModifier.Data.EnableSide",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564518,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Attacker",
+            "value": 0
+          },
+          {
+            "name": "Defender",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.DamageScaleProcessor.DamageScaleSide",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564526,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Attacker",
+            "value": 0
+          },
+          {
+            "name": "Defender",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.DamageTextProcessor.DamageTextStyle",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564533,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Unchange",
+            "value": 0
+          },
+          {
+            "name": "Block",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.GlobalAttributeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564536,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "AtbRecover",
+            "value": 0
+          },
+          {
+            "name": "AtbGainEfficiency",
+            "value": 1
+          },
+          {
+            "name": "DashChargeCount",
+            "value": 2
+          },
+          {
+            "name": "DashRecover",
+            "value": 3
+          },
+          {
+            "name": "ExtraAtbEfficiencyNormalAttack",
+            "value": 4
+          },
+          {
+            "name": "ExtraAtbEfficiencyPowerAttack",
+            "value": 5
+          },
+          {
+            "name": "GlobalCastDistance",
+            "value": 6
+          },
+          {
+            "name": "AtbMax",
+            "value": 1900
+          },
+          {
+            "name": "InitialAtb",
+            "value": 1901
+          },
+          {
+            "name": "Enum",
+            "value": 1902
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.HealModifier.Data.EnableSide",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564543,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Healer",
+            "value": 0
+          },
+          {
+            "name": "HealReceiver",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ModifyCalcResult.Type",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564552,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Multiply",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ModifyHealCalcResult.Type",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564554,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Multiply",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.PoiseModifier.Data.EnableSide",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564560,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Attacker",
+            "value": 0
+          },
+          {
+            "name": "Defender",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.PrimaryAttrCalculation.PrimaryAttrCalculationType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564565,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Main",
+            "value": 1
+          },
+          {
+            "name": "Sub",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.KeywordActionSubType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564579,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "All",
+            "value": 0
+          },
+          {
+            "name": "Spell",
+            "value": 1
+          },
+          {
+            "name": "Physical",
+            "value": 2
+          },
+          {
+            "name": "Natural",
+            "value": 3
+          },
+          {
+            "name": "Fire",
+            "value": 4
+          },
+          {
+            "name": "Crystal",
+            "value": 5
+          },
+          {
+            "name": "Pulse",
+            "value": 6
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.FilterUtils.FilterType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564590,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "All",
+            "value": 0
+          },
+          {
+            "name": "DistanceFromOwnerAsc",
+            "value": 1
+          },
+          {
+            "name": "DistanceFromOwnerDes",
+            "value": 2
+          },
+          {
+            "name": "DistanceFromCenterAsc",
+            "value": 3
+          },
+          {
+            "name": "DistanceFromCenterDes",
+            "value": 4
+          },
+          {
+            "name": "DistanceFromMainCharAsc",
+            "value": 5
+          },
+          {
+            "name": "DistanceFromMainCharDes",
+            "value": 6
+          },
+          {
+            "name": "CurHpAsc",
+            "value": 7
+          },
+          {
+            "name": "CurHpDes",
+            "value": 8
+          },
+          {
+            "name": "CurHpRatioAsc",
+            "value": 9
+          },
+          {
+            "name": "CurHpRatioDes",
+            "value": 10
+          },
+          {
+            "name": "BuffStackNumAsc",
+            "value": 11
+          },
+          {
+            "name": "BuffStackNumDes",
+            "value": 12
+          },
+          {
+            "name": "ScreenPosLeftToRight",
+            "value": 13
+          },
+          {
+            "name": "ScreenPosRightToLeft",
+            "value": 14
+          },
+          {
+            "name": "ScreenPosTopToBottom",
+            "value": 15
+          },
+          {
+            "name": "ScreenPosBottomToTop",
+            "value": 16
+          },
+          {
+            "name": "ScreenPosClosestToCenter",
+            "value": 17
+          },
+          {
+            "name": "ScreenPosClosestToCenterHorizontal",
+            "value": 18
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.HitBoxFinder.ShapeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564614,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Box",
+            "value": 0
+          },
+          {
+            "name": "Capsule",
+            "value": 1
+          },
+          {
+            "name": "Sphere",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.HitBoxFinder.CastDirection",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564615,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "ZForward",
+            "value": 0
+          },
+          {
+            "name": "ZBackward",
+            "value": 1
+          },
+          {
+            "name": "XForward",
+            "value": 2
+          },
+          {
+            "name": "XBackward",
+            "value": 3
+          },
+          {
+            "name": "YForward",
+            "value": 4
+          },
+          {
+            "name": "YBackward",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.HitBoxFinder.PositionRef",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564616,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "OwnerMountPoint",
+            "value": 0
+          },
+          {
+            "name": "InputCenter",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.HitBoxFinder.DirectionRef",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564617,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "OwnerForward",
+            "value": 0
+          },
+          {
+            "name": "OwnerMountPoint",
+            "value": 1
+          },
+          {
+            "name": "InputDirection",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.HitBoxFinder.TargetObjectType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564618,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Normal",
+            "value": 1
+          },
+          {
+            "name": "Interactive",
+            "value": 2
+          },
+          {
+            "name": "NoInteractive",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.HitBoxFinder.HitEffectTowardsType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564619,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "TowardsAttacker",
+            "value": 0
+          },
+          {
+            "name": "TowardsHitBoxCenter",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.ProcessTargetType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564665,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Targets",
+            "value": 0
+          },
+          {
+            "name": "HittableTargets",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Selector.BuffValidator.ValidateMode",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564680,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "HasBuff",
+            "value": 0
+          },
+          {
+            "name": "NotHasBuff",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ShieldConfig.Priority",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564710,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Normal",
+            "value": 0
+          },
+          {
+            "name": "PrioritizeConsume",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ShieldConfig.ModifyType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564711,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Assign",
+            "value": 0
+          },
+          {
+            "name": "Add",
+            "value": 1
+          },
+          {
+            "name": "Multi",
+            "value": 2
+          },
+          {
+            "name": "Divide",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.DirectionSettings.DirectionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564715,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "SourceForward",
+            "value": 0
+          },
+          {
+            "name": "TargetForward",
+            "value": 1
+          },
+          {
+            "name": "SourceToTarget",
+            "value": 2
+          },
+          {
+            "name": "TargetToSource",
+            "value": 3
+          },
+          {
+            "name": "CameraForward",
+            "value": 4
+          },
+          {
+            "name": "SameAsSourceMountPointDir",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BattleManager.SpecialAimType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564814,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "StealthAim",
+            "value": 0
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.BattleManager.SpecialAimForwardType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33564815,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "MainCharForward",
+            "value": 0
+          },
+          {
+            "name": "CameraForward",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ColliderOptions",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33565167,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "MovableBase",
+            "value": 1
+          },
+          {
+            "name": "IgnoreCamera",
+            "value": 2
+          },
+          {
+            "name": "IgnoreSkillSelect",
+            "value": 4
+          },
+          {
+            "name": "Unwalkable",
+            "value": 8
+          },
+          {
+            "name": "IgnoreCollider",
+            "value": 16
+          },
+          {
+            "name": "Destructible",
+            "value": 32
+          },
+          {
+            "name": "AirWall",
+            "value": 64
+          },
+          {
+            "name": "NeedStepEvent",
+            "value": 128
+          },
+          {
+            "name": "IgnoreProjectile",
+            "value": 256
+          },
+          {
+            "name": "IgnoreBomb",
+            "value": 512
+          },
+          {
+            "name": "DynamicBattleShape",
+            "value": 1024
+          },
+          {
+            "name": "Unclimbable",
+            "value": 2048
+          },
+          {
+            "name": "IgnoreEnemyFloor",
+            "value": 4096
+          },
+          {
+            "name": "UseTraceDither",
+            "value": 8192
+          },
+          {
+            "name": "UseOverlapDither",
+            "value": 16384
+          },
+          {
+            "name": "IgnoreEnemyCollision",
+            "value": 32768
+          },
+          {
+            "name": "IgnoreTravelPoleBlock",
+            "value": 65536
+          },
+          {
+            "name": "Stairs",
+            "value": 131072
+          },
+          {
+            "name": "IgnoreFollow",
+            "value": 262144
+          },
+          {
+            "name": "IgnoreWater",
+            "value": 524288
+          },
+          {
+            "name": "QuickSlide",
+            "value": 1048576
+          },
+          {
+            "name": "IgnorePlunge",
+            "value": 2097152
+          },
+          {
+            "name": "InvisibleBridge",
+            "value": 4194304
+          },
+          {
+            "name": "AllyBlockableMoveCollider",
+            "value": 8388608
+          },
+          {
+            "name": "WallRunSupport",
+            "value": 16777216
+          },
+          {
+            "name": "PushChargingCharacter",
+            "value": 33554432
+          },
+          {
+            "name": "DeformSnow",
+            "value": 67108864
+          },
+          {
+            "name": "IgnoreFromBakeNavmesh",
+            "value": 1073741824
+          },
+          {
+            "name": "UseComplexMeshBakeNavmesh",
+            "value": -2147483648
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.GameplayTagQuery.QueryType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566123,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "HasAny",
+            "value": 0
+          },
+          {
+            "name": "HasAll",
+            "value": 1
+          },
+          {
+            "name": "ExceptAny",
+            "value": 2
+          },
+          {
+            "name": "ExceptAll",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ProjectileComponent.FinishAction",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566524,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "NotCastSkill",
+            "value": 0
+          },
+          {
+            "name": "CastHitSkill",
+            "value": 1
+          },
+          {
+            "name": "CastBlockSkill",
+            "value": 2
+          },
+          {
+            "name": "CastReachSkill",
+            "value": 3
+          },
+          {
+            "name": "CastFinishSkill",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.MoveCommand.RootMotionCurveMask",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566636,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "PosX",
+            "value": 1
+          },
+          {
+            "name": "PosY",
+            "value": 2
+          },
+          {
+            "name": "PosZ",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.MovementComponent.GroundedMoveGait",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566651,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Walk",
+            "value": 0
+          },
+          {
+            "name": "Run",
+            "value": 1
+          },
+          {
+            "name": "Sprint",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.ObjectType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566909,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "All",
+            "value": -1
+          },
+          {
+            "name": "Invalid",
+            "value": 1
+          },
+          {
+            "name": "Character",
+            "value": 8
+          },
+          {
+            "name": "Enemy",
+            "value": 16
+          },
+          {
+            "name": "Interactive",
+            "value": 32
+          },
+          {
+            "name": "Projectile",
+            "value": 64
+          },
+          {
+            "name": "FactoryRegion",
+            "value": 128
+          },
+          {
+            "name": "Npc",
+            "value": 256
+          },
+          {
+            "name": "AbilityEntity",
+            "value": 512
+          },
+          {
+            "name": "CinematicEntity",
+            "value": 1024
+          },
+          {
+            "name": "RemoteFactoryEntity",
+            "value": 2048
+          },
+          {
+            "name": "Creature",
+            "value": 4096
+          },
+          {
+            "name": "GodEntity",
+            "value": 8192
+          },
+          {
+            "name": "EnemyPart",
+            "value": 16384
+          },
+          {
+            "name": "SocialBuilding",
+            "value": 32768
+          },
+          {
+            "name": "EnemyAll",
+            "value": 16400
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.FactionType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566912,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Invalid",
+            "value": 1
+          },
+          {
+            "name": "Unknown",
+            "value": 2
+          },
+          {
+            "name": "Good",
+            "value": 4
+          },
+          {
+            "name": "Bad",
+            "value": 8
+          },
+          {
+            "name": "Neutral",
+            "value": 16
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.FactionTarget",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33566913,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Ally",
+            "value": 0
+          },
+          {
+            "name": "Anti",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.TimeDilationTarget",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567094,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Global",
+            "value": 0
+          },
+          {
+            "name": "Entity",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckBuffIdInContext.CheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567905,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Id",
+            "value": 0
+          },
+          {
+            "name": "Tag",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckDamageDecorateMask.CheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567917,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Exact",
+            "value": 0
+          },
+          {
+            "name": "HasAny",
+            "value": 1
+          },
+          {
+            "name": "HasAll",
+            "value": 2
+          },
+          {
+            "name": "ExceptAny",
+            "value": 3
+          },
+          {
+            "name": "ExceptAll",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckDamageIgnoreImmuneLevel.CheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567920,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "GE",
+            "value": 1
+          },
+          {
+            "name": "LE",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.DamageTypeMask",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567924,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Physical",
+            "value": 1
+          },
+          {
+            "name": "Real",
+            "value": 2
+          },
+          {
+            "name": "Fire",
+            "value": 4
+          },
+          {
+            "name": "Pulse",
+            "value": 8
+          },
+          {
+            "name": "Cryst",
+            "value": 16
+          },
+          {
+            "name": "LifeDrain",
+            "value": 32
+          },
+          {
+            "name": "Natural",
+            "value": 64
+          },
+          {
+            "name": "Ether",
+            "value": 128
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckEnemyRank.EnemyRankSet",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567930,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Mob",
+            "value": 1
+          },
+          {
+            "name": "Elite",
+            "value": 2
+          },
+          {
+            "name": "Boss",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckHitColliderOptions.CheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567939,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "HasAny",
+            "value": 0
+          },
+          {
+            "name": "HasAll",
+            "value": 1
+          },
+          {
+            "name": "ExceptAny",
+            "value": 2
+          },
+          {
+            "name": "ExceptAll",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckPhysicalInflictionType.CheckPhysicalInflictionEnum",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567958,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Airborne",
+            "value": 1
+          },
+          {
+            "name": "KnockDown",
+            "value": 2
+          },
+          {
+            "name": "Fracture",
+            "value": 4
+          },
+          {
+            "name": "Crush",
+            "value": 8
+          },
+          {
+            "name": "All",
+            "value": 15
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckProfession.ProfessionCategoryMask",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567963,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "All",
+            "value": -1
+          },
+          {
+            "name": "Guard",
+            "value": 1
+          },
+          {
+            "name": "Sniper",
+            "value": 2
+          },
+          {
+            "name": "Defender",
+            "value": 4
+          },
+          {
+            "name": "Medic",
+            "value": 8
+          },
+          {
+            "name": "Supporter",
+            "value": 16
+          },
+          {
+            "name": "Caster",
+            "value": 32
+          },
+          {
+            "name": "Specialist",
+            "value": 64
+          },
+          {
+            "name": "Vanguard",
+            "value": 128
+          },
+          {
+            "name": "Assault",
+            "value": 256
+          }
+        ],
+        "isFlags": true
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckProjectileIgnoreImmuneLevel.CheckType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567966,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "GE",
+            "value": 1
+          },
+          {
+            "name": "LE",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckSkillType.AttackTypeMask",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567983,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "NormalAttack",
+            "value": 1
+          },
+          {
+            "name": "PlungingAttackStart",
+            "value": 2
+          },
+          {
+            "name": "PlungingAttackEnd",
+            "value": 4
+          },
+          {
+            "name": "All",
+            "value": -1
+          }
+        ],
+        "isFlags": true
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckSpellInflictionOnCharType.CheckSpellInflictionOnCharEnum",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567986,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Fire",
+            "value": 1
+          },
+          {
+            "name": "Pulse",
+            "value": 2
+          },
+          {
+            "name": "Cryst",
+            "value": 4
+          },
+          {
+            "name": "Natural",
+            "value": 8
+          },
+          {
+            "name": "All",
+            "value": 15
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckSpellInflictionType.CheckSpellInflictionEnum",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567989,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Fire",
+            "value": 1
+          },
+          {
+            "name": "Pulse",
+            "value": 2
+          },
+          {
+            "name": "Cryst",
+            "value": 4
+          },
+          {
+            "name": "Natural",
+            "value": 8
+          },
+          {
+            "name": "All",
+            "value": 15
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckTargetAngle.Data.AngleType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33567997,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "TargetForward",
+            "value": 0
+          },
+          {
+            "name": "TargetBackward",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CheckWeaponTypeCondition.WeaponTypeMask",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33568011,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "All",
+            "value": -1
+          },
+          {
+            "name": "Sword",
+            "value": 2
+          },
+          {
+            "name": "Wand",
+            "value": 4
+          },
+          {
+            "name": "Claymores",
+            "value": 8
+          },
+          {
+            "name": "Gun",
+            "value": 16
+          },
+          {
+            "name": "Lance",
+            "value": 32
+          },
+          {
+            "name": "Pistol",
+            "value": 64
+          }
+        ],
+        "isFlags": true
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Conditions.CompareDeckAttr.DeckAttrOperand",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33568014,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Str",
+            "value": 0
+          },
+          {
+            "name": "Agi",
+            "value": 1
+          },
+          {
+            "name": "Wisd",
+            "value": 2
+          },
+          {
+            "name": "Will",
+            "value": 3
+          },
+          {
+            "name": "Blackboard",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.Gameplay.Core.Abilities.Condition.CheckAttribute.AttributeType",
+        "assembly": "Gameplay.Beyond.dll",
+        "token": 33568035,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "MaxHp",
+            "value": 0
+          },
+          {
+            "name": "CurHp",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GameSetting.ComboSkillCameraAlpha",
+        "assembly": "Common.Beyond.dll",
+        "token": 33554629,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Default",
+            "value": 0
+          },
+          {
+            "name": "Strong",
+            "value": 1
+          },
+          {
+            "name": "Weak",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "Beyond.CompareType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33554672,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "LT",
+            "value": 0
+          },
+          {
+            "name": "LE",
+            "value": 1
+          },
+          {
+            "name": "GT",
+            "value": 2
+          },
+          {
+            "name": "GE",
+            "value": 3
+          },
+          {
+            "name": "Equals",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.DamageType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557067,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Physical",
+            "value": 0
+          },
+          {
+            "name": "Real",
+            "value": 1
+          },
+          {
+            "name": "Fire",
+            "value": 2
+          },
+          {
+            "name": "Pulse",
+            "value": 3
+          },
+          {
+            "name": "Cryst",
+            "value": 4
+          },
+          {
+            "name": "LifeDrain",
+            "value": 5
+          },
+          {
+            "name": "Natural",
+            "value": 6
+          },
+          {
+            "name": "Ether",
+            "value": 7
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.EnergyShardType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557068,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Fire",
+            "value": 0
+          },
+          {
+            "name": "Pulse",
+            "value": 1
+          },
+          {
+            "name": "Cryst",
+            "value": 2
+          },
+          {
+            "name": "Natural",
+            "value": 3
+          },
+          {
+            "name": "Enum",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.SpellInflictionOnCharType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557069,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Fire",
+            "value": 0
+          },
+          {
+            "name": "Pulse",
+            "value": 1
+          },
+          {
+            "name": "Cryst",
+            "value": 2
+          },
+          {
+            "name": "Natural",
+            "value": 3
+          },
+          {
+            "name": "Enum",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.IgniteType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557070,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "PhysicalStatus",
+            "value": 1
+          },
+          {
+            "name": "EnergyShardByFire",
+            "value": 2
+          },
+          {
+            "name": "EnergyShardByPulse",
+            "value": 3
+          },
+          {
+            "name": "EnergyShardByCryst",
+            "value": 4
+          },
+          {
+            "name": "EnergyShardByNatural",
+            "value": 5
+          },
+          {
+            "name": "EndminUlt",
+            "value": 6
+          },
+          {
+            "name": "NoGuard",
+            "value": 7
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.AttributeType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557071,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Level",
+            "value": 0
+          },
+          {
+            "name": "MaxHp",
+            "value": 1
+          },
+          {
+            "name": "Atk",
+            "value": 2
+          },
+          {
+            "name": "Def",
+            "value": 3
+          },
+          {
+            "name": "PhysicalDamageTakenScalar",
+            "value": 4
+          },
+          {
+            "name": "FireDamageTakenScalar",
+            "value": 5
+          },
+          {
+            "name": "PulseDamageTakenScalar",
+            "value": 6
+          },
+          {
+            "name": "CrystDamageTakenScalar",
+            "value": 7
+          },
+          {
+            "name": "Weight",
+            "value": 8
+          },
+          {
+            "name": "CriticalRate",
+            "value": 9
+          },
+          {
+            "name": "CriticalDamageIncrease",
+            "value": 10
+          },
+          {
+            "name": "Hatred",
+            "value": 11
+          },
+          {
+            "name": "NormalAttackRange",
+            "value": 12
+          },
+          {
+            "name": "MoveSpeedScalar",
+            "value": 13
+          },
+          {
+            "name": "TurnRateScalar",
+            "value": 14
+          },
+          {
+            "name": "AttackRate",
+            "value": 15
+          },
+          {
+            "name": "SkillCooldownScalar",
+            "value": 16
+          },
+          {
+            "name": "NormalAttackDamageIncrease",
+            "value": 17
+          },
+          {
+            "name": "HpRecoveryPerSec",
+            "value": 18
+          },
+          {
+            "name": "HpRecoveryPerSecByMaxHpRatio",
+            "value": 19
+          },
+          {
+            "name": "MaxPoise",
+            "value": 20
+          },
+          {
+            "name": "PoiseRecTime",
+            "value": 21
+          },
+          {
+            "name": "MaxUltimateSp",
+            "value": 22
+          },
+          {
+            "name": "ComboSkillCooldownFinalAddition",
+            "value": 23
+          },
+          {
+            "name": "PoiseDamageTakenScalar",
+            "value": 24
+          },
+          {
+            "name": "PhysicalInflictionDamageScalar",
+            "value": 25
+          },
+          {
+            "name": "PoiseDamageOutputScalar",
+            "value": 26
+          },
+          {
+            "name": "BreakingAttackDamageTakenScalar",
+            "value": 27
+          },
+          {
+            "name": "UltimateSkillDamageIncrease",
+            "value": 28
+          },
+          {
+            "name": "HealOutputIncrease",
+            "value": 29
+          },
+          {
+            "name": "HealTakenIncrease",
+            "value": 30
+          },
+          {
+            "name": "PoiseRecTimeScalar",
+            "value": 31
+          },
+          {
+            "name": "NormalSkillDamageIncrease",
+            "value": 32
+          },
+          {
+            "name": "ComboSkillDamageIncrease",
+            "value": 33
+          },
+          {
+            "name": "KnockDownTimeAddition",
+            "value": 34
+          },
+          {
+            "name": "FireBurstDamageIncrease",
+            "value": 35
+          },
+          {
+            "name": "PulseBurstDamageIncrease",
+            "value": 36
+          },
+          {
+            "name": "CrystBurstDamageIncrease",
+            "value": 37
+          },
+          {
+            "name": "NaturalBurstDamageIncrease",
+            "value": 38
+          },
+          {
+            "name": "Str",
+            "value": 39
+          },
+          {
+            "name": "Agi",
+            "value": 40
+          },
+          {
+            "name": "Wisd",
+            "value": 41
+          },
+          {
+            "name": "Will",
+            "value": 42
+          },
+          {
+            "name": "LifeSteal",
+            "value": 43
+          },
+          {
+            "name": "UltimateSpGainScalar",
+            "value": 44
+          },
+          {
+            "name": "AtbCostAddition",
+            "value": 45
+          },
+          {
+            "name": "NormalSkillCooldownAddition",
+            "value": 46
+          },
+          {
+            "name": "ComboSkillCooldownScalar",
+            "value": 47
+          },
+          {
+            "name": "NaturalDamageTakenScalar",
+            "value": 48
+          },
+          {
+            "name": "IgniteDamageScalar",
+            "value": 49
+          },
+          {
+            "name": "PhysicalDamageIncrease",
+            "value": 50
+          },
+          {
+            "name": "FireDamageIncrease",
+            "value": 51
+          },
+          {
+            "name": "PulseDamageIncrease",
+            "value": 52
+          },
+          {
+            "name": "CrystDamageIncrease",
+            "value": 53
+          },
+          {
+            "name": "NaturalDamageIncrease",
+            "value": 54
+          },
+          {
+            "name": "EtherDamageIncrease",
+            "value": 55
+          },
+          {
+            "name": "FireAbnormalDamageIncrease",
+            "value": 56
+          },
+          {
+            "name": "PulseAbnormalDamageIncrease",
+            "value": 57
+          },
+          {
+            "name": "CrystAbnormalDamageIncrease",
+            "value": 58
+          },
+          {
+            "name": "NaturalAbnormalDamageIncrease",
+            "value": 59
+          },
+          {
+            "name": "EtherDamageTakenScalar",
+            "value": 60
+          },
+          {
+            "name": "DamageToBrokenUnitIncrease",
+            "value": 61
+          },
+          {
+            "name": "WeaknessDmgScalar",
+            "value": 62
+          },
+          {
+            "name": "ShelterDmgScalar",
+            "value": 63
+          },
+          {
+            "name": "PhysicalEnhancedDmgIncrease",
+            "value": 64
+          },
+          {
+            "name": "FireEnhancedDmgIncrease",
+            "value": 65
+          },
+          {
+            "name": "PulseEnhancedDmgIncrease",
+            "value": 66
+          },
+          {
+            "name": "CrystEnhancedDmgIncrease",
+            "value": 67
+          },
+          {
+            "name": "NaturalEnhancedDmgIncrease",
+            "value": 68
+          },
+          {
+            "name": "EtherEnhancedDmgIncrease",
+            "value": 69
+          },
+          {
+            "name": "PhysicalVulnerableDmgIncrease",
+            "value": 70
+          },
+          {
+            "name": "FireVulnerableDmgIncrease",
+            "value": 71
+          },
+          {
+            "name": "PulseVulnerableDmgIncrease",
+            "value": 72
+          },
+          {
+            "name": "CrystVulnerableDmgIncrease",
+            "value": 73
+          },
+          {
+            "name": "NaturalVulnerableDmgIncrease",
+            "value": 74
+          },
+          {
+            "name": "EtherVulnerableDmgIncrease",
+            "value": 75
+          },
+          {
+            "name": "AtkIncreaseFactorFromStr",
+            "value": 76
+          },
+          {
+            "name": "AtkIncreaseFactorFromAgi",
+            "value": 77
+          },
+          {
+            "name": "AtkIncreaseFactorFromWisd",
+            "value": 78
+          },
+          {
+            "name": "AtkIncreaseFactorFromWill",
+            "value": 79
+          },
+          {
+            "name": "PhysicalDmgResistScalar",
+            "value": 80
+          },
+          {
+            "name": "NaturalDmgResistScalar",
+            "value": 81
+          },
+          {
+            "name": "CrystDmgResistScalar",
+            "value": 82
+          },
+          {
+            "name": "PulseDmgResistScalar",
+            "value": 83
+          },
+          {
+            "name": "FireDmgResistScalar",
+            "value": 84
+          },
+          {
+            "name": "EtherDmgResistScalar",
+            "value": 85
+          },
+          {
+            "name": "SlowActionSpeedScalar",
+            "value": 86
+          },
+          {
+            "name": "PhysicalAndSpellInflictionEnhance",
+            "value": 87
+          },
+          {
+            "name": "ShieldOutputIncrease",
+            "value": 88
+          },
+          {
+            "name": "ShieldTakenIncrease",
+            "value": 89
+          },
+          {
+            "name": "NormalAttackStartRange",
+            "value": 90
+          },
+          {
+            "name": "InAirMoveSpeedScalar",
+            "value": 91
+          },
+          {
+            "name": "KeywordSpeedUpScalar",
+            "value": 92
+          },
+          {
+            "name": "ComboSkillCooldownRecoveryScalar",
+            "value": 93
+          },
+          {
+            "name": "PhysicalResistance",
+            "value": 94
+          },
+          {
+            "name": "NaturalResistance",
+            "value": 95
+          },
+          {
+            "name": "CrystResistance",
+            "value": 96
+          },
+          {
+            "name": "PulseResistance",
+            "value": 97
+          },
+          {
+            "name": "FireResistance",
+            "value": 98
+          },
+          {
+            "name": "EtherResistance",
+            "value": 99
+          },
+          {
+            "name": "ComboSkillCooldownDecrease",
+            "value": 100
+          },
+          {
+            "name": "Enum",
+            "value": 101
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.ModifyAttributeType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557072,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Specific",
+            "value": 0
+          },
+          {
+            "name": "Main",
+            "value": 1
+          },
+          {
+            "name": "Sub",
+            "value": 2
+          },
+          {
+            "name": "All",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.ModifierType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557073,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Addition",
+            "value": 0
+          },
+          {
+            "name": "Multiplier",
+            "value": 1
+          },
+          {
+            "name": "FinalAddition",
+            "value": 3
+          },
+          {
+            "name": "FinalMultiplier",
+            "value": 4
+          },
+          {
+            "name": "BaseAddition",
+            "value": 5
+          },
+          {
+            "name": "BaseMultiplier",
+            "value": 6
+          },
+          {
+            "name": "BaseFinalAddition",
+            "value": 7
+          },
+          {
+            "name": "BaseFinalMultiplier",
+            "value": 8
+          },
+          {
+            "name": "None",
+            "value": 9
+          },
+          {
+            "name": "Enum",
+            "value": 10
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.CostType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557090,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "UltimateSp",
+            "value": 0
+          },
+          {
+            "name": "Atb",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.VoSpeakerType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557125,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Characters",
+            "value": 1
+          },
+          {
+            "name": "Boss",
+            "value": 2
+          },
+          {
+            "name": "Minions",
+            "value": 3
+          },
+          {
+            "name": "UI",
+            "value": 4
+          },
+          {
+            "name": "Narrating",
+            "value": 5
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.SpecialGameEventType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557169,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "None",
+            "value": 0
+          },
+          {
+            "name": "ShieldBlockEnemySkill",
+            "value": 1
+          },
+          {
+            "name": "AerialDropAttackOnTheEnemy",
+            "value": 2
+          },
+          {
+            "name": "KillSpecAbilityEntity_Hook",
+            "value": 3
+          },
+          {
+            "name": "SpecAbilityEntityOrBuffAlive_Kushu",
+            "value": 4
+          },
+          {
+            "name": "WeaknessActionBreak_HsbearSkill08",
+            "value": 5
+          },
+          {
+            "name": "SpecAbilityEntityOrBuffAlive_EthilluAchieveCheck",
+            "value": 6
+          },
+          {
+            "name": "SpecAbilityEntityOrBuffAlive_NefarpTimestopMidair",
+            "value": 7
+          },
+          {
+            "name": "SpecAbilityEntityOrBuffAlive_JzogreSkill06",
+            "value": 8
+          },
+          {
+            "name": "SpecAbilityEntityOrBuffAlive_MainCharBanana",
+            "value": 9
+          },
+          {
+            "name": "SpecAbilityEntityOrBufffAlive_FdcenturWithoutR",
+            "value": 10
+          },
+          {
+            "name": "BabyentsOut",
+            "value": 11
+          },
+          {
+            "name": "Kill3Babyents",
+            "value": 12
+          },
+          {
+            "name": "BugBallAllV1d5",
+            "value": 13
+          },
+          {
+            "name": "Max",
+            "value": 14
+          }
+        ]
+      },
+      {
+        "type": "Beyond.GEnums.PartModifyAttrType",
+        "assembly": "Common.Beyond.dll",
+        "token": 33557290,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Coefficient",
+            "value": 0
+          },
+          {
+            "name": "AbsoluteValue",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Cinemachine.CinemachineBlendDefinition.Style",
+        "assembly": "Cinemachine.dll",
+        "token": 33554534,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Cut",
+            "value": 0
+          },
+          {
+            "name": "EaseInOut",
+            "value": 1
+          },
+          {
+            "name": "EaseIn",
+            "value": 2
+          },
+          {
+            "name": "EaseOut",
+            "value": 3
+          },
+          {
+            "name": "HardIn",
+            "value": 4
+          },
+          {
+            "name": "HardOut",
+            "value": 5
+          },
+          {
+            "name": "Linear",
+            "value": 6
+          },
+          {
+            "name": "Custom",
+            "value": 7
+          }
+        ]
+      },
+      {
+        "type": "Cinemachine.CinemachineImpulseDefinition.ImpulseShapes",
+        "assembly": "Cinemachine.dll",
+        "token": 33554609,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Custom",
+            "value": 0
+          },
+          {
+            "name": "Recoil",
+            "value": 1
+          },
+          {
+            "name": "Bump",
+            "value": 2
+          },
+          {
+            "name": "Explosion",
+            "value": 3
+          },
+          {
+            "name": "Rumble",
+            "value": 4
+          }
+        ]
+      },
+      {
+        "type": "Cinemachine.CinemachineImpulseDefinition.ImpulseTypes",
+        "assembly": "Cinemachine.dll",
+        "token": 33554610,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Uniform",
+            "value": 0
+          },
+          {
+            "name": "Dissipating",
+            "value": 1
+          },
+          {
+            "name": "Propagating",
+            "value": 2
+          },
+          {
+            "name": "Legacy",
+            "value": 3
+          }
+        ]
+      },
+      {
+        "type": "Cinemachine.CinemachineImpulseDefinition.RepeatMode",
+        "assembly": "Cinemachine.dll",
+        "token": 33554611,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Stretch",
+            "value": 0
+          },
+          {
+            "name": "Loop",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Cinemachine.CinemachineImpulseManager.ImpulseEvent.DirectionMode",
+        "assembly": "Cinemachine.dll",
+        "token": 33554620,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Fixed",
+            "value": 0
+          },
+          {
+            "name": "RotateTowardSource",
+            "value": 1
+          }
+        ]
+      },
+      {
+        "type": "Cinemachine.CinemachineImpulseManager.ImpulseEvent.DissipationMode",
+        "assembly": "Cinemachine.dll",
+        "token": 33554621,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "LinearDecay",
+            "value": 0
+          },
+          {
+            "name": "SoftDecay",
+            "value": 1
+          },
+          {
+            "name": "ExponentialDecay",
+            "value": 2
+          }
+        ]
+      },
+      {
+        "type": "UnityEngine.AnimatorControllerParameterType",
+        "assembly": "UnityEngine.AnimationModule.dll",
+        "token": 33554456,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "Float",
+            "value": 1
+          },
+          {
+            "name": "Int",
+            "value": 3
+          },
+          {
+            "name": "Bool",
+            "value": 4
+          },
+          {
+            "name": "Trigger",
+            "value": 9
+          }
+        ]
+      },
+      {
+        "type": "UnityEngine.QueryTriggerInteraction",
+        "assembly": "UnityEngine.PhysicsModule.dll",
+        "token": 33554443,
+        "underlyingType": "System.Int32",
+        "members": [
+          {
+            "name": "UseGlobal",
+            "value": 0
+          },
+          {
+            "name": "Ignore",
+            "value": 1
+          },
+          {
+            "name": "Collide",
+            "value": 2
+          }
+        ]
+      }
+    ]
+  }
 }

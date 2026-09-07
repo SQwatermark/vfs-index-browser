@@ -16,6 +16,24 @@ INTEGER_FORMATS = {
 }
 
 
+def is_strict_mask_enum(name: str, members: list[dict]) -> bool:
+    """Recognize the native mask convention without classifying arbitrary enums as flags."""
+
+    values = {member["name"]: member["value"] for member in members}
+    bit_values = [
+        member["value"]
+        for member in members
+        if member["name"] not in {"None", "All"}
+    ]
+    return (
+        name.endswith("Mask")
+        and values.get("None") == 0
+        and values.get("All") == -1
+        and bool(bit_values)
+        and all(value > 0 and value & (value - 1) == 0 for value in bit_values)
+    )
+
+
 def compressed_u32(data: bytes, offset: int) -> int:
     first = data[offset]
     if first < 0x80:
@@ -118,12 +136,23 @@ def read_dump_enums(root: Path) -> tuple[dict, dict]:
     return result, hashes
 
 
-def build_catalog(metadata: EnumMetadata, dump_enums: dict) -> list[dict]:
+def build_catalog(
+    metadata: EnumMetadata,
+    dump_enums: dict,
+    include_types: set[str] | None = None,
+) -> list[dict]:
+    normalized_includes = (
+        {name.replace("+", ".") for name in include_types}
+        if include_types is not None
+        else None
+    )
     result = []
     for index, row in enumerate(metadata.types):
         if not row[25] & 2:
             continue
         name = metadata.full_name(index)
+        if normalized_includes is not None and name.replace("+", ".") not in normalized_includes:
+            continue
         assembly = metadata.images[index]
         key = (assembly, row[26])
         if key not in dump_enums:
@@ -138,8 +167,13 @@ def build_catalog(metadata: EnumMetadata, dump_enums: dict) -> list[dict]:
             if member == "value__":
                 continue
             # dump 的类型与字段名可能连在一起，按完整类型+精确成员名验证，不按短名匹配。
+            # The AI dump can print nested generic enum fields with the unqualified nested type
+            # even though metadata keeps the full declaring chain. Assembly + type token already
+            # provide the unambiguous identity, so accept either spelling when validating members.
             native = re.escape(name).replace(r"\.", r"[.+]")
-            if not re.search(native + r"\s*" + re.escape(member) + r"\s+(?:=.+)?// const", block):
+            short_native = re.escape(short_name).replace(r"\.", r"[.+]") + r"(?:<[^>]+>)?"
+            type_pattern = rf"(?:{native}|{short_native})"
+            if not re.search(type_pattern + r"\s*" + re.escape(member) + r"\s+(?:=.+)?// const", block):
                 raise ValueError(f"metadata/dump member mismatch: {name}.{member}")
             default = metadata.defaults.get(field_index)
             if default is None or not 0 <= default[1] < len(metadata.constants):
@@ -147,6 +181,12 @@ def build_catalog(metadata: EnumMetadata, dump_enums: dict) -> list[dict]:
             members.append({"name": member, "value": integer_constant(metadata.constants, default[1], underlying)})
         if len(re.findall(r"// const", block)) != len(members):
             raise ValueError(f"metadata/dump member count mismatch: {name}")
-        result.append({"type": name, "assembly": assembly, "token": row[26],
-                       "underlyingType": underlying, "members": members})
+        result.append({
+            "type": name,
+            "assembly": assembly,
+            "token": row[26],
+            "underlyingType": underlying,
+            "members": members,
+            **({"isFlags": True} if is_strict_mask_enum(name, members) else {}),
+        })
     return result

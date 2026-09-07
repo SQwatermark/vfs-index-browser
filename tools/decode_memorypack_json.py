@@ -355,8 +355,6 @@ class Decoder:
             raise DecodeError(f"missing enum metadata for {type_name}", reader.tell(), path)
         type_name = TYPE_OVERRIDES.get(type_name, type_name)
 
-        if (class_name, member) == ("Beyond.Gameplay.Core.BuffData", "tagsAfterTriggerExtendBuffAction"):
-            return self.read_buff_tags_after_trigger(reader, path, type_name)
         if type_name == "Beyond.Gameplay.Core.GameplayTag" and (class_name, member) in RAW_GAMEPLAY_TAG_FIELDS:
             return {"tagId": reader.read_i32()}
         if type_name == "Beyond.Gameplay.Core.GameplayTag[]" and (class_name, member) in RAW_GAMEPLAY_TAG_COLLECTION_FIELDS:
@@ -472,20 +470,6 @@ class Decoder:
         for member in members[member_count:]:
             result[member["name"]] = None
         return result
-
-    def read_buff_tags_after_trigger(self, reader: MemoryPackReader, path: str, type_name: str) -> list[Any]:
-        # 当前 BuffData formatter 在 raw int32 tag 数组前写入一个分支字节；
-        # 已验证值 0/1 后都紧跟 int32 count，再跟 count * int32。旧解码器把
-        # `01 00000000` 误读成一个 tagId=null 的对象；它实际表示空数组。
-        prefix_offset = reader.tell()
-        prefix = reader.read_u8()
-        if prefix not in (0, 1):
-            raise DecodeError(
-                f"unexpected BuffData tag collection prefix {prefix}",
-                prefix_offset,
-                path,
-            )
-        return self.read_raw_gameplay_tag_collection(reader)
 
     def read_raw_gameplay_tag_collection(self, reader: MemoryPackReader) -> list[dict[str, int]] | None:
         length = reader.read_collection_header()
