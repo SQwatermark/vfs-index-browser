@@ -8,6 +8,7 @@ class CacheVersionRegistryTests(unittest.TestCase):
         self.assertEqual(33, CACHE_VERSIONS.version("model-snapshot"))
         self.assertEqual(2, CACHE_VERSIONS.version("audio-package"))
         self.assertEqual(2, CACHE_VERSIONS.version("usm-video"))
+        self.assertEqual(3, CACHE_VERSIONS.version("projectile-component-export"))
         self.assertEqual(
             sorted(CACHE_VERSIONS.diagnostics()),
             list(CACHE_VERSIONS.diagnostics()),

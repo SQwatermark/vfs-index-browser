@@ -40,7 +40,7 @@ CACHE_VERSIONS = CacheVersionRegistry(
         "model-snapshot": 33,
         "monobehaviour-dump": 3,
         "monobehaviour-raw": 2,
-        "projectile-component-export": 2,
+        "projectile-component-export": 3,
         "string-path-hash": 1,
         "usm-video": 2,
     }
