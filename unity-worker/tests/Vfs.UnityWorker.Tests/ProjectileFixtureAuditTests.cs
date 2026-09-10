@@ -39,6 +39,7 @@ public sealed class ProjectileFixtureAuditTests
             prefix.NextOffset,
             prefix.RemainingLength,
             entityBlackboard = prefix.Data["entityBlackboard"],
+            skillDataBundle = prefix.Data["skillDataBundle"],
         }));
     }
 
@@ -81,6 +82,11 @@ public sealed class ProjectileFixtureAuditTests
                 rawData,
                 (string)prefix.Data["id"]!);
             Assert.IsTrue(complete.Component.ContainsKey("entityBlackboard"), path);
+            var abilityPrefix = (IReadOnlyDictionary<string, object?>)complete.Component["abilitySystem"]!;
+            Assert.IsTrue(abilityPrefix.ContainsKey("skillDataBundle"), path);
+            Assert.AreEqual(
+                JsonSerializer.Serialize(complete.Component["entityBlackboard"]),
+                JsonSerializer.Serialize(abilityPrefix["entityBlackboard"]), path);
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {

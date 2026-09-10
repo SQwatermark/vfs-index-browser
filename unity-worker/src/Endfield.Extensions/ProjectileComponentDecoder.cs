@@ -117,6 +117,17 @@ public static class ProjectileComponentDecoder
         // 显式空数组也是来源证据：它表示精确 AbilitySystemData 前缀已走到该字段且原生模板
         // 没有声明初值，不能与“当前 worker 尚未解出实体黑板”共用字段缺失这一表示。
         component["entityBlackboard"] = entityBlackboard;
+        // Callback identity belongs to this AbilitySystem, not the launching skill.
+        // Preserve the already decoded prefix, including its skill bundle; do not reparse it.
+        component["abilitySystem"] = abilitySystem.Data;
+        component["abilitySystemBoundary"] = new Dictionary<string, object?>
+        {
+            ["decodeStatus"] = "partial",
+            ["offset"] = abilitySystemEntries[0].DataOffset,
+            ["length"] = abilitySystemEntries[0].DataLength,
+            ["nextOffset"] = abilitySystem.NextOffset,
+            ["remainingLength"] = abilitySystem.RemainingLength,
+        };
         return new ProjectileComponentDecodeResult(
             component,
             entry.DataOffset,

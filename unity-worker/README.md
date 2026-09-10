@@ -1,5 +1,14 @@
 # VFS Unity Worker
 
+### 2026-09-10：投射物自身 AbilitySystem 前缀
+
+Projectile 导出新增 `abilitySystem` 与 `abilitySystemBoundary`，直接保留已有严格
+前缀解码结果及 partial/offset/length/nextOffset/remainingLength。其中技能表属于
+投射物自身，不应拿发射技能类型替代。原顶层 entityBlackboard 保留，仍来自同一结果。
+此修改不补解后缀、不放宽布局门禁。常规51项测试通过；本地旧汤汤和庄方宜 raw 的
+AbilitySystem 前缀可解，但整个组件布局测试失败，不能以这些缓存宣称当前版本
+端到端导出已验证。当前版本 raw 的整份回归和来源快照更新仍待完成。
+
 该目录保存 VFS 产品内置的 Unity/AssetBundle 读取 worker。它是内部实现，不是
 AnimeStudio CLI 的兼容层；Python 服务只能通过这里定义的版本化协议调用 Unity 能力。
 
