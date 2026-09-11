@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import re
 import struct
+import math
 
 
 ABILITY_ENTITY_ASSET_ROOT = "assets/beyond/dynamicassets/gamedata/abilityentity"
 ABILITY_ENTITY_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_]{0,159}$")
 ROOT_TYPE = ("AbilityEntityTemplateData", "Beyond.Gameplay", "Gameplay.Beyond")
+ABILITY_SYSTEM_TYPE = ("AbilitySystemData", "Beyond.Gameplay.Core", "Gameplay.Beyond")
 
 
 class AbilityEntityError(RuntimeError):
@@ -158,6 +160,140 @@ def _locate_root_data(data: bytes) -> tuple[int, int, int]:
     return matches[0], reference_count, root_rid
 
 
+def _locate_managed_reference_data(
+    data: bytes,
+    expected_type: tuple[str, str, str],
+    allowed_rids: set[int],
+) -> int | None:
+    """Locate one typed managed-reference payload by its serialized type triple."""
+
+    class_bytes = expected_type[0].encode("utf-8")
+    search_at = 0
+    matches: list[int] = []
+    while True:
+        occurrence = data.find(class_bytes, search_at)
+        if occurrence < 0:
+            break
+        candidate = occurrence - 4
+        try:
+            rid = struct.unpack_from("<q", data, candidate - 8)[0]
+            class_name, after_class = _read_string(data, candidate)
+            namespace, after_namespace = _read_string(data, after_class)
+            assembly, data_offset = _read_string(data, after_namespace)
+        except (AbilityEntityDecodeError, struct.error):
+            pass
+        else:
+            if rid in allowed_rids and (class_name, namespace, assembly) == expected_type:
+                matches.append(data_offset)
+        search_at = occurrence + 1
+    if len(matches) > 1:
+        raise AbilityEntityDecodeError(
+            f"expected at most one {expected_type[0]} component, got {matches}"
+        )
+    return matches[0] if matches else None
+
+
+def _read_string_list(data: bytes, offset: int, field: str) -> tuple[list[str], int]:
+    count, offset = _read_i32(data, offset)
+    if not 0 <= count <= 1024:
+        raise AbilityEntityDecodeError(f"invalid {field} count {count}")
+    values: list[str] = []
+    for _ in range(count):
+        value, offset = _read_string(data, offset)
+        values.append(value)
+    return values, offset
+
+
+def _parse_ability_system_skill_data_bundle(data: bytes, offset: int) -> dict:
+    # AbilitySystemData begins with BasicShapeData(two floats), then ModeConfig.
+    # Non-empty ModeData is variable-sized and remains outside this proven slice.
+    _, offset = _read_f32(data, offset)
+    _, offset = _read_f32(data, offset)
+    mode_count, offset = _read_i32(data, offset)
+    if mode_count != 0:
+        raise AbilityEntityDecodeError(
+            "AbilitySystemData with non-empty ModeConfig is outside the decoded skill bundle slice"
+        )
+    _, offset = _read_string_list(data, offset, "allNormalAttackId")
+    active, offset = _read_string_list(data, offset, "allActiveSkillId")
+    passive, offset = _read_string_list(data, offset, "allPassiveSkillId")
+    _, offset = _read_string_list(data, offset, "normalAttackList")
+    _, offset = _read_string_list(data, offset, "enabledBreakingNormalAttacks")
+    enabled_passive, _ = _read_string_list(data, offset, "enabledPassiveSkills")
+    if any(not value for value in [*active, *passive, *enabled_passive]):
+        raise AbilityEntityDecodeError("AbilitySystemData skill identity must not be empty")
+    if any(value not in passive for value in enabled_passive):
+        raise AbilityEntityDecodeError(
+            "AbilitySystemData enabled passive skill is absent from allPassiveSkillId"
+        )
+    return {
+        "allActiveSkillIds": active,
+        "allPassiveSkillIds": passive,
+        "enabledPassiveSkillIds": enabled_passive,
+    }
+
+
+def _parse_blackboard_data_pairs(data: bytes, offset: int, count: int) -> tuple[list[dict], int]:
+    values: list[dict] = []
+    for _ in range(count):
+        key, offset = _read_string(data, offset)
+        if not key.startswith("EntityBB_"):
+            raise AbilityEntityDecodeError("entity blackboard key must start with EntityBB_")
+        if offset + 8 > len(data):
+            raise AbilityEntityDecodeError("unexpected end of entity blackboard numeric value")
+        numeric = struct.unpack_from("<d", data, offset)[0]
+        offset += 8
+        if not math.isfinite(numeric):
+            raise AbilityEntityDecodeError("entity blackboard numeric value must be finite")
+        string, offset = _read_string(data, offset)
+        dynamic, offset = _read_bool(data, offset)
+        offset = _align4(offset)
+        if string and numeric != 0:
+            raise AbilityEntityDecodeError("entity blackboard pair has numeric and string values")
+        values.append(
+            {
+                "key": key,
+                "valueDouble": numeric,
+                "valueStr": string,
+                "isDynamic": dynamic,
+            }
+        )
+    if len({value["key"] for value in values}) != len(values):
+        raise AbilityEntityDecodeError("entity blackboard contains duplicate keys")
+    return values, offset
+
+
+def _locate_entity_blackboard(data: bytes, search_offset: int) -> list[dict] | None:
+    """Locate the non-empty AbilitySystemData entityBlackboard DataPair list.
+
+    The fields between SkillDataBundle and entityBlackboard are variable-sized. The DataPair
+    layout and EntityBB namespace make the serialized list self-identifying; ambiguous matches
+    fail closed instead of selecting by asset name or a fixed byte offset.
+    """
+
+    matches: list[tuple[int, int, list[dict]]] = []
+    for offset in range(_align4(search_offset), len(data) - 8, 4):
+        count = struct.unpack_from("<i", data, offset)[0]
+        if not 0 < count <= 256:
+            continue
+        try:
+            values, end_offset = _parse_blackboard_data_pairs(data, offset + 4, count)
+        except (AbilityEntityDecodeError, struct.error):
+            continue
+        matches.append((offset, end_offset, values))
+    outer_matches = [
+        match
+        for match in matches
+        if not any(
+            other[0] < match[0] and match[1] <= other[1]
+            for other in matches
+        )
+    ]
+    if len(outer_matches) > 1:
+        raise AbilityEntityDecodeError("expected at most one non-empty AbilitySystem entityBlackboard")
+    return outer_matches[0][2] if outer_matches else None
+
+
 def _parse_blackboard_int(data: bytes, offset: int) -> tuple[dict, int]:
     use_key, offset = _read_bool(data, offset)
     value, offset = _read_i32(data, _align4(offset))
@@ -213,6 +349,21 @@ def parse_ability_entity_template(data: bytes, expected_id: str) -> dict:
     duration, offset = _read_f32(data, offset)
     duration_bb, offset = _parse_blackboard_double(data, offset)
     max_duration_for_server, _ = _read_f32(data, offset)
+    ability_system_offset = _locate_managed_reference_data(
+        data,
+        ABILITY_SYSTEM_TYPE,
+        set(component_rids),
+    )
+    skill_data_bundle = (
+        None
+        if ability_system_offset is None
+        else _parse_ability_system_skill_data_bundle(data, ability_system_offset)
+    )
+    entity_blackboard = (
+        None
+        if ability_system_offset is None
+        else _locate_entity_blackboard(data, ability_system_offset)
+    )
     # GameDataWithId.id is the stable asset identity. BaseTemplateData.name is a
     # separate template label and may intentionally be shared by multiple assets
     # (Typhoea's floating-arrow variants are the first current-game example).
@@ -239,4 +390,6 @@ def parse_ability_entity_template(data: bytes, expected_id: str) -> dict:
         "componentCount": component_count,
         "managedReferenceCount": reference_count,
         "rootRid": root_rid,
+        **({"skillDataBundle": skill_data_bundle} if skill_data_bundle is not None else {}),
+        **({"entityBlackboard": entity_blackboard} if entity_blackboard is not None else {}),
     }

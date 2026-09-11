@@ -2,6 +2,7 @@ import struct
 import unittest
 
 from ability_entity_data import (
+    ABILITY_SYSTEM_TYPE,
     ROOT_TYPE,
     AbilityEntityDecodeError,
     AbilityEntityNotFoundError,
@@ -26,6 +27,7 @@ def fixture():
     data = bytearray(bytes(12) + b"\x01" + bytes(3) + bytes(12))
     data += encoded_string("fixture", len(data))
     root_rid = 0x123456789
+    ability_system_rid = 11
     data += struct.pack("<qii", root_rid, 2, 3)
     data += struct.pack("<q", 8) + encoded_string("", len(data) + 8) * 3
     data += struct.pack("<q", root_rid)
@@ -39,7 +41,7 @@ def fixture():
     data += bytes(align4(len(data)) - len(data))
     data += b"\x00"
     data += bytes(align4(len(data)) - len(data))
-    data += struct.pack("<fiqq", 1.0, 2, 11, 12)
+    data += struct.pack("<fiqq", 1.0, 2, ability_system_rid, 12)
     data += struct.pack("<i", 3)
     data += b"\x01" + bytes(3) + struct.pack("<i", 7)
     data += encoded_string("stack", len(data))
@@ -47,6 +49,28 @@ def fixture():
     data += b"\x00" + bytes(3) + struct.pack("<f", 9.5)
     data += encoded_string("", len(data))
     data += struct.pack("<f", 30.0)
+    data += struct.pack("<q", ability_system_rid)
+    for value in ABILITY_SYSTEM_TYPE:
+        data += encoded_string(value, len(data))
+    data += struct.pack("<ffi", 0.2, 0.4, 0)
+    data += struct.pack("<i", 0)
+    data += struct.pack("<i", 2)
+    data += encoded_string("active_a", len(data))
+    data += encoded_string("active_b", len(data))
+    data += struct.pack("<i", 1)
+    data += encoded_string("passive_a", len(data))
+    data += struct.pack("<ii", 0, 0)
+    data += struct.pack("<i", 1)
+    data += encoded_string("passive_a", len(data))
+    data += struct.pack("<i", 2)
+    data += encoded_string("EntityBB_damage", len(data))
+    data += struct.pack("<d", 5.5)
+    data += encoded_string("", len(data))
+    data += b"\x01" + bytes(3)
+    data += encoded_string("EntityBB_label", len(data))
+    data += struct.pack("<d", 0)
+    data += encoded_string("bat", len(data))
+    data += b"\x00" + bytes(3)
     return bytes(data)
 
 
@@ -97,6 +121,21 @@ class AbilityEntityDataTests(unittest.TestCase):
         self.assertEqual(12.5, value["durationSeconds"])
         self.assertEqual(3, value["maxStackingCount"])
         self.assertEqual(2, value["componentCount"])
+        self.assertEqual(
+            {
+                "allActiveSkillIds": ["active_a", "active_b"],
+                "allPassiveSkillIds": ["passive_a"],
+                "enabledPassiveSkillIds": ["passive_a"],
+            },
+            value["skillDataBundle"],
+        )
+        self.assertEqual(
+            [
+                {"key": "EntityBB_damage", "valueDouble": 5.5, "valueStr": "", "isDynamic": True},
+                {"key": "EntityBB_label", "valueDouble": 0.0, "valueStr": "bat", "isDynamic": False},
+            ],
+            value["entityBlackboard"],
+        )
 
     def test_rejects_identity_mismatch(self):
         with self.assertRaisesRegex(AbilityEntityDecodeError, "identity mismatch"):
