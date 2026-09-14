@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using AnimeStudio;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 using UnityObject = AnimeStudio.Object;
 
 namespace Vfs.Endfield.Extensions;
@@ -163,7 +165,7 @@ public static class BundlePreviewMediaExporter
                 }
                 break;
             case Sprite sprite:
-                using (var image = sprite.GetImage())
+                using (var image = ExportSpriteCanvas(sprite))
                 {
                     if (image is null)
                     {
@@ -197,6 +199,53 @@ public static class BundlePreviewMediaExporter
                 break;
         }
         return relativePath;
+    }
+
+    private static Image<Bgra32>? ExportSpriteCanvas(Sprite sprite)
+    {
+        using var content = sprite.GetImage();
+        if (content is null)
+        {
+            return null;
+        }
+        var offset = SpriteTextureRectOffset(sprite);
+        var width = checked((int)MathF.Round(sprite.m_Rect.width));
+        var height = checked((int)MathF.Round(sprite.m_Rect.height));
+        return RestoreSpriteCanvas(content, width, height, offset.X, offset.Y);
+    }
+
+    private static (float X, float Y) SpriteTextureRectOffset(Sprite sprite)
+    {
+        if (sprite.m_SpriteAtlas is not null &&
+            sprite.m_SpriteAtlas.TryGet(out var atlas) &&
+            atlas.m_RenderDataMap.TryGetValue(sprite.m_RenderDataKey, out var atlasData))
+        {
+            return (atlasData.textureRectOffset.X, atlasData.textureRectOffset.Y);
+        }
+        return (sprite.m_RD.textureRectOffset.X, sprite.m_RD.textureRectOffset.Y);
+    }
+
+    internal static Image<Bgra32> RestoreSpriteCanvas(
+        Image<Bgra32> content,
+        int width,
+        int height,
+        float offsetX,
+        float offsetY)
+    {
+        if (width <= 0 || height <= 0 || !float.IsFinite(offsetX) || !float.IsFinite(offsetY))
+        {
+            throw new InvalidDataException("Sprite 逻辑画布或裁切偏移无效。");
+        }
+        var x = checked((int)MathF.Round(offsetX));
+        var y = checked(height - (int)MathF.Round(offsetY) - content.Height);
+        if (x < 0 || y < 0 || x + content.Width > width || y + content.Height > height)
+        {
+            throw new InvalidDataException(
+                $"Sprite 裁切区域 {content.Width}x{content.Height}+{x},{y} 超出逻辑画布 {width}x{height}。");
+        }
+        var canvas = new Image<Bgra32>(width, height, new Bgra32(0, 0, 0, 0));
+        canvas.Mutate(context => context.DrawImage(content, new Point(x, y), 1f));
+        return canvas;
     }
 
     private static string SkipReason(UnityObject asset) => asset switch
