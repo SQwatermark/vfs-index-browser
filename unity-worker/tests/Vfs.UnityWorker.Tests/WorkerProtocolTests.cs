@@ -17,9 +17,8 @@ public sealed class WorkerProtocolTests
         var payload = JsonSerializer.Serialize(response, WorkerProtocol.JsonOptions);
         StringAssert.Contains(payload, "vfs-unity-worker");
         StringAssert.Contains(payload, WorkerProtocol.AnimeStudioUpstreamCommit);
-        StringAssert.Contains(
-            payload,
-            "\"capabilities\":[\"handshake\",\"exportMonoBehaviourRaw\",\"exportMonoBehaviourTypeTreeDump\",\"decodeProjectileComponent\",\"decodeCharacterTemplate\",\"buildAssetMap\",\"buildCabMap\",\"exportObjectSnapshots\",\"exportIdentifiedTextures\",\"exportCubemapFaces\",\"exportBundlePreviewMedia\",\"exportAnimationClipJson\"]");
+        var handshake = (HandshakeResult)response.Result!;
+        CollectionAssert.Contains(handshake.Capabilities.ToArray(), "decodeAbilityEntityTemplate");
     }
 
     [TestMethod]

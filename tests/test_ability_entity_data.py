@@ -23,7 +23,7 @@ def encoded_string(value, offset):
     return raw + bytes(align4(offset + len(raw)) - offset - len(raw))
 
 
-def fixture():
+def fixture(passive_reference="passive_a", enabled_passive="passive_a"):
     data = bytearray(bytes(12) + b"\x01" + bytes(3) + bytes(12))
     data += encoded_string("fixture", len(data))
     root_rid = 0x123456789
@@ -58,10 +58,10 @@ def fixture():
     data += encoded_string("active_a", len(data))
     data += encoded_string("active_b", len(data))
     data += struct.pack("<i", 1)
-    data += encoded_string("passive_a", len(data))
+    data += encoded_string(passive_reference, len(data))
     data += struct.pack("<ii", 0, 0)
     data += struct.pack("<i", 1)
-    data += encoded_string("passive_a", len(data))
+    data += encoded_string(enabled_passive, len(data))
     data += struct.pack("<i", 2)
     data += encoded_string("EntityBB_damage", len(data))
     data += struct.pack("<d", 5.5)
@@ -140,6 +140,20 @@ class AbilityEntityDataTests(unittest.TestCase):
     def test_rejects_identity_mismatch(self):
         with self.assertRaisesRegex(AbilityEntityDecodeError, "identity mismatch"):
             parse_ability_entity_template(fixture(), "other")
+
+    def test_resolves_native_skill_resource_path_to_identity(self):
+        value = parse_ability_entity_template(
+            fixture("SkillData/Interactive/passive_a.json"), "abilityentity_fixture"
+        )
+        self.assertEqual(["passive_a"], value["skillDataBundle"]["allPassiveSkillIds"])
+        self.assertEqual(["passive_a"], value["skillDataBundle"]["enabledPassiveSkillIds"])
+
+    def test_still_rejects_undeclared_enabled_skill(self):
+        with self.assertRaisesRegex(AbilityEntityDecodeError, "absent from allPassiveSkillId"):
+            parse_ability_entity_template(
+                fixture("SkillData/Interactive/passive_a.json", "passive_b"),
+                "abilityentity_fixture",
+            )
 
 
 if __name__ == "__main__":

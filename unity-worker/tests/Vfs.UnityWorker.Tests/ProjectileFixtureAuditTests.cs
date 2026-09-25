@@ -31,6 +31,15 @@ public sealed class ProjectileFixtureAuditTests
 
         var entry = matching[0];
         var prefix = AbilitySystemDataPrefixDecoder.Decode(rawData, entry);
+        var tail = AbilitySystemDataTailDecoder.Decode(rawData, prefix.NextOffset, prefix.RemainingLength);
+        var projectileEntry = ManagedReferenceRegistryScanner.FindCandidates(rawData)
+            .SelectMany(registry => registry.Entries)
+            .Single(candidate => candidate.ClassName == "ProjectileComponentData");
+        var projectilePrefix = ProjectileComponentPrefixDecoder.Decode(rawData, projectileEntry);
+        var component = ProjectileComponentDecoder.Decode(rawData, (string)projectilePrefix.Data["id"]!).Component;
+        var boundary = (IReadOnlyDictionary<string, object?>)component["abilitySystemBoundary"]!;
+        Assert.AreEqual("complete", boundary["decodeStatus"]);
+        Assert.AreEqual(0, boundary["remainingLength"]);
         Console.WriteLine(JsonSerializer.Serialize(new
         {
             path,
@@ -40,6 +49,9 @@ public sealed class ProjectileFixtureAuditTests
             prefix.RemainingLength,
             entityBlackboard = prefix.Data["entityBlackboard"],
             skillDataBundle = prefix.Data["skillDataBundle"],
+            maxPotentialEffectBuffId = tail["maxPotentialEffectBuffId"],
+            preloadAbilityEntities = tail["preloadAbilityEntities"],
+            decodedAbilitySystemBoundary = boundary,
         }));
     }
 

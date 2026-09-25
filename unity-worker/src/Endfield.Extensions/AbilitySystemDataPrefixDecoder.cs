@@ -9,7 +9,7 @@ public sealed record AbilitySystemDataPrefixResult(
 /// </summary>
 public static class AbilitySystemDataPrefixDecoder
 {
-    public static AbilitySystemDataPrefixResult Decode(byte[] rawData, ManagedReferenceEntry entry)
+    public static AbilitySystemDataPrefixResult Decode(byte[] rawData, ManagedReferenceEntry entry, bool skillsOnly = false)
     {
         if (entry.ClassName != "AbilitySystemData" || entry.Namespace != "Beyond.Gameplay.Core"
             || entry.AssemblyName != "Gameplay.Beyond")
@@ -20,8 +20,9 @@ public static class AbilitySystemDataPrefixDecoder
             ["shapeData"] = Fields(r, "shapeData", "f:detectedRadius f:detectedHeight"),
             ["modeConfig"] = new Dictionary<string, object?> { ["modes"] = List(r, "modeConfig.modes", ReadMode) },
             ["skillDataBundle"] = ReadSkillBundle(r, "skillDataBundle"),
-            ["uiData"] = ReadUi(r, "uiData"),
         };
+        if (skillsOnly) return new(data, r.Position, r.Remaining);
+        data["uiData"] = ReadUi(r, "uiData");
         foreach (var name in new[] { "dashBuff", "buffDuringPoiseExist", "buffDuringZeroPoise" })
             data[name] = List(r, name, ReadBuffInput);
         data["plungingAttackData"] = Fields(r, "plungingAttackData",
@@ -56,7 +57,7 @@ public static class AbilitySystemDataPrefixDecoder
         return data;
     }
 
-    private static Dictionary<string, object?> ReadSkillBundle(ManagedReferencePayloadReader r, string path)
+    internal static Dictionary<string, object?> ReadSkillBundle(ManagedReferencePayloadReader r, string path)
     {
         var data = new Dictionary<string, object?>();
         foreach (var name in new[] { "allNormalAttackId", "allActiveSkillId", "allPassiveSkillId",
@@ -146,7 +147,7 @@ public static class AbilitySystemDataPrefixDecoder
     }
 
     // 这里只描述明确的序列化字段及原始类型，不包含游戏执行语义或跨字段推断。
-    private static Dictionary<string, object?> Fields(ManagedReferencePayloadReader r, string path, string schema)
+    internal static Dictionary<string, object?> Fields(ManagedReferencePayloadReader r, string path, string schema)
     {
         var result = new Dictionary<string, object?>();
         foreach (var field in schema.Split(' ', StringSplitOptions.RemoveEmptyEntries))

@@ -112,6 +112,26 @@ record、chunk 修改时间、assetIndex、asset path，以及 AnimeStudio EXE/C
 
 ## 后续验证
 
+### 2026-09-25 AbilitySystem 尾部
+
+嵌入式 worker 新增 `AbilitySystemDataTailDecoder`，继续读取 entityBlackboard 之后的
+空间字典、镜头、死亡特效、生命类型、预加载实体和满潜能 Buff ID。当前支持空空间/
+镜头字典；非空形态不会跳过，而是保留 partial 和 `tailDecodeFailure`。
+
+`abilitySystemBoundary.decodeStatus` 单独表示 AbilitySystem 字段是否全部消费。
+只有精确到达该 managed-reference 条目末尾，才输出 complete 和 remainingLength=0；
+这不改变 ProjectileComponent 自身尚未解析完毕的 partial 状态。导出缓存版本升为 4。
+
+本次 479 份投射物的 AbilitySystem 均完整消费。噗切娜 giftbox 的原始 MonoBehaviour
+为 4200 字节，SHA-256 为
+`d084bb3e1132450a6daef6d7deac54ab8a383af22ed51c976958fb34aaf56dbb`。
+其 AbilitySystem 条目起点 628、长度 872，旧前缀结束于 952，新尾部结束于 1500。
+满潜能 Buff ID 和预加载列表均为空；主动技能表登记 `chr_0038_purrche_combo_skill_gene`。
+
+EffectActionCfg 的运行时字段 forceGuardEffect、centerOffset 不在当前 AKEDATA
+序列化对象中，原始资源也不保存这两个字段。不能直接按照内存字段表读取 Unity 字节。
+本次同时用实际资源、AKEDATA 字段和完整消费边界校准，未按固定 548 字节直接跳过。
+
 游戏升级后应重新记录 manifest hash，并至少对上述两个 projectileId 验证：精确路径仍唯一、
 组件 `id` 与请求一致、managed-reference payload 被完整消费。若 `decode.status` 变为
 `unparsed` 或 422，应先更新同版本 IL2CPP 字段顺序和 AnimeStudio 聚焦解码器，而不是增加

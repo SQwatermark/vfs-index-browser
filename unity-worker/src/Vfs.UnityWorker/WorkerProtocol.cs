@@ -41,6 +41,7 @@ public static class WorkerProtocol
                     "exportMonoBehaviourTypeTreeDump",
                     "decodeProjectileComponent",
                     "decodeCharacterTemplate",
+                    "decodeAbilityEntityTemplate",
                     "buildAssetMap",
                     "buildCabMap",
                     "exportObjectSnapshots",
@@ -86,6 +87,7 @@ public static class WorkerProtocol
                 "exportMonoBehaviourTypeTreeDump" => HandleMonoBehaviourTypeTreeDumpExport(request),
                 "decodeProjectileComponent" => HandleProjectileComponentExport(request),
                 "decodeCharacterTemplate" => HandleCharacterTemplateDecode(request),
+                "decodeAbilityEntityTemplate" => HandleAbilityEntityTemplateDecode(request),
                 "buildAssetMap" => HandleAssetMapExport(request),
                 "buildCabMap" => HandleCabMapExport(request),
                 "exportObjectSnapshots" => HandleObjectSnapshotExport(request),
@@ -175,6 +177,27 @@ public static class WorkerProtocol
         }
     }
 
+    private static WorkerResponse HandleAbilityEntityTemplateDecode(WorkerRequest request)
+    {
+        var arguments = request.Arguments.Deserialize<AbilityEntityTemplateDecodeRequest>(JsonOptions)
+            ?? throw new JsonException("decodeAbilityEntityTemplate 缺少 arguments。");
+        ArgumentException.ThrowIfNullOrWhiteSpace(arguments.InputPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(arguments.ExpectedId);
+        if (!File.Exists(arguments.InputPath))
+            throw new MonoBehaviourExportException("input_not_found", "能力实体原始 MonoBehaviour 文件不存在。");
+        try
+        {
+            var raw = File.ReadAllBytes(arguments.InputPath);
+            return arguments.SkillRegistrationOnly
+                ? WorkerResponse.Success(AbilityEntityTemplateDecoder.DecodeSkillRegistration(raw, arguments.ExpectedId), request.RequestId)
+                : WorkerResponse.Success(AbilityEntityTemplateDecoder.Decode(raw, arguments.ExpectedId), request.RequestId);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new MonoBehaviourExportException("ability_entity_template_decode_failed", exception.Message);
+        }
+    }
+
     private static WorkerResponse HandleAssetMapExport(WorkerRequest request)
     {
         var arguments = request.Arguments.Deserialize<AssetMapExportRequest>(JsonOptions)
@@ -233,6 +256,7 @@ public static class WorkerProtocol
 }
 
 public sealed record CharacterTemplateDecodeRequest(string InputPath, string ExpectedId);
+public sealed record AbilityEntityTemplateDecodeRequest(string InputPath, string ExpectedId, bool SkillRegistrationOnly = false);
 
 public sealed record WorkerResponse(string? RequestId, bool Ok, object? Result, WorkerError? Error)
 {

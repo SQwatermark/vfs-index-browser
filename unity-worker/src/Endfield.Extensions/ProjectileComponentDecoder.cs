@@ -119,14 +119,29 @@ public static class ProjectileComponentDecoder
         component["entityBlackboard"] = entityBlackboard;
         // Callback identity belongs to this AbilitySystem, not the launching skill.
         // Preserve the already decoded prefix, including its skill bundle; do not reparse it.
-        component["abilitySystem"] = abilitySystem.Data;
+        var abilityData = new Dictionary<string, object?>(abilitySystem.Data);
+        var abilityTailComplete = false;
+        string? abilityTailFailure = null;
+        try
+        {
+            var tailData = AbilitySystemDataTailDecoder.Decode(rawData, abilitySystem.NextOffset, abilitySystem.RemainingLength);
+            foreach (var pair in tailData) abilityData.Add(pair.Key, pair.Value);
+            abilityTailComplete = true;
+        }
+        catch (InvalidDataException error)
+        {
+            // 新格式或非空空间字典仍保留已验证的前缀及失败原因，不伪装成完整模板。
+            abilityTailFailure = error.Message;
+        }
+        component["abilitySystem"] = abilityData;
         component["abilitySystemBoundary"] = new Dictionary<string, object?>
         {
-            ["decodeStatus"] = "partial",
+            ["decodeStatus"] = abilityTailComplete ? "complete" : "partial",
             ["offset"] = abilitySystemEntries[0].DataOffset,
             ["length"] = abilitySystemEntries[0].DataLength,
-            ["nextOffset"] = abilitySystem.NextOffset,
-            ["remainingLength"] = abilitySystem.RemainingLength,
+            ["nextOffset"] = abilityTailComplete ? abilitySystemEntries[0].DataOffset + abilitySystemEntries[0].DataLength : abilitySystem.NextOffset,
+            ["remainingLength"] = abilityTailComplete ? 0 : abilitySystem.RemainingLength,
+            ["tailDecodeFailure"] = abilityTailFailure,
         };
         return new ProjectileComponentDecodeResult(
             component,

@@ -221,6 +221,23 @@ class UnityWorkerClient:
             cancel_event=cancel_event,
         )
 
+    def decode_ability_entity_template(
+        self,
+        *,
+        input_path: Path,
+        expected_id: str,
+        request_id: str,
+        cancel_event: object | None = None,
+        skill_registration_only: bool = False,
+    ) -> dict:
+        return self.request(
+            "decodeAbilityEntityTemplate",
+            {"inputPath": str(input_path.resolve()), "expectedId": expected_id,
+             "skillRegistrationOnly": skill_registration_only},
+            request_id=request_id,
+            cancel_event=cancel_event,
+        )
+
     def decode_projectile_component(
         self,
         *,

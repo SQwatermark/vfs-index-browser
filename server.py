@@ -938,6 +938,7 @@ class BrowserHandler(BaseHTTPRequestHandler):
             self.ensure_manifest_monobehaviour_raw,
             unity_worker_is_unavailable,
             manifest_logical_id=MANIFEST_LOGICAL_ID,
+            decode_template=UNITY_WORKER.decode_ability_entity_template,
         ).build(entity_id)
 
     def handle_endaxis_data_ability_entity_manifest(self) -> None:

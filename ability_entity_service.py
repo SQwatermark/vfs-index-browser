@@ -26,6 +26,7 @@ class AbilityEntityService:
         worker_is_unavailable: Callable[[UnityWorkerError], bool],
         *,
         manifest_logical_id: str,
+        decode_template: Callable | None = None,
         api_version: int = 1,
     ) -> None:
         self._resolve_logical_file = resolve_logical_file
@@ -35,6 +36,7 @@ class AbilityEntityService:
         self._worker_is_unavailable = worker_is_unavailable
         self._manifest_logical_id = manifest_logical_id
         self._api_version = api_version
+        self._decode_template = decode_template
 
     def build(self, entity_id: str) -> dict:
         resolved_manifest = self._resolve_logical_file(self._manifest_logical_id)
@@ -56,6 +58,39 @@ class AbilityEntityService:
                 asset,
             )
             template = parse_ability_entity_template(raw_path.read_bytes(), entity_id)
+            if self._decode_template is not None:
+                try:
+                    decoded = self._decode_template(
+                        input_path=raw_path,
+                        expected_id=entity_id,
+                        request_id=f"ability-entity-{entity_id}",
+                    )
+                    if decoded.get("id") != entity_id:
+                        raise AbilityEntityDecodeError("完整模板 ID 与请求不一致")
+                    template["nativeData"] = {"decodeStatus": "complete", **decoded}
+                except UnityWorkerError as error:
+                    if error.code != "ability_entity_template_decode_failed":
+                        raise
+                    # 保留已知前缀，但明确指出完整解码尚不支持，不能用于证明引用闭合。
+                    template["nativeData"] = {
+                        "decodeStatus": "partial",
+                        "reason": str(error),
+                    }
+                    # 技能包在 AbilitySystem 组件的前段，可独立读取；挂点等其他部分失败
+                    # 不能让已经有明确边界的技能注册信息丢失，也不能改称完整模板。
+                    try:
+                        registration = self._decode_template(
+                            input_path=raw_path,
+                            expected_id=entity_id,
+                            request_id=f"ability-entity-skills-{entity_id}",
+                            skill_registration_only=True,
+                        )
+                        if registration.get("id") != entity_id:
+                            raise AbilityEntityDecodeError("技能注册表 ID 与请求不一致")
+                        template["skillRegistration"] = registration["skillDataBundle"]
+                    except UnityWorkerError as registration_error:
+                        if registration_error.code != "ability_entity_template_decode_failed":
+                            raise
         except AbilityEntityNotFoundError:
             raise
         except AbilityEntityDecodeError:

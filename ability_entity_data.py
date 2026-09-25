@@ -204,6 +204,14 @@ def _read_string_list(data: bytes, offset: int, field: str) -> tuple[list[str], 
     return values, offset
 
 
+def _skill_reference_id(value: str) -> str:
+    # 原生资源既有技能 ID，也有 SkillData/Interactive/<id>.json 引用。
+    # 输出字段是技能 ID；仅转换已知资源路径，不改写任意字符串。
+    if value.startswith("SkillData/") and value.endswith(".json"):
+        return value.rsplit("/", 1)[-1][:-5]
+    return value
+
+
 def _parse_ability_system_skill_data_bundle(data: bytes, offset: int) -> dict:
     # AbilitySystemData begins with BasicShapeData(two floats), then ModeConfig.
     # Non-empty ModeData is variable-sized and remains outside this proven slice.
@@ -220,6 +228,9 @@ def _parse_ability_system_skill_data_bundle(data: bytes, offset: int) -> dict:
     _, offset = _read_string_list(data, offset, "normalAttackList")
     _, offset = _read_string_list(data, offset, "enabledBreakingNormalAttacks")
     enabled_passive, _ = _read_string_list(data, offset, "enabledPassiveSkills")
+    active = [_skill_reference_id(value) for value in active]
+    passive = [_skill_reference_id(value) for value in passive]
+    enabled_passive = [_skill_reference_id(value) for value in enabled_passive]
     if any(not value for value in [*active, *passive, *enabled_passive]):
         raise AbilityEntityDecodeError("AbilitySystemData skill identity must not be empty")
     if any(value not in passive for value in enabled_passive):
