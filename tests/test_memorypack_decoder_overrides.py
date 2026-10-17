@@ -1,12 +1,45 @@
 import json
 import struct
+import tempfile
 import unittest
 from pathlib import Path
 
-from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex
+from tools.decode_memorypack_json import DecodeError, Decoder, MemoryPackReader, SchemaIndex, main
+from memorypack_value_decoder import memorypack_json_value
 
 
 class MemoryPackDecoderOverrideTests(unittest.TestCase):
+    def test_nonfinite_curve_values_are_standard_json_strings(self):
+        raw = {"keys": [{"inTangent": float("inf"), "outTangent": float("-inf"), "value": float("nan")}]}
+        encoded = json.dumps(memorypack_json_value(raw), allow_nan=False)
+        self.assertEqual({"keys": [{"inTangent": "Infinity", "outTangent": "-Infinity", "value": "NaN"}]}, json.loads(encoded))
+        self.assertEqual(float("inf"), raw["keys"][0]["inTangent"])
+
+    def test_color_exports_color_channels_without_changing_vector_fields(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        for type_name, fields in [("UnityEngine.Color", "rgba"), ("UnityEngine.Vector4", "xyzw"), ("UnityEngine.Quaternion", "xyzw")]:
+            with self.subTest(type_name=type_name):
+                reader = MemoryPackReader(struct.pack("<ffff", 0.25, 0.5, 0.75, 1.0) + b"\xbe")
+                self.assertEqual(dict(zip(fields, [0.25, 0.5, 0.75, 1.0])), decoder.read_value(reader, type_name, "$.value"))
+                self.assertEqual(0xbe, reader.read_u8())
+
+    def test_cli_reports_incomplete_payload_and_returns_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            binary = root / "payload.bin"
+            output = root / "result.json"
+            schema = root / "schema.json"
+            schema.write_text(json.dumps({'classes': [{'class': 'Beyond.Gameplay.Core.BuffData', 'members': []}]}), encoding='utf-8')
+            args = ["--binary", str(binary), "--schema", str(schema), "--class", "Beyond.Gameplay.Core.BuffData", "--output", str(output)]
+            for payload, success in [(b"\xff", True), (b"\xff\x00", False), (b"\xfa", False)]:
+                with self.subTest(payload=payload):
+                    binary.write_bytes(payload)
+                    self.assertEqual(0 if success else 1, main(args))
+                    result = json.loads(output.read_text(encoding="utf-8"))
+                    self.assertEqual(success, result["__meta"]["complete"])
+                    if not success:
+                        self.assertIsNotNone(result["__meta"]["error"])
+
     def test_animation_curve_keyframe_field_order_matches_unity_layout(self):
         decoder = Decoder(SchemaIndex({"classes": []}))
         keys = [

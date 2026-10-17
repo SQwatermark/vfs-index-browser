@@ -19,7 +19,7 @@ class NativeEnumCatalog:
             raise ValueError(f"ambiguous enum assembly for {type_name}")
         return items[0] if items else None
 
-    def name(self, type_name: str, value: int) -> str:
+    def json_value(self, type_name: str, value: int) -> str | int:
         item = self.get(type_name)
         if item is None:
             raise ValueError(f"missing enum metadata for {type_name}")
@@ -35,7 +35,8 @@ class NativeEnumCatalog:
             if remaining:
                 names = []
         if not names:
-            # 不把未知整数或 flags 未知位伪装成合法名字。
-            raise ValueError(f"unknown enum value {type_name}: {value}")
+            # AKEDB 的枚举 JSON 保留无名称值为整数（包括未命名零值和未知位）。
+            # 这不代表元数据已完整：缺少整个类型仍在上方报错，也不猜测 Flags 名称。
+            return value
         # 同值别名保留于目录；导出稳定选择 metadata 声明顺序中的第一个名字。
         return ", ".join(names) if item.get("isFlags") is True else names[0]

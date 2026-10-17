@@ -40,8 +40,8 @@ public static class ProjectileComponentPrefixDecoder
             ["finishOnReach"] = reader.ReadBool32("projectileComponent.finishOnReach"),
             ["finishOnBlock"] = reader.ReadBool32("projectileComponent.finishOnBlock"),
             ["allowRepeatBlock"] = reader.ReadBool32("projectileComponent.allowRepeatBlock"),
-            ["useHitBlockReachOrder"] = reader.ReadBool32(
-                "projectileComponent.useHitBlockReachOrder"),
+            // 1.6.3 的 ProjectileComponentData 在 allowRepeatBlock 后直接序列化
+            // hitOnReach；旧版 useHitBlockReachOrder 已移除，不能继续占用 4 字节。
             ["hitOnReach"] = reader.ReadBool32("projectileComponent.hitOnReach"),
             ["colliderShapeData"] = ReadShapeData(reader, "projectileComponent.colliderShapeData"),
             ["separateHitAndBlockCollider"] = reader.ReadBool32(

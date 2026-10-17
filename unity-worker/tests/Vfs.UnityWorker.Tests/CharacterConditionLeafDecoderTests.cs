@@ -8,6 +8,20 @@ namespace Vfs.UnityWorker.Tests;
 public sealed class CharacterConditionLeafDecoderTests
 {
     [TestMethod]
+    public void DecodesSiEnhanceLayerUsingIntegerThresholdAndUnityFieldOrder()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA6gMAAAAAAAABAAAAAAAAAAMAAAAYAAAARW50aXR5QkJfY29tYm9fY291bnRfdG1w");
+        var data = CharacterConditionLeafDecoder.Decode(raw,
+            Entry("CheckBuffEnhanceChangedLayer/Data", raw.Length))!;
+        var num = (Dictionary<string, object?>)data["num"]!;
+        Assert.AreEqual(false, num["useKey"]);
+        Assert.AreEqual(1, num["value"]);
+        Assert.AreEqual(3, data["compareType"]);
+        Assert.AreEqual("EntityBB_combo_count_tmp", data["storeKey"]);
+    }
+
+    [TestMethod]
     public void ReadsContextTargetAndTagCountWithoutDroppingSignedTagIdentity()
     {
         var raw = Bytes(w =>

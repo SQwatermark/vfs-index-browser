@@ -188,6 +188,8 @@ public static class WorkerProtocol
         try
         {
             var raw = File.ReadAllBytes(arguments.InputPath);
+            if (arguments.GameplayPrefixOnly)
+                return WorkerResponse.Success(AbilityEntityTemplateDecoder.DecodeGameplayPrefix(raw, arguments.ExpectedId), request.RequestId);
             return arguments.SkillRegistrationOnly
                 ? WorkerResponse.Success(AbilityEntityTemplateDecoder.DecodeSkillRegistration(raw, arguments.ExpectedId), request.RequestId)
                 : WorkerResponse.Success(AbilityEntityTemplateDecoder.Decode(raw, arguments.ExpectedId), request.RequestId);
@@ -256,7 +258,7 @@ public static class WorkerProtocol
 }
 
 public sealed record CharacterTemplateDecodeRequest(string InputPath, string ExpectedId);
-public sealed record AbilityEntityTemplateDecodeRequest(string InputPath, string ExpectedId, bool SkillRegistrationOnly = false);
+public sealed record AbilityEntityTemplateDecodeRequest(string InputPath, string ExpectedId, bool SkillRegistrationOnly = false, bool GameplayPrefixOnly = false);
 
 public sealed record WorkerResponse(string? RequestId, bool Ok, object? Result, WorkerError? Error)
 {

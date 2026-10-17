@@ -58,6 +58,7 @@ from endaxis_data_service import (
     make_endaxis_json_value,
 )
 from memorypack_value_decoder import MemoryPackValueDecoder
+from memorypack_string_pool import string_pool_logical_id
 from memorypack_preview_service import MemoryPackPreviewService
 from memorypack_schema_service import MemoryPackSchemaService
 from audio_dialog_service import (
@@ -1272,7 +1273,15 @@ class BrowserHandler(BaseHTTPRequestHandler):
             Decoder,
             decode_error_type,
             enum_names=enum_names,
+            string_pool_block_reader=self.read_memorypack_string_pool_block,
         )
+
+    def read_memorypack_string_pool_block(self, index: int) -> bytes:
+        logical_id = string_pool_logical_id(index)
+        source = self.resolve_logical_file_source(logical_id)
+        if source is None:
+            raise ValueError(f'Missing MemoryPack string pool: {logical_id}')
+        return self.read_file_slice(*source)
 
     def memorypack_preview_service(self) -> MemoryPackPreviewService:
         return MemoryPackPreviewService(self.memorypack_value_decoder().decode)

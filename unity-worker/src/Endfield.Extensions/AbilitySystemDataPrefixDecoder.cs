@@ -11,7 +11,7 @@ public static class AbilitySystemDataPrefixDecoder
 {
     public static AbilitySystemDataPrefixResult Decode(byte[] rawData, ManagedReferenceEntry entry, bool skillsOnly = false)
     {
-        if (entry.ClassName != "AbilitySystemData" || entry.Namespace != "Beyond.Gameplay.Core"
+        if (entry.ClassName is not ("AbilitySystemData" or "AbilitySystemForEnemyPartData" or "AbilitySystemForSoulData") || entry.Namespace != "Beyond.Gameplay.Core"
             || entry.AssemblyName != "Gameplay.Beyond")
             throw new InvalidDataException("目标条目不是 AbilitySystemData。");
         var r = new ManagedReferencePayloadReader(rawData, entry.DataOffset, entry.DataLength);

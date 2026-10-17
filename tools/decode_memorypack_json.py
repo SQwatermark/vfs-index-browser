@@ -16,6 +16,7 @@ import json
 import sqlite3
 import struct
 import sys
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -28,9 +29,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from float32_value import canonical_float32
 from native_enum_catalog import NativeEnumCatalog
+from memorypack_value_decoder import memorypack_json_value
+from memorypack_string_pool import string_pool_options, string_pool_logical_id
 
 DEFAULT_DB = PROJECT_ROOT / "data" / "endfield-vfs-index.sqlite"
-DEFAULT_SCHEMA = PROJECT_ROOT / "data" / "reports" / "memorypack-core-schema-x64-release.json"
+DEFAULT_SCHEMA = PROJECT_ROOT / "schemas" / "memorypack-known-schema.json"
+DEFAULT_UNION_MAP = PROJECT_ROOT / "schemas" / "memorypack-known-unions.json"
 
 NULL_OBJECT = 0xFF
 HEADER_U16 = 0xFA
@@ -106,6 +110,9 @@ TYPE_OVERRIDES = {
 TYPE_ALIASES = {}
 
 RAW_GAMEPLAY_TAG_FIELDS = {
+    # 1.6.3 RecoverDashEnergy.Deserialize 0x06B89D41..0x06B89D7F:
+    # recoverTag 直接读取并前移 4 字节，不经过 GameplayTag 对象头。
+    ("Beyond.Gameplay.Core.RecoverDashEnergy.Data", "recoverTag"),
     # 1.4.4 ObtainCost wrapper Deserialize (RVA 0x03E61583):
     # one bool + one inline int32, no GameplayTag object header.
     ("Beyond.Gameplay.Core.ObtainCostAction.Data", "uspRecoverTag"),
@@ -203,9 +210,10 @@ class VfsPayload:
 
 
 class MemoryPackReader:
-    def __init__(self, data: bytes):
+    def __init__(self, data: bytes, *, string_pool=None):
         self.data = data
         self.pos = 0
+        self.string_pool = string_pool
 
     def tell(self) -> int:
         return self.pos
@@ -257,6 +265,13 @@ class MemoryPackReader:
 
     def read_string(self) -> str | None:
         length = self.read_i32()
+        if self.string_pool is not None:
+            # 1.6.3 ReadString: -1 is empty, -2 is null; otherwise a pool index.
+            if length == -1:
+                return ""
+            if length == -2:
+                return None
+            return self.string_pool(length)
         if length == -1:
             return None
         if length < 0:
@@ -348,7 +363,7 @@ class Decoder:
             if not self.enum_names:
                 return value
             try:
-                return self.schema.enums.name(type_name, value)
+                return self.schema.enums.json_value(type_name, value)
             except ValueError as error:
                 raise DecodeError(str(error), reader.tell(), path) from error
         if self.enum_names and type_name in TYPE_OVERRIDES:
@@ -385,7 +400,9 @@ class Decoder:
                 "x": reader.read_f32(),
                 "y": reader.read_f32(),
             }
-        if type_name in {"UnityEngine.Vector4", "UnityEngine.Color", "UnityEngine.Quaternion"}:
+        if type_name == "UnityEngine.Color":
+            return {channel: reader.read_f32() for channel in ("r", "g", "b", "a")}
+        if type_name in {"UnityEngine.Vector4", "UnityEngine.Quaternion"}:
             return {
                 "x": reader.read_f32(),
                 "y": reader.read_f32(),
@@ -485,7 +502,7 @@ class Decoder:
         # 实现标记混入交付给下游的游戏数据。字段布局已经由 schema/本函数约束。
         result = {}
         for field in layout["fields"]:
-            field_reader = MemoryPackReader(raw)
+            field_reader = MemoryPackReader(raw, string_pool=reader.string_pool)
             field_reader.pos = field["offset"]
             result[field["name"]] = self.read_value(
                 field_reader,
@@ -651,7 +668,7 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser.add_argument("--class", dest="class_name", help="root runtime class name")
     parser.add_argument("--reference-json", type=Path, help="decoded JSON reference file")
     parser.add_argument("--reference-url", help="decoded JSON reference URL")
-    parser.add_argument("--union-map", type=Path, help="JSON map: {baseType: {tag: derivedType}}")
+    parser.add_argument("--union-map", type=Path, default=DEFAULT_UNION_MAP, help="JSON map: {baseType: {tag: derivedType}}")
     parser.add_argument(
         "--union",
         action="append",
@@ -696,6 +713,18 @@ def infer_class(logical_id: str | None) -> str | None:
     if "/BuffData/" in normalized:
         return "Beyond.Gameplay.Core.BuffData"
     return None
+
+
+def read_string_pool_block(db_path: Path, index: int) -> bytes:
+    logical_id = string_pool_logical_id(index)
+    with closing(sqlite3.connect(db_path)) as conn:
+        row = conn.execute(
+            "SELECT f.id FROM entries e JOIN files f ON f.id=e.file_id "
+            "WHERE e.scope='effective' AND f.logical_id=?", (logical_id,),
+        ).fetchone()
+    if row is None:
+        raise ValueError(f'Missing MemoryPack string pool: {logical_id}')
+    return read_vfs_payload(db_path, row[0]).data
 
 
 def read_reference(args: argparse.Namespace) -> Any | None:
@@ -790,10 +819,13 @@ def main(argv: Iterable[str]) -> int:
     if not class_name:
         raise SystemExit("--class is required when the root class cannot be inferred from the VFS path")
 
-    reader = MemoryPackReader(payload.data)
+    schema = SchemaIndex.load(args.schema)
+    reader = MemoryPackReader(payload.data, **string_pool_options(
+        schema, lambda index: read_string_pool_block(args.db, index),
+    ))
     reference = read_reference(args)
     decoder = Decoder(
-        SchemaIndex.load(args.schema),
+        schema,
         read_union_map(args),
         build_reference_type_index(reference),
         trace_enabled=args.trace,
@@ -801,6 +833,11 @@ def main(argv: Iterable[str]) -> int:
     complete = True
     try:
         value = decoder.decode(reader, class_name)
+        if reader.tell() != len(payload.data):
+            raise DecodeError(
+                f"unconsumed payload: {reader.tell()} / {len(payload.data)} bytes",
+                reader.tell(), "$", value,
+            )
         error = None
     except DecodeError as exc:
         complete = False
@@ -830,13 +867,13 @@ def main(argv: Iterable[str]) -> int:
         },
         "value": value,
     }
-    text = json.dumps(output, ensure_ascii=False, indent=2)
+    text = json.dumps(memorypack_json_value(output), ensure_ascii=False, indent=2, allow_nan=False)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(text, encoding="utf-8")
     else:
         print(text)
-    return 0
+    return 0 if complete else 1
 
 
 if __name__ == "__main__":

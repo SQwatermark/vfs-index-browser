@@ -6,7 +6,8 @@ namespace Vfs.Endfield.Extensions;
 /// </summary>
 public static class AbilitySystemDataTailDecoder
 {
-    public static IReadOnlyDictionary<string, object?> Decode(byte[] raw, int offset, int length)
+    public static IReadOnlyDictionary<string, object?> Decode(byte[] raw, int offset, int length,
+        string className = "AbilitySystemData")
     {
         var r = new ManagedReferencePayloadReader(raw, offset, length);
         var data = new Dictionary<string, object?>();
@@ -18,11 +19,37 @@ public static class AbilitySystemDataTailDecoder
         data["deadEffect"] = Effect(r, "deadEffect");
         data["deadEffects"] = List(r, "deadEffects", Effect);
         Add(data, Fields(r, "abilitySystem", "f:effectScale b:isPlayHitFlash s:hitFlashAsset i:healthType"));
-        var keys = List(r, "preloadAbilityEntities.keys", (reader, p) => reader.ReadAlignedUtf8String(p));
-        var values = List(r, "preloadAbilityEntities.values", (reader, p) => reader.ReadInt32(p));
-        if (keys.Count != values.Count) throw new InvalidDataException("preloadAbilityEntities 键值数量不一致。");
-        data["preloadAbilityEntities"] = new Dictionary<string, object?> { ["keys"] = keys, ["values"] = values };
+        foreach (var name in new[] { "preloadAbilityEntities", "preloadBattleCgIds" })
+        {
+            var keys = List(r, name + ".keys", (reader, p) => reader.ReadAlignedUtf8String(p));
+            var values = List(r, name + ".values", (reader, p) => reader.ReadInt32(p));
+            if (keys.Count != values.Count) throw new InvalidDataException(name + " 键值数量不一致。");
+            data[name] = new Dictionary<string, object?> { ["keys"] = keys, ["values"] = values };
+        }
         Add(data, Fields(r, "abilitySystem", "s:maxPotentialEffectBuffId b:checkAllyBlockableMoveCollider"));
+        // 1.6.3 Gameplay.Beyond：派生类按基类之后的字段顺序序列化。
+        // 保留完整字段并检查消费边界，不能把灵体静默解释成普通能力系统。
+        if (className is "AbilitySystemForEnemyPartData" or "AbilitySystemForSoulData")
+        {
+            Add(data, Fields(r, "enemyPart", "b:defaultEnabled b:asIndividualInExcludeTargetProcessor"));
+            data["partAttributes"] = List(r, "partAttributes", (reader, p) =>
+                Fields(reader, p, "i:attributeType i:overrideType f:value"));
+            Add(data, Fields(r, "enemyPart",
+                "b:useMainBodyHp b:useMainBodyPoise b:showHpBar i:hpBarMountPoint i:hpBarEnemyRank " +
+                "b:showPoise b:canBeHitIndividually f:halfBlockAngle f:halfRecommendedAngle " +
+                "b:onlyHitByNormalAttack b:canBeDirectlyBuffed f:damageRatio f:poiseRatio " +
+                "b:showDamageTextPart b:showDamageTextTransferred i:transferredDamageTextLocation " +
+                "i:overrideLockPoint i:damageTransferType"));
+        }
+        if (className == "AbilitySystemForSoulData")
+        {
+            data["soulHpBlackboardKey"] = r.ReadAlignedUtf8String("soulHpBlackboardKey");
+            data["soulDamageRatioBB"] = BlackboardNumber(r, "soulDamageRatioBB");
+            data["soulPoiseRatioBB"] = BlackboardNumber(r, "soulPoiseRatioBB");
+            Add(data, Fields(r, "soul", "b:asPrimaryTarget b:headBarUseMainBodyHp"));
+        }
+        if (className is not ("AbilitySystemData" or "AbilitySystemForEnemyPartData" or "AbilitySystemForSoulData"))
+            throw new InvalidDataException($"未知能力系统类型 {className}。");
         r.EnsureComplete();
         return data;
     }

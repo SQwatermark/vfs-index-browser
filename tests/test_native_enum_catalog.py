@@ -30,18 +30,19 @@ class NativeEnumCatalogTests(unittest.TestCase):
     def test_formats_known_flag_bits_in_declaration_order(self):
         self.assertEqual(
             "Sword, Claymores, Lance",
-            catalog(flags=True).name("Example.WeaponTypeMask", 42),
+            catalog(flags=True).json_value("Example.WeaponTypeMask", 42),
         )
 
     def test_preserves_exact_all_and_none_names(self):
-        self.assertEqual("All", catalog(flags=True).name("Example.WeaponTypeMask", -1))
-        self.assertEqual("None", catalog(flags=True).name("Example.WeaponTypeMask", 0))
+        self.assertEqual("All", catalog(flags=True).json_value("Example.WeaponTypeMask", -1))
+        self.assertEqual("None", catalog(flags=True).json_value("Example.WeaponTypeMask", 0))
 
-    def test_rejects_unknown_bits_and_unmarked_combinations(self):
-        with self.assertRaisesRegex(ValueError, "unknown enum value"):
-            catalog(flags=True).name("Example.WeaponTypeMask", 1)
-        with self.assertRaisesRegex(ValueError, "unknown enum value"):
-            catalog(flags=False).name("Example.WeaponTypeMask", 42)
+    def test_preserves_unnamed_values_without_guessing_flag_names(self):
+        self.assertEqual(1, catalog(flags=True).json_value("Example.WeaponTypeMask", 1))
+        self.assertEqual(-4, catalog(flags=True).json_value("Example.WeaponTypeMask", -4))
+        self.assertEqual(42, catalog(flags=False).json_value("Example.WeaponTypeMask", 42))
+        with self.assertRaisesRegex(ValueError, "missing enum metadata"):
+            catalog(flags=True).json_value("Example.Missing", 0)
 
 
 if __name__ == "__main__":

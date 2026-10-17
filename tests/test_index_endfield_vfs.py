@@ -20,30 +20,40 @@ def uint128(value: int) -> bytes:
     return value.to_bytes(16, "little", signed=False)
 
 
-def build_block() -> bytes:
+def build_block(code_version=4, tag=1) -> bytes:
     name = b"BundleManifest"
     file_name = b"Data/Bundles/Windows/manifest.hgmmap"
     payload = b"".join(
         (
-            struct.pack("<iiH", 4, 1, len(name)),
+            struct.pack("<iiH", code_version, 1, len(name)),
             name,
             struct.pack("<qiqB", 123, 1, 7, 4),
             struct.pack("<i", 1),
             uint128(0x11),
             uint128(0x22),
-            struct.pack("<qBi", 7, 4, 0),
+            struct.pack("<qB", 7, 4),
+            struct.pack("<q" if code_version >= 5 else "<i", tag),
             struct.pack("<iH", 1, len(file_name)),
             file_name,
             struct.pack("<q", 456),
             uint128(0x33),
             uint128(0x44),
-            struct.pack("<qqBBqi", 0, 7, 4, 1, 99, 1),
+            struct.pack("<qqBBq", 0, 7, 4, 1, 99),
+            struct.pack("<q" if code_version >= 5 else "<i", tag),
         )
     )
     return payload + struct.pack("<I", zlib.crc32(payload) & 0xFFFFFFFF)
 
 
 class EndfieldVfsIndexerTests(unittest.TestCase):
+    def test_v5_preserves_wide_tag_identities_without_shifting_file_records(self):
+        tag = 0x209C855B11B951
+        block = parse_block_info(build_block(5, tag))
+        self.assertEqual(tag, block.chunks[0].main_tag)
+        self.assertEqual(tag, block.chunks[0].files[0].file_tag)
+        self.assertEqual("Data/Bundles/Windows/manifest.hgmmap", block.chunks[0].files[0].file_name)
+        self.assertEqual(99, block.chunks[0].files[0].iv_seed)
+
     def test_parses_verified_block_file_and_encrypted_file_metadata(self):
         block = parse_block_info(build_block())
 

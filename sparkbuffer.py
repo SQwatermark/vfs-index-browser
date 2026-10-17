@@ -465,6 +465,8 @@ def _read_root_map_value(reader: SparkReader, root: RootDef, registry: TypeRegis
 
 
 def _read_map_key(reader: SparkReader, key_type: SparkType) -> str:
+    # Bool 值只占一个字节；填充位于下一项之前，最后一项后可以直接结束文件。
+    reader.align(4)
     if key_type == SparkType.STRING:
         return reader.read_string_at_offset()
     if key_type == SparkType.INT:
@@ -495,7 +497,5 @@ def _read_map_item(
             raise SparkBufferError("map enum value missing type hash")
         return registry.enum(type_hash).name_for_value(reader.read_int32())
     if value_type == SparkType.BOOL:
-        value = reader.read_bool()
-        reader.align(4)
-        return value
+        return reader.read_bool()
     raise SparkBufferError(f"unsupported map value type: {value_type.name}")

@@ -15,7 +15,8 @@ Endaxis 维护；VFS 保持独立产品，不导入 Endaxis 的模拟规则或�
 在同版本内容全面对齐前不宣称能替代 AKEDB。
 
 - 枚举常量必须从同版本 metadata 和精确字段类型自动批量提取，禁止手填游戏枚举映射。
-  名称还原属于 VFS 导出职责，不能要求 Endaxis 转换器长期兼容裸整数。
+  名称还原属于 VFS 导出职责。已知名称输出字符串；没有声明名称的值按 AKEDB JSON 约定
+  保留整数，不猜测名称或 Flags 属性。缺少整个枚举类型的元数据仍报错。
 - 当前工作树中新枚举目录/严格名称导出的接线尚未完成验证和部署，不能视为可用发布能力。
   最近实机批量验证仍在泛型嵌套枚举 `CharacterFollowBehavior` 的 `GuardState` 名称匹配处阻断；
   metadata 的反引号元数名称与 AI dump 的泛型显示格式需要严格对齐，不能跳过该枚举或手填常量。
@@ -385,7 +386,10 @@ manifest 逻辑树通过普通 `list` API 浏览；资源预览使用 `manifestI
 - `tools/scan_jsondata_formats.py`：批量统计 JsonData 的真实编码格式。
 - `tools/probe_binary_json.py`：对单个二进制 JSON 做结构探测。
 - `tools/extract_memorypack_schema.py`：从 IL2CPP dump 提取 MemoryPack schema；可用 `--union-map`
-  将已恢复派生类型显式纳入根集合。
+  将已恢复派生类型显式纳入根集合。`--string-encoding pooled` 标记使用字符串池的格式。
+  当前默认 schema/union 来自 1.6.3；服务和命令行会从所选 VFS 索引读取同版本
+  `JsonData/Data/Json/StringPool/StringPool*.byte`。解码独立二进制时也必须用 `--db`
+  指定匹配索引。旧版本需显式指定对应 schema/union，不自动猜测或回退。
 - `tools/extract_memorypack_unions.py`：从运行时注册恢复 union；部分初始化快照可传入同版本
   `--metadata`，严格核对类型名、token 和索引。复现与边界见
   [诀资源解码记录](docs/research/memorypack-arcane-2026-08-26.md)。

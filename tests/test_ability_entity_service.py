@@ -45,9 +45,10 @@ class AbilityEntityServiceTests(unittest.TestCase):
                 resolve_manifest=lambda _logical_id: ({"id": 1}, Path("manifest.chk")),
                 resolve_bundle=lambda *_args: (asset, {"id": 2}, Path("bundle.chk")),
                 export_raw=lambda *_args: (raw, {"exportedFile": "entity.raw"}),
+                decode_template=lambda **_: {"id": "abilityentity_sample"},
             )
             with patch(
-                "ability_entity_service.parse_ability_entity_template",
+                "ability_entity_service.project_gameplay_prefix",
                 return_value={"id": "abilityentity_sample"},
             ):
                 result = service.build("abilityentity_sample")
@@ -70,9 +71,9 @@ class AbilityEntityServiceTests(unittest.TestCase):
                     {"id": 2}, Path("bundle.chk"),
                 ),
                 export_raw=lambda *_: (raw, {}),
-                decode_template=decoder,
+                decode_template=lambda **args: ({"id": "sample"} if args.get("gameplay_prefix_only") else decoder(**args)),
             )
-            with patch("ability_entity_service.parse_ability_entity_template", return_value={"gameId": "sample"}):
+            with patch("ability_entity_service.project_gameplay_prefix", return_value={"gameId": "sample"}):
                 return service.build("sample")["abilityEntityTemplateData"]
 
     def test_preserves_full_native_data(self):

@@ -184,6 +184,41 @@ def extract_tag_slots(image: bytes, cctor_rva: int, max_bytes: int) -> dict[int,
     return result
 
 
+def extract_encoded_tag_slots(image: bytes, cctor_rva: int, max_bytes: int, metadata_types: dict[int, str]) -> dict[int, int]:
+    """Follow unresolved type usages across internal jumps in newer cctors.
+
+    Cached type conversion may load into rbx instead of rcx. Only an exact
+    metadata wrapper usage can supply the type, never a method-info slot.
+    """
+    decoder = Cs(CS_ARCH_X86, CS_MODE_64)
+    decoder.detail = True
+    instructions = list(decoder.disasm(image[cctor_rva:cctor_rva + max_bytes], cctor_rva))
+    result = {}
+    pending = None
+    for index, instruction in enumerate(instructions):
+        if instruction.mnemonic == "ret" and result:
+            break
+        operands = instruction.operands
+        if instruction.mnemonic == "mov" and len(operands) == 2 and operands[1].type == 3 and operands[1].mem.base == X86_REG_RIP:
+            slot = instruction.address + instruction.size + operands[1].mem.disp
+            encoded = read_qword(image, slot)
+            if encoded <= 0xFFFFFFFF and encoded & 1 and encoded >> 29 == 2 and (encoded & 0x1FFFFFFF) >> 1 in metadata_types:
+                pending = slot
+        tag = None
+        if instruction.mnemonic == "mov" and len(operands) == 2 and instruction.reg_name(operands[0].reg) == "r8d" and operands[1].type == 2:
+            tag = operands[1].imm
+        elif instruction.mnemonic == "xor" and instruction.op_str == "r8d, r8d":
+            tag = 0
+        if tag is not None and pending is not None and any(item.mnemonic == "call" for item in instructions[index + 1:index + 6]):
+            if tag in result:
+                raise SystemExit(f"duplicate encoded union registration: {tag}")
+            result[tag] = pending
+            pending = None
+    if not result or set(result) != set(range(max(result) + 1)):
+        raise SystemExit("encoded union registrations are empty or non-contiguous")
+    return result
+
+
 def extract_wrapper_tokens(lines: list[str]) -> tuple[dict[int, str], dict[str, int]]:
     token_to_type: dict[int, str] = {}
     type_to_token: dict[str, int] = {}
@@ -449,6 +484,7 @@ def main(argv: Iterable[str]) -> int:
         }
     handles = read_type_definition_handles(image, module_base, initialized_slots)
     token_to_type, type_to_token = extract_wrapper_tokens(lines)
+    metadata_types = None
     try:
         type_definition_base, type_definition_size = infer_type_definition_layout_from_union(
             handles,
@@ -458,26 +494,49 @@ def main(argv: Iterable[str]) -> int:
             type_to_token,
         )
     except SystemExit as error:
-        if "insufficient derived wrapper types" not in str(error) or args.base_class == DEFAULT_BASE_CLASS:
-            raise
-        anchor_slots = extract_tag_slots(
-            image,
-            find_formatter_cctor(lines, DEFAULT_BASE_CLASS),
-            args.max_cctor_bytes,
-        )
-        anchor_slots = {
-            tag: slot
-            for tag, slot in anchor_slots.items()
-            if module_base <= read_qword(image, slot) <= module_base + len(image) - 12
-        }
-        anchor_handles = read_type_definition_handles(image, module_base, anchor_slots)
-        type_definition_base, type_definition_size = infer_type_definition_layout_from_union(
-            anchor_handles,
-            DEFAULT_BASE_CLASS,
-            lines,
-            token_to_type,
-            type_to_token,
-        )
+        if not initialized_slots and args.metadata:
+            # At startup every usage can still be an encoded metadata token.
+            # Validate exact wrapper names/tokens for a unique table stride;
+            # do not require live pointers or use the previous version's tags.
+            candidates = []
+            metadata = args.metadata.read_bytes()
+            for stride in (88, 92):
+                try:
+                    types = read_metadata_wrapper_types(metadata, lines, stride)
+                    slots = tag_slots
+                    try:
+                        recover_encoded_mapping(image, slots, types)
+                    except SystemExit:
+                        slots = extract_encoded_tag_slots(image, cctor_rva, args.max_cctor_bytes, types)
+                    recover_encoded_mapping(image, slots, types)
+                    candidates.append((stride, types, slots))
+                except SystemExit:
+                    continue
+            if len(candidates) != 1:
+                raise SystemExit("cannot uniquely validate uninitialized union metadata layout") from error
+            type_definition_size, metadata_types, tag_slots = candidates[0]
+            type_definition_base = 0
+        else:
+            if "insufficient derived wrapper types" not in str(error) or args.base_class == DEFAULT_BASE_CLASS:
+                raise
+            anchor_slots = extract_tag_slots(
+                image,
+                find_formatter_cctor(lines, DEFAULT_BASE_CLASS),
+                args.max_cctor_bytes,
+            )
+            anchor_slots = {
+                tag: slot
+                for tag, slot in anchor_slots.items()
+                if module_base <= read_qword(image, slot) <= module_base + len(image) - 12
+            }
+            anchor_handles = read_type_definition_handles(image, module_base, anchor_slots)
+            type_definition_base, type_definition_size = infer_type_definition_layout_from_union(
+                anchor_handles,
+                DEFAULT_BASE_CLASS,
+                lines,
+                token_to_type,
+                type_to_token,
+            )
     recovered = recover_mapping(
         handles,
         token_to_type,
@@ -485,7 +544,7 @@ def main(argv: Iterable[str]) -> int:
         type_definition_size,
     )
     if args.metadata:
-        metadata_types = read_metadata_wrapper_types(args.metadata.read_bytes(), lines, type_definition_size)
+        metadata_types = metadata_types or read_metadata_wrapper_types(args.metadata.read_bytes(), lines, type_definition_size)
         recovered.update(recover_encoded_mapping(
             image, {tag: slot for tag, slot in tag_slots.items() if tag not in initialized_slots}, metadata_types,
         ))

@@ -309,8 +309,7 @@ def _parse_blackboard_int(data: bytes, offset: int) -> tuple[dict, int]:
     use_key, offset = _read_bool(data, offset)
     value, offset = _read_i32(data, _align4(offset))
     key, offset = _read_string(data, offset)
-    if use_key != bool(key):
-        raise AbilityEntityDecodeError("BlackboardInt key flag does not match key")
+    # 原生字段独立序列化；关闭开关后仍可能保留先前编辑的键名。
     return {"useBlackboardKey": use_key, "value": value, "blackboardKey": key}, offset
 
 
@@ -318,8 +317,8 @@ def _parse_blackboard_double(data: bytes, offset: int) -> tuple[dict, int]:
     use_key, offset = _read_bool(data, offset)
     value, offset = _read_f32(data, _align4(offset))
     key, offset = _read_string(data, offset)
-    if use_key != bool(key):
-        raise AbilityEntityDecodeError("BlackboardDouble key flag does not match key")
+    # 1.6.3 阿遥/战技陷阱的 durationBB 为 false 且保留 EntityBB_* 键。
+    # 是否读取黑板由 useBlackboardKey 决定，解码不能擅自要求键为空。
     return {"useBlackboardKey": use_key, "value": value, "blackboardKey": key}, offset
 
 

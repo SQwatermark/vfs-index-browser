@@ -283,7 +283,9 @@ def parse_block_info(decrypted: bytes, verify_crc: bool = True) -> VfsBlockInfo:
             content_md5=reader.u128(),
             length=reader.i64(),
             block_type=reader.u8(),
-            main_tag=(reader.i32() & 0xFF) if code_version > 3 else 0,
+            # V5 stores an eight-byte tag identity, not the old byte enum.
+            # Preserve it verbatim; truncation would invent an unrelated tag name.
+            main_tag=reader.i64() if code_version >= 5 else (reader.i32() & 0xFF) if code_version > 3 else 0,
         )
         file_count = reader.i32()
         if file_count < 0:
@@ -308,7 +310,7 @@ def parse_block_info(decrypted: bytes, verify_crc: bool = True) -> VfsBlockInfo:
             if use_encrypt:
                 file.iv_seed = reader.i64()
             if code_version > 3:
-                file.file_tag = reader.i32() & 0xFF
+                file.file_tag = reader.i64() if code_version >= 5 else reader.i32() & 0xFF
             chunk.files.append(file)
         block.chunks.append(chunk)
 

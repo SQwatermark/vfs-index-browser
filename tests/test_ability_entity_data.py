@@ -47,7 +47,7 @@ def fixture(passive_reference="passive_a", enabled_passive="passive_a"):
     data += encoded_string("stack", len(data))
     data += struct.pack("<if", 0, 12.5)
     data += b"\x00" + bytes(3) + struct.pack("<f", 9.5)
-    data += encoded_string("", len(data))
+    data += encoded_string("EntityBB_duration", len(data))
     data += struct.pack("<f", 30.0)
     data += struct.pack("<q", ability_system_rid)
     for value in ABILITY_SYSTEM_TYPE:
@@ -119,6 +119,10 @@ class AbilityEntityDataTests(unittest.TestCase):
         self.assertEqual([10, -20], value["bornTagIds"])
         self.assertEqual(0, value["lifeTypeNativeValue"])
         self.assertEqual(12.5, value["durationSeconds"])
+        self.assertEqual(
+            {"useBlackboardKey": False, "value": 9.5, "blackboardKey": "EntityBB_duration"},
+            value["durationBlackboard"],
+        )
         self.assertEqual(3, value["maxStackingCount"])
         self.assertEqual(2, value["componentCount"])
         self.assertEqual(

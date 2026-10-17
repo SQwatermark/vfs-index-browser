@@ -6,6 +6,8 @@ internal static class Program
 {
     public static int Main(string[] args)
     {
+        // Python 客户端按 UTF-8 读取协议；不能随 Windows 控制台代码页改变编码。
+        Console.OutputEncoding = new System.Text.UTF8Encoding(false);
         var operation = args.Length > 0 ? args[0] : string.Empty;
         WorkerResponse response;
         if (string.Equals(operation, "request", StringComparison.Ordinal))

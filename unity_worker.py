@@ -229,11 +229,13 @@ class UnityWorkerClient:
         request_id: str,
         cancel_event: object | None = None,
         skill_registration_only: bool = False,
+        gameplay_prefix_only: bool = False,
     ) -> dict:
         return self.request(
             "decodeAbilityEntityTemplate",
             {"inputPath": str(input_path.resolve()), "expectedId": expected_id,
-             "skillRegistrationOnly": skill_registration_only},
+             "skillRegistrationOnly": skill_registration_only,
+             "gameplayPrefixOnly": gameplay_prefix_only},
             request_id=request_id,
             cancel_event=cancel_event,
         )

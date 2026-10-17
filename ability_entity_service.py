@@ -10,7 +10,6 @@ from ability_entity_data import (
     AbilityEntityDecodeError,
     AbilityEntityNotFoundError,
     AbilityEntityUnavailableError,
-    parse_ability_entity_template,
     select_ability_entity_asset,
 )
 from unity_worker import UnityWorkerError
@@ -57,7 +56,13 @@ class AbilityEntityService:
                 bundle_chunk,
                 asset,
             )
-            template = parse_ability_entity_template(raw_path.read_bytes(), entity_id)
+            if self._decode_template is None:
+                raise AbilityEntityUnavailableError("Unity worker template decoder is unavailable")
+            prefix = self._decode_template(
+                input_path=raw_path, expected_id=entity_id,
+                request_id=f"ability-entity-prefix-{entity_id}", gameplay_prefix_only=True,
+            )
+            template = project_gameplay_prefix(prefix, entity_id)
             if self._decode_template is not None:
                 try:
                     decoded = self._decode_template(
@@ -121,3 +126,34 @@ class AbilityEntityService:
             },
             "abilityEntityTemplateData": template,
         }
+
+
+def project_gameplay_prefix(prefix: dict, expected_id: str) -> dict:
+    """只做协议字段投影；二进制边界与字段读取统一由 Unity worker 负责。"""
+    root = prefix["template"]
+    if prefix["id"] != expected_id or root["id"] != expected_id:
+        raise AbilityEntityDecodeError("能力实体前缀 ID 与请求不一致")
+    mapping = {
+        "gameId": "id", "name": "name", "factionNativeValue": "faction",
+        "bornTagIds": "bornTag", "lifeTypeNativeValue": "lifeType",
+        "durationSeconds": "duration", "durationBlackboard": "durationBB",
+        "maxDurationForServerSeconds": "maxDurationForServer",
+        "maxStackingCount": "maxStackingCnt", "maxStackingCountBlackboard": "maxStackingCntBB",
+        "delayToRecycleSeconds": "delayToRecycleTime", "delayRecyclePerformSeconds": "delayRecyclePerformTime",
+        "sendDieEvent": "sendDieEvent", "enableBornFadeIn": "enableBornFadeIn", "fadeInSeconds": "fadeInTime",
+    }
+    result = {target: root[source] for target, source in mapping.items()}
+    result.update(componentCount=len(root["componentList"]),
+                  managedReferenceCount=prefix["managedReferenceCount"], rootRid=int(prefix["rootRid"]))
+    ability = prefix["abilitySystem"]
+    if ability is not None:
+        bundle = ability["skillDataBundle"]
+        result["skillDataBundle"] = {
+            "allActiveSkillIds": bundle["allActiveSkillId"],
+            "allPassiveSkillIds": bundle["allPassiveSkillId"],
+            "enabledPassiveSkillIds": bundle["enabledPassiveSkills"],
+        }
+        result["skillRegistration"] = bundle
+        result["entityBlackboard"] = ability["entityBlackboard"]
+        result["abilitySystemType"] = prefix["abilitySystemType"]
+    return result

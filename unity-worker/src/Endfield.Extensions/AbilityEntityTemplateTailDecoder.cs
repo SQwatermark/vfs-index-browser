@@ -26,7 +26,11 @@ public static class AbilityEntityTemplateTailDecoder
         Add(data, Fields(r, "template", "b:posToGround b:hasSkill"));
         data["skillDataBundle"] = AbilitySystemDataPrefixDecoder.ReadSkillBundle(r, "skillDataBundle");
         Add(data, Fields(r, "template", "b:requiresCastSkillConfirm b:hasModel s:modelKey"));
-        data["mountPointDef"] = EmptyDictionary(r, "mountPointDef");
+        var mountPointKeys = ReadList(r, "mountPointDef.keys", p => r.ReadInt32(p));
+        var mountPointValues = ReadList(r, "mountPointDef.values", p => r.ReadAlignedUtf8String(p));
+        if (mountPointKeys.Count != mountPointValues.Count)
+            throw new InvalidDataException("mountPointDef 键值数量不一致。");
+        data["mountPointDef"] = new Dictionary<string, object?> { ["keys"] = mountPointKeys, ["values"] = mountPointValues };
         data["modelParts"] = ReadList(r, "modelParts", p =>
         {
             var part = Fields(r, p, "i:modelPartEnum");
@@ -40,7 +44,7 @@ public static class AbilityEntityTemplateTailDecoder
             obstacle["shapeRid"] = r.ReadInt64(p + ".shapeData").ToString(System.Globalization.CultureInfo.InvariantCulture);
             return obstacle;
         });
-        Add(data, Fields(r, "template", "b:canBeSelect f:detectedHeight f:detectedRadius b:physical"));
+        Add(data, Fields(r, "template", "b:canBeSelect f:detectedHeight f:detectedRadius b:overrideMarkTargetDistance f:customMarkTargetDistance b:physical"));
         data["physicalData"] = Fields(r, "physicalData", "f:mass f:drag f:angularDrag i:collisionDetectionMode");
         Add(data, Fields(r, "template", "b:hasBattlePhysicalComponents b:hasAirborneComponent b:hasKnockDownComponent b:hasPullComponent b:hasMovementComponent b:hasAnimation s:animationPath b:hasInteractiveAction f:maxPickUpTime"));
         data["interactiveActions"] = EmptyDictionary(r, "interactiveActions");
@@ -48,6 +52,11 @@ public static class AbilityEntityTemplateTailDecoder
         data["maxIgniteNumBB"] = Fields(r, "maxIgniteNumBB", "b:useBlackboardKey i:value s:blackboardKey");
         Add(data, Fields(r, "template", "b:isUltimateShow b:hasGameplayComponents b:hasTyphoeaArcheryLockingComponent b:hasSuperArmor"));
         data["initialSuperArmor"] = Fields(r, "initialSuperArmor", "b:useBlackboardKey i:value s:blackboardKey b:useCustomValue");
+        // 1.6.3 AbilityEntityTemplateData 的灵体字段，保留原始配置供下游判断。
+        data["isSoul"] = r.ReadBool32("isSoul");
+        data["soulDamageRatioBB"] = Scalar(r, "soulDamageRatioBB");
+        data["soulPoiseRatioBB"] = Scalar(r, "soulPoiseRatioBB");
+        Add(data, Fields(r, "template", "s:soulHpBlackboardKey i:soulHpBarMountPoint b:soulHeadBarUseMainBodyHp i:soulLockPoint b:asPrimaryTarget"));
         Add(data, Fields(r, "template", "i:healthType i:headBarType b:overrideHeadBarDeltaTowardCamera f:headBarDeltaTowardCamera f:headBar2DOffset.x f:headBar2DOffset.y b:useHeadBarGuideLine"));
         r.EnsureComplete();
         return data;
@@ -69,6 +78,8 @@ public static class AbilityEntityTemplateTailDecoder
         Add(ease, Fields(r, path, "b:enableRootYawLag f:rootYawLagSmoothTime f:maxRootYawLagAngle b:enableHorizontalSpeedLag"));
         ease["horizontalSpeedLag"] = Curve(r, path + ".horizontalSpeedLag");
         Add(ease, Fields(r, path, "f:speedLagSmoothTime i:rotationType"));
+        ease["localEulerOffset"] = Fields(r, path + ".localEulerOffset", "f:x f:y f:z");
+        ease["localAngularVelocity"] = Fields(r, path + ".localAngularVelocity", "f:x f:y f:z");
         return ease;
     }
     private static Dictionary<string, object?> Scalar(ManagedReferencePayloadReader r, string path) =>

@@ -48,10 +48,15 @@ public static class CharacterConditionLeafDecoder
             && entry.Namespace == "Beyond.Gameplay.Core";
         var comboSkillPending = entry.ClassName == "CheckComboSkillPending/Data"
             && entry.Namespace == "Beyond.Gameplay.Core";
+        var enhanceLayer = entry.ClassName == "CheckBuffEnhanceChangedLayer/Data"
+            && entry.Namespace == "Beyond.Gameplay.Core";
+        var buffDuration = entry.ClassName == "SetBuffDurationAction/Data"
+            && entry.Namespace == "Beyond.Gameplay.Core";
         if (!spell && !compare && !objectType && !tagStack && !debug && !damageDecorate
             && !targetsEqual && !advancedStack && !advancedBuffId && !modifyBlackboard && !physical
             && !mainCharacter && !contextBuff && !tagMatch && !notNext && !hp && !buffStack
-            && !createBuff && !storeBuffCount && !returnFalse && !ifElse && !comboSkillPending)
+            && !createBuff && !storeBuffCount && !returnFalse && !ifElse && !comboSkillPending
+            && !enhanceLayer && !buffDuration)
             return null;
         var r = new ManagedReferencePayloadReader(raw, entry.DataOffset, entry.DataLength);
         var data = new Dictionary<string, object?>
@@ -61,7 +66,28 @@ public static class CharacterConditionLeafDecoder
             ["priorityOffset"] = r.ReadInt32("priorityOffset"),
             ["serverActionIndex"] = r.ReadInt32("serverActionIndex"),
         };
-        if (spell || physical)
+        if (buffDuration)
+        {
+            data["targetSettings"] = UnityTargetSettingsDecoder.Read(r, "targetSettings");
+            data["buffSettings"] = ReadBuffFindSettings(r, "buffSettings");
+            data["operationType"] = r.ReadInt32("operationType");
+            data["value"] = ReadNumber(r, "value");
+            data["isFinishedEarly"] = r.ReadBool32("isFinishedEarly");
+        }
+        else if (enhanceLayer)
+        {
+            // Unity follows field declaration order (num before compareType), unlike
+            // MemoryPack's member order. num is BlackboardInt, not BlackboardFloat.
+            data["num"] = new Dictionary<string, object?>
+            {
+                ["useKey"] = r.ReadBool32("num.useKey"),
+                ["value"] = r.ReadInt32("num.value"),
+                ["key"] = r.ReadAlignedUtf8String("num.key"),
+            };
+            data["compareType"] = r.ReadInt32("compareType");
+            data["storeKey"] = r.ReadAlignedUtf8String("storeKey");
+        }
+        else if (spell || physical)
         {
             data["mask"] = r.ReadInt32("mask");
             data["savedKey"] = r.ReadAlignedUtf8String("savedKey");

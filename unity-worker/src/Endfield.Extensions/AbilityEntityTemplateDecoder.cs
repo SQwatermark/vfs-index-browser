@@ -26,7 +26,38 @@ public static class AbilityEntityTemplateDecoder
         return (entries, prefix);
     }
 
-    /// <summary>只解码根组件列表中唯一能力系统的技能注册表，不要求挂点和其他组件可解码。</summary>
+    /// <summary>在根引用的组件边界内读取能力系统前缀；不扫描其他组件中的黑板。</summary>
+    public static IReadOnlyDictionary<string, object?> DecodeGameplayPrefix(byte[] raw, string expectedId)
+    {
+        var (entries, prefix) = ReadRoot(raw, expectedId);
+        var systems = prefix.ComponentRids.Select(rid => entries.TryGetValue(rid, out var entry)
+            ? entry : throw new InvalidDataException($"缺少组件 RID {rid}。"))
+            .Where(entry => entry.ClassName is ("AbilitySystemData" or "AbilitySystemForEnemyPartData" or "AbilitySystemForSoulData")
+                && entry.Namespace == "Beyond.Gameplay.Core" && entry.AssemblyName == "Gameplay.Beyond")
+            .ToArray();
+        if (systems.Length > 1) throw new InvalidDataException("能力实体的 AbilitySystemData 不唯一。");
+        var ability = systems.Length == 1 ? AbilitySystemDataPrefixDecoder.Decode(raw, systems[0]) : null;
+        IReadOnlyDictionary<string, object?>? tail = null;
+        string? tailError = null;
+        if (ability is not null)
+        {
+            try { tail = AbilitySystemDataTailDecoder.Decode(raw, ability.NextOffset, ability.RemainingLength, systems[0].ClassName); }
+            catch (InvalidDataException error) { tailError = error.Message; }
+        }
+        return new Dictionary<string, object?> {
+            ["id"] = expectedId, ["template"] = prefix.Data,
+            ["templateRemainingLength"] = prefix.RemainingLength,
+            ["abilitySystem"] = ability?.Data,
+            ["abilitySystemType"] = systems.SingleOrDefault()?.ClassName,
+            ["abilitySystemTail"] = tail,
+            ["abilitySystemTailError"] = tailError,
+            ["abilitySystemRemainingLength"] = ability?.RemainingLength,
+            ["managedReferenceCount"] = entries.Count,
+            ["rootRid"] = entries.Values.Single(entry => entry.ClassName == "AbilityEntityTemplateData"
+                && entry.Namespace == "Beyond.Gameplay").Rid.ToString(CultureInfo.InvariantCulture),
+        };
+    }
+
     public static IReadOnlyDictionary<string, object?> DecodeSkillRegistration(byte[] raw, string expectedId)
     {
         var (entries, prefix) = ReadRoot(raw, expectedId);
@@ -69,9 +100,11 @@ public static class AbilityEntityTemplateDecoder
                 switch (entry.ClassName)
                 {
                     case "AbilitySystemData":
+                    case "AbilitySystemForEnemyPartData":
+                    case "AbilitySystemForSoulData":
                         var ability = AbilitySystemDataPrefixDecoder.Decode(raw, entry);
                         data = new(ability.Data);
-                        foreach (var pair in AbilitySystemDataTailDecoder.Decode(raw, ability.NextOffset, ability.RemainingLength)) data.Add(pair.Key, pair.Value);
+                        foreach (var pair in AbilitySystemDataTailDecoder.Decode(raw, ability.NextOffset, ability.RemainingLength, entry.ClassName)) data.Add(pair.Key, pair.Value);
                         r.SetPosition(r.End);
                         break;
                     case "AbilityEntityRootComponentData":
@@ -87,7 +120,15 @@ public static class AbilityEntityTemplateDecoder
                         break;
                     case "CharacterMovementComponentData":
                         data = new() { ["propertyList"] = Empty(r, "propertyList") };
-                        data["movementData"] = Fields(r, "movementData", "f:_moveSpeed f:_aiRotationSpeed f:_overrideStepOffset f:_overrideStepDownOffset f:_walkSpeedMultiplier f:_runSpeedMultiplier f:_sprintSpeedMultiplier f:_overrideStepOffsetForSpDash f:_overrideStepDownOffsetForSpDash f:_navAcceleration");
+                        var movement = Fields(r, "movementData", "f:_moveSpeed f:_aiRotationSpeed f:_overrideStepOffset f:_overrideStepDownOffset f:_walkSpeedMultiplier f:_runSpeedMultiplier f:_sprintSpeedMultiplier f:_overrideStepOffsetForSpDash f:_overrideStepDownOffsetForSpDash b:_enableMountedJumpInSpDash");
+                        // MountedJumpConfigData 是 ScriptableObject；Unity 序列化外部 PPtr，不能内联读取其字段。
+                        movement["_mountedJumpConfig"] = new Dictionary<string, object?> {
+                            ["fileId"] = r.ReadInt32("movementData._mountedJumpConfig.fileId"),
+                            ["pathId"] = r.ReadInt64("movementData._mountedJumpConfig.pathId").ToString(CultureInfo.InvariantCulture),
+                        };
+                        foreach (var pair in Fields(r, "movementData", "f:_spDashFirstStageRotationSmoothTimeOverride f:_spDashSecondStageRotationSmoothTimeOverride f:_navAcceleration"))
+                            movement.Add(pair.Key, pair.Value);
+                        data["movementData"] = movement;
                         data["proxyShape"] = Fields(r, "proxyShape", "f:height f:radius");
                         data["overrideMoveMode"] = r.ReadInt32("overrideMoveMode");
                         var count = r.ReadInt32("abilityEntityMovementDataList.count");
@@ -107,6 +148,14 @@ public static class AbilityEntityTemplateDecoder
             }
             else if (entry.Namespace == "Beyond.Gameplay" && entry.ClassName == "AbilityEntityTemplateData/EaseFollowMovementData")
                 data = AbilityEntityTemplateTailDecoder.ReadEaseFollow(r, "easeFollow", false);
+            else if (entry.Namespace == "Beyond.Gameplay" && entry.ClassName == "AbilityEntityTemplateData/BasePositionMovementData")
+                data = Fields(r, "basePosition", "i:surroundingBaseType i:rotationType i:mountPoint");
+            else if (entry.Namespace == "Beyond.Gameplay.View" && entry.ClassName == "ModelComponentData")
+                data = Fields(r, "model", "s:modelId f:modelScale b:enableBornFadeIn f:bornFadeInTime");
+            else if (entry.Namespace == "Beyond.Gameplay" && entry.ClassName == "AbilityEntityTemplateData/BaseRotationData")
+                data = Fields(r, "baseRotation", "i:baseType i:mountPoint b:followSelfRotation");
+            else if (entry.Namespace == "Beyond.Gameplay.View" && entry.ClassName == "AbilityEntityAnimationComponentData")
+                data = Fields(r, "animation", "s:_animCfgPath");
             else throw new InvalidDataException($"未支持的能力实体引用：{entry.Namespace}.{entry.ClassName}");
             r.EnsureComplete();
             components.Add(key, new Dictionary<string, object?> { ["type"] = entry.Namespace + "." + entry.ClassName, ["data"] = data });

@@ -74,6 +74,8 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         help="Merge generated classes into an existing schema instead of replacing unrelated roots",
     )
     parser.add_argument("--union-map", type=Path, help="Also include all recovered concrete union types as schema roots")
+    parser.add_argument("--string-encoding", choices=("inline", "pooled"),
+                        help="String wire format verified against this runtime; inherited when merging")
     parser.add_argument(
         "--class",
         dest="classes",
@@ -704,6 +706,7 @@ def main(argv: Iterable[str]) -> int:
     schemas = build_recursive_schema(classes, wrappers_by_instance, runtime_classes, args.max_depth)
     report = {
         "kind": "EndfieldMemoryPackSchema",
+        "stringEncoding": args.string_encoding or "inline",
         "dumpRoot": str(args.dump_root),
         "sourceFile": "MemoryPack.Beyond.dll.cs",
         "rootClasses": classes,
@@ -718,6 +721,7 @@ def main(argv: Iterable[str]) -> int:
     }
     if args.merge_into:
         existing = json.loads(args.merge_into.read_text(encoding="utf-8"))
+        report["stringEncoding"] = args.string_encoding or existing.get("stringEncoding", "inline")
         existing_classes = {
             value["class"]: value for value in existing.get("classes", [])
         }
