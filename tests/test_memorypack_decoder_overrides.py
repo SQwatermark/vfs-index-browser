@@ -9,6 +9,60 @@ from memorypack_value_decoder import memorypack_json_value
 
 
 class MemoryPackDecoderOverrideTests(unittest.TestCase):
+    def test_clip_async_info_preserves_padding_and_following_field(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        reader = MemoryPackReader(struct.pack(
+            "<qffffff??2s", -0x123456789ABCDEF, 1.5, 30.0,
+            1.0, 2.0, 3.0, 0.25, True, False, b"\xaa\xbb",
+        ) + b"\xbe")
+        value = decoder.read_value(reader, "Beyond.Montage.AnimationClipAsyncInfo", "$.clip")
+        self.assertEqual(-0x123456789ABCDEF, value["montagePathHash"])
+        self.assertEqual({"x": 1.0, "y": 2.0, "z": 3.0}, value["averageSpeed"])
+        self.assertEqual(30.0, value["framerate"])
+        self.assertTrue(value["isHumanoid"])
+        self.assertFalse(value["isLooping"])
+        self.assertEqual(0xbe, reader.read_u8())
+
+    def test_resource_path_hash_preserves_all_64_bits_and_next_field(self):
+        decoder = Decoder(SchemaIndex({"classes": []}), enum_names=True)
+        for value in (0, 0x123456789ABCDEF, -0x123456789ABCDEF):
+            with self.subTest(value=value):
+                reader = MemoryPackReader(struct.pack("<q", value) + b"\xbe")
+                self.assertEqual(value, decoder.read_value(
+                    reader, "Beyond.Resource.StringPathHash", "$.controllerPath",
+                ))
+                self.assertEqual(0xbe, reader.read_u8())
+
+    def test_fkeyframe_array_uses_raw_structs_and_preserves_following_field(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        keys = [(0.0, 0.25, -2.0, 3.0, 34, 1, 0.25, 0.5),
+                (1.0, 2.0, 4.0, -5.0, 0, 2, 0.5, 0.75)]
+        reader = MemoryPackReader(struct.pack("<i", 2) + b"".join(
+            struct.pack("<ffffiiff", *key) for key in keys) + b"\xbe")
+        result = decoder.read_value(reader, "Beyond.FKeyframe[]", "$.keys")
+        self.assertEqual(34, result[0]["tangentMode"])
+        self.assertEqual(-5.0, result[1]["outTangent"])
+        self.assertEqual(0.75, result[1]["outWeight"])
+        self.assertEqual(0xbe, reader.read_u8())
+        for count, expected in ((-1, None), (0, [])):
+            reader = MemoryPackReader(struct.pack("<i", count) + b"\xbe")
+            self.assertEqual(expected, decoder.read_value(reader, "Beyond.FKeyframe[]", "$.keys"))
+            self.assertEqual(0xbe, reader.read_u8())
+
+    def test_skmorph_inline_fields_do_not_consume_wrapper_headers(self):
+        decoder = Decoder(SchemaIndex({"classes": []}))
+        reader = MemoryPackReader(struct.pack("<ifi", -12345, 0.25, 2) + b"\xbe")
+        self.assertEqual({"tagId": -12345}, decoder.read_value(
+            reader, "Beyond.Gameplay.Core.GameplayTag", "$.motionTag",
+            "Beyond.Gameplay.Core.SkMorphPlaySetting", "motionTag",
+        ))
+        self.assertEqual({"fixedTransitionDuration": 0.25, "fixedTransitionType": 2},
+                         decoder.read_value(
+                             reader, "Beyond.Gameplay.Core.FMorphEmotionTransitionInfo", "$.transitionInfo",
+                             "Beyond.Gameplay.Core.SkMorphPlaySetting", "transitionInfo",
+                         ))
+        self.assertEqual(0xbe, reader.read_u8())
+
     def test_nonfinite_curve_values_are_standard_json_strings(self):
         raw = {"keys": [{"inTangent": float("inf"), "outTangent": float("-inf"), "value": float("nan")}]}
         encoded = json.dumps(memorypack_json_value(raw), allow_nan=False)

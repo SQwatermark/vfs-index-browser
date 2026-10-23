@@ -8,6 +8,22 @@ namespace Vfs.UnityWorker.Tests;
 public sealed class CharacterConditionLeafDecoderTests
 {
     [TestMethod]
+    public void ReadsCustomEventNameAndSavedParameterWithoutDiscardingTrailingBytes()
+    {
+        var raw = Convert.FromBase64String(
+            "AQAAAAAAAAAAAAAA/AMAAAAAAAATAAAAU2lDb21ib1NraWxsVHJpZ2dlcgAAAAAAFAAAAEVudGl0eUJCX2NvbWJvX2NvdW50");
+        var entry = Entry("CheckCustomAbilityEvent/Data", raw.Length, "Beyond.Gameplay.Core.Conditions");
+        var data = CharacterConditionLeafDecoder.Decode(raw, entry)!;
+        var name = (Dictionary<string, object?>)data["eventName"]!;
+        Assert.AreEqual(false, name["useKey"]);
+        Assert.AreEqual("SiComboSkillTrigger", name["value"]);
+        Assert.AreEqual("", name["key"]);
+        Assert.AreEqual("EntityBB_combo_count", data["savedParamKey"]);
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterConditionLeafDecoder.Decode(raw, entry with { DataLength = raw.Length - 4 }));
+    }
+
+    [TestMethod]
     public void DecodesSiEnhanceLayerUsingIntegerThresholdAndUnityFieldOrder()
     {
         var raw = Convert.FromBase64String(

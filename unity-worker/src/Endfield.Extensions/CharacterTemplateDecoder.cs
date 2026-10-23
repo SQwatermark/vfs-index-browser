@@ -54,6 +54,21 @@ public static class CharacterTemplateDecoder
             components.Add(component);
         }
         rootData["componentList"] = components.Select(Describe).ToArray();
+        var hurtComponents = components.Where(entry => entry.ClassName == "CharHurtAnimComponentData"
+            && entry.Namespace == "Beyond.Gameplay.Core" && entry.AssemblyName == "Gameplay.Beyond").ToArray();
+        if (hurtComponents.Length > 1)
+            throw new InvalidDataException("角色引用了多个 CharHurtAnimComponentData。");
+        if (hurtComponents.Length == 1)
+        {
+            var hurt = hurtComponents[0];
+            var hurtReader = new ManagedReferencePayloadReader(rawData, hurt.DataOffset, hurt.DataLength);
+            rootData["hurtAnim"] = new Dictionary<string, object?>
+            {
+                ["fullbodyHeavyHurtTime"] = hurtReader.ReadFloat("fullbodyHeavyHurtTime"),
+                ["fullbodyWhackHurtTime"] = hurtReader.ReadFloat("fullbodyWhackHurtTime"),
+            };
+            hurtReader.EnsureComplete();
+        }
         rootData["animConfigPath"] = r.ReadAlignedUtf8String("animConfigPath");
         rootData["bodyType"] = new Dictionary<string, object?>
         {

@@ -13,6 +13,19 @@ public sealed class CharacterTemplateDecoderTests
     private const long ActionRid = Root + 40;
 
     [TestMethod]
+    public void ReadsOnlyRootLinkedHurtComponentAndRequiresCompletePayload()
+    {
+        var decoded = CharacterTemplateDecoder.Decode(Character(hurt: true), "chr_test");
+        var hurt = Map(Map(decoded["data"])["hurtAnim"]);
+        Assert.AreEqual(0.75f, hurt["fullbodyHeavyHurtTime"]);
+        Assert.AreEqual(1.25f, hurt["fullbodyWhackHurtTime"]);
+        Assert.IsFalse(Map(CharacterTemplateDecoder.Decode(Character(), "chr_test")["data"])
+            .ContainsKey("hurtAnim"));
+        Assert.ThrowsException<InvalidDataException>(() =>
+            CharacterTemplateDecoder.Decode(Character(hurt: true, hurtExtra: true), "chr_test"));
+    }
+
+    [TestMethod]
     public void WorkerReturnsTheSameBoundedDocumentAndRejectsWrongOwner()
     {
         var input = Path.GetTempFileName();
@@ -130,21 +143,29 @@ public sealed class CharacterTemplateDecoderTests
         new(SystemRid, "AbilitySystemData", "Beyond.Gameplay.Core", "Gameplay.Beyond", 0, 0, size, false);
 
     private static byte[] Character(long component = SystemRid, long action = ActionRid,
-        bool gap = false, bool extraRoot = false) => Bytes(w =>
+        bool gap = false, bool extraRoot = false, bool hurt = false, bool hurtExtra = false) => Bytes(w =>
     {
         w.Write(0); w.Write(0L); w.Write(1); w.Write(0); w.Write(0L);
         Text(w, "data_chr_test"); w.Write(Root);
         if (gap) w.Write(0);
-        w.Write(2); w.Write(3);
+        w.Write(2); w.Write(hurt ? 4 : 3);
         Header(w, Root, "CharacterTemplateData", "Beyond.Gameplay");
         Text(w, "chr_test"); Text(w, ""); w.Write(2); w.Write(0);
         w.Write(2.6f); w.Write(0f); w.Write(0); w.Write(0); w.Write(1f);
-        w.Write(1); w.Write(component); Text(w, "anim/test"); w.Write(4); Text(w, ""); w.Write(0);
+        w.Write(hurt ? 2 : 1); w.Write(component);
+        if (hurt) w.Write(Root + 20);
+        Text(w, "anim/test"); w.Write(4); Text(w, ""); w.Write(0);
         if (extraRoot) w.Write(1);
         Header(w, SystemRid, "AbilitySystemData", "Beyond.Gameplay.Core");
         w.Write(Prefix(4, action)); w.Write(new byte[] { 55, 66, 77, 88 });
         Header(w, ActionRid, "UnknownAction/Data", "Beyond.Gameplay.Core");
         w.Write(new byte[] { 11, 22, 33, 44 });
+        if (hurt)
+        {
+            Header(w, Root + 20, "CharHurtAnimComponentData", "Beyond.Gameplay.Core");
+            w.Write(0.75f); w.Write(1.25f);
+            if (hurtExtra) w.Write(0);
+        }
     });
 
     // Synthetic fixture: no extracted game bytes. Distinct nonzero fields catch float/double and RID-width mistakes.

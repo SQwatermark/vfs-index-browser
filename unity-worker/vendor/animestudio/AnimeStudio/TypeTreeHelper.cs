@@ -36,6 +36,22 @@ namespace AnimeStudio
             var align = (m_Node.m_MetaFlag & 0x4000) != 0;
             switch (varTypeStr)
             {
+                case "ReferencedObject":
+                    {
+                        append = false;
+                        var reference = ReadReferenceHeader(reader);
+                        sb.AppendFormat("{0}ReferencedObject {1}\r\n", new string('\t', level), varNameStr);
+                        sb.AppendFormat("{0}SInt64 rid = {1}\r\n", new string('\t', level + 1), reference.Rid);
+                        sb.AppendFormat("{0}ReferencedManagedType type\r\n", new string('\t', level + 1));
+                        foreach (var field in new[] { ("class", reference.Class), ("ns", reference.Namespace), ("asm", reference.Assembly) })
+                            sb.AppendFormat("{0}string {1} = \"{2}\"\r\n", new string('\t', level + 2), field.Item1, field.Item2);
+                        sb.AppendFormat("{0}ReferencedObjectData data\r\n", new string('\t', level + 1));
+                        var nodes = ReferenceNodesAtLevel(reference.Nodes, level + 1);
+                        for (int j = 1; j < nodes.Count; j++)
+                            ReadStringValue(sb, nodes, reader, ref j);
+                        i += GetNodes(m_Nodes, i).Count - 1;
+                        break;
+                    }
                 case "SInt8":
                     value = reader.ReadSByte();
                     break;
@@ -198,6 +214,23 @@ namespace AnimeStudio
 
             switch (varTypeStr)
             {
+                case "ReferencedObject":
+                    {
+                        var reference = ReadReferenceHeader(reader);
+                        var data = new OrderedDictionary();
+                        for (int j = 1; j < reference.Nodes.Count; j++)
+                        {
+                            var name = reference.Nodes[j].m_Name;
+                            data[name] = ReadValue(reference.Nodes, reader, ref j);
+                        }
+                        value = new OrderedDictionary {
+                            ["rid"] = reference.Rid,
+                            ["type"] = new OrderedDictionary { ["class"] = reference.Class, ["ns"] = reference.Namespace, ["asm"] = reference.Assembly },
+                            ["data"] = data
+                        };
+                        i += GetNodes(m_Nodes, i).Count - 1;
+                        break;
+                    }
                 case "SInt8":
                     value = reader.ReadSByte();
                     break;
@@ -316,6 +349,34 @@ namespace AnimeStudio
             if (align)
                 reader.AlignStream();
             return value;
+        }
+
+        // Managed-reference payloads have no inline children; their schema lives in the file's RefTypes.
+        private static (long Rid, string Class, string Namespace, string Assembly, List<TypeTreeNode> Nodes)
+            ReadReferenceHeader(EndianBinaryReader reader)
+        {
+            var rid = reader.ReadInt64();
+            var klass = reader.ReadAlignedString();
+            var ns = reader.ReadAlignedString();
+            var assembly = reader.ReadAlignedString();
+            if (rid == -2 && klass.Length == 0 && ns.Length == 0 && assembly.Length == 0)
+                return (rid, klass, ns, assembly, new List<TypeTreeNode>());
+            var types = (reader as ObjectReader)?.assetsFile.m_RefTypes;
+            var type = types?.Find(t => t.m_KlassName == klass && t.m_NameSpace == ns && t.m_AsmName == assembly);
+            if (type?.m_Type?.m_Nodes == null)
+                throw new InvalidDataException($"Missing managed-reference TypeTree for {assembly}:{ns}.{klass} (rid {rid}).");
+            return (rid, klass, ns, assembly, type.m_Type.m_Nodes);
+        }
+
+        private static List<TypeTreeNode> ReferenceNodesAtLevel(List<TypeTreeNode> nodes, int level)
+        {
+            var result = new List<TypeTreeNode>(nodes.Count);
+            foreach (var node in nodes)
+                result.Add(new TypeTreeNode(node.m_Type, node.m_Name, node.m_Level + level, false) {
+                    m_MetaFlag = node.m_MetaFlag, m_ByteSize = node.m_ByteSize,
+                    m_TypeFlags = node.m_TypeFlags, m_Version = node.m_Version
+                });
+            return result;
         }
 
         private static List<TypeTreeNode> GetNodes(List<TypeTreeNode> m_Nodes, int index)

@@ -52,11 +52,13 @@ public static class CharacterConditionLeafDecoder
             && entry.Namespace == "Beyond.Gameplay.Core";
         var buffDuration = entry.ClassName == "SetBuffDurationAction/Data"
             && entry.Namespace == "Beyond.Gameplay.Core";
+        var customEvent = entry.ClassName == "CheckCustomAbilityEvent/Data"
+            && entry.Namespace == "Beyond.Gameplay.Core.Conditions";
         if (!spell && !compare && !objectType && !tagStack && !debug && !damageDecorate
             && !targetsEqual && !advancedStack && !advancedBuffId && !modifyBlackboard && !physical
             && !mainCharacter && !contextBuff && !tagMatch && !notNext && !hp && !buffStack
             && !createBuff && !storeBuffCount && !returnFalse && !ifElse && !comboSkillPending
-            && !enhanceLayer && !buffDuration)
+            && !enhanceLayer && !buffDuration && !customEvent)
             return null;
         var r = new ManagedReferencePayloadReader(raw, entry.DataOffset, entry.DataLength);
         var data = new Dictionary<string, object?>
@@ -66,7 +68,17 @@ public static class CharacterConditionLeafDecoder
             ["priorityOffset"] = r.ReadInt32("priorityOffset"),
             ["serverActionIndex"] = r.ReadInt32("serverActionIndex"),
         };
-        if (buffDuration)
+        if (customEvent)
+        {
+            data["eventName"] = new Dictionary<string, object?>
+            {
+                ["useKey"] = r.ReadBool32("eventName.useKey"),
+                ["value"] = r.ReadAlignedUtf8String("eventName.value"),
+                ["key"] = r.ReadAlignedUtf8String("eventName.key"),
+            };
+            data["savedParamKey"] = r.ReadAlignedUtf8String("savedParamKey");
+        }
+        else if (buffDuration)
         {
             data["targetSettings"] = UnityTargetSettingsDecoder.Read(r, "targetSettings");
             data["buffSettings"] = ReadBuffFindSettings(r, "buffSettings");

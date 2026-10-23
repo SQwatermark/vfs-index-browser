@@ -110,6 +110,7 @@ TYPE_OVERRIDES = {
 TYPE_ALIASES = {}
 
 RAW_GAMEPLAY_TAG_FIELDS = {
+    ("Beyond.Gameplay.Core.SkMorphPlaySetting", "motionTag"),
     # 1.6.3 RecoverDashEnergy.Deserialize 0x06B89D41..0x06B89D7F:
     # recoverTag 直接读取并前移 4 字节，不经过 GameplayTag 对象头。
     ("Beyond.Gameplay.Core.RecoverDashEnergy.Data", "recoverTag"),
@@ -141,6 +142,20 @@ RAW_GAMEPLAY_TAG_COLLECTION_FIELDS = {
 }
 
 UNMANAGED_STRUCT_LAYOUTS = {
+    # CharMoveAdditiveAnimConfig.Deserialize (1.6.3 RVA 0x05A67100)
+    # reads each clip through 0x0647BC90 as a 36-byte inline value.
+    "Beyond.Montage.AnimationClipAsyncInfo": {
+        "size": 36,
+        "fields": [
+            {"name": "montagePathHash", "type": "System.Int64", "offset": 0},
+            {"name": "length", "type": "System.Single", "offset": 8},
+            {"name": "framerate", "type": "System.Single", "offset": 12},
+            {"name": "averageSpeed", "type": "UnityEngine.Vector3", "offset": 16},
+            {"name": "averageAngularSpeed", "type": "System.Single", "offset": 28},
+            {"name": "isHumanoid", "type": "System.Boolean", "offset": 32},
+            {"name": "isLooping", "type": "System.Boolean", "offset": 33},
+        ],
+    },
     "Beyond.Gameplay.AI.EnemyCheckAIMarker.EnemyCheckAIMarkerInfo": {
         "size": 8,
         "fields": [
@@ -353,6 +368,20 @@ class Decoder:
         type_name = MEMBER_TYPE_OVERRIDES.get((class_name, member), type_name)
         type_name = type_name.strip()
         type_name = TYPE_ALIASES.get(type_name, type_name)
+        # Native StringPathHashFormatter (1.6.3 RVA 0x06596640) consumes
+        # one Int64. This struct must also work when enum names are required.
+        if type_name == "Beyond.Resource.StringPathHash":
+            return reader.read_i64()
+        if (class_name, member) == ("Beyond.Gameplay.Core.SkMorphPlaySetting", "transitionInfo"):
+            # Native wrapper 0x05A67861 calls the raw eight-byte struct reader
+            # 0x06C266C0, rather than the standalone transition-info wrapper.
+            return {
+                "fixedTransitionDuration": reader.read_f32(),
+                "fixedTransitionType": self.read_value(
+                    reader, "Beyond.Gameplay.Core.EMorphEmotionTransitionType",
+                    f"{path}.fixedTransitionType",
+                ),
+            }
         # 在底层存储类型覆盖之前查询，避免 Byte 等枚举丢失其原生类型身份。
         enum = self.schema.enums.get(type_name)
         if enum is not None:
@@ -529,6 +558,15 @@ class Decoder:
         length = reader.read_collection_header()
         if length is None:
             return None
+        if element_type == "Beyond.FKeyframe":
+            # FAnimationCurve.Deserialize calls the unmanaged array reader
+            # (1.6.3 RVA 0x061A1D30): count * 32 bytes, no element headers.
+            # Standalone FKeyframe wrappers still use their object schema.
+            fields = ("time", "value", "inTangent", "outTangent",
+                      "tangentMode", "weightedMode", "inWeight", "outWeight")
+            return [dict(zip(fields, (canonical_float32(v) if isinstance(v, float) else v
+                                     for v in struct.unpack("<ffffiiff", reader.read(32)))))
+                    for _ in range(length)]
         return [
             self.read_value(reader, element_type, f"{path}[{index}]")
             for index in range(length)

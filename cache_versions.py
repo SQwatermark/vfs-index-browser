@@ -38,7 +38,7 @@ CACHE_VERSIONS = CacheVersionRegistry(
         "model-blend": 12,
         "model-glb": 4,
         "model-snapshot": 33,
-        "monobehaviour-dump": 3,
+        "monobehaviour-dump": 4,
         "monobehaviour-raw": 2,
         "projectile-component-export": 4,
         "string-path-hash": 1,
